@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>Plan Tracer — Apt. Compliance</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#f5f4f2;--surf:#fff;--surf2:#f0eeec;--bd:#e2dfd9;--bd2:#ccc9c2;
+  --tx:#1a1916;--dim:#6b6860;--mut:#a8a49e;
+  --pass:#1a7a4a;--pbg:#edf7f2;--pbd:#a3d9bc;
+  --fail:#c0392b;--fbg:#fdf0ee;--fbd:#f5b8b1;
+  --warn:#b45309;--wbg:#fef9f0;--wbd:#f0c070;
+  --acc:#e85d25;--acc2:#c44d1a;--r:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--tx);font-family:'Inter',sans-serif;font-size:13px;display:flex;flex-direction:column}
+header{background:var(--tx);height:50px;display:flex;align-items:center;gap:1rem;padding:0 1.25rem;flex-shrink:0;z-index:200}
+.logo-mark{width:18px;height:18px;background:var(--acc);clip-path:polygon(0 0,100% 0,100% 65%,50% 100%,0 65%);flex-shrink:0}
+header h1{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+header h1 strong{color:#fff}
+.hflex{flex:1}
+.hback{font-size:11px;color:rgba(255,255,255,.5);text-decoration:none;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:.25rem .6rem;white-space:nowrap}
+.hback:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+
+/* Layout */
+.layout{display:grid;grid-template-columns:252px 1fr 224px;flex:1;overflow:hidden;min-height:0}
+@media(max-width:700px){.layout{grid-template-columns:1fr}.tools,.props{display:none}}
+
+/* Left tools */
+.tools{background:var(--surf);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
+.tsec{padding:.7rem .85rem;border-bottom:1px solid var(--bd);flex-shrink:0}
+.tlabel{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:.45rem}
+.fdrop{border:1.5px dashed var(--bd2);border-radius:4px;padding:.55rem;text-align:center;cursor:pointer;position:relative;background:var(--surf2)}
+.fdrop:hover,.fdrop.over{border-color:var(--acc);background:rgba(232,93,37,.04)}
+.fdrop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.fdrop p{font-size:10px;color:var(--dim)}
+.irow{display:flex;gap:.3rem}
+.irow input{flex:1;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:10px;padding:.28rem .4rem;outline:none}
+.irow input::placeholder{color:var(--mut)}
+.irow input:focus{border-color:var(--acc)}
+.irow button{flex-shrink:0;padding:.26rem .5rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:10px;font-weight:600;cursor:pointer}
+.imp-ok{font-size:9px;color:var(--pass);margin-top:.2rem}
+.imp-err{font-size:9px;color:var(--fail);margin-top:.2rem}
+.slider-row{display:flex;align-items:center;gap:.4rem;font-size:10px;color:var(--dim)}
+.slider-row input[type=range]{flex:1;accent-color:var(--acc);height:3px}
+.scale-ok{font-size:9px;color:var(--pass)}
+.scale-none{font-size:9px;color:var(--mut)}
+.scale-pending{font-size:9px;color:var(--warn);animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Mode grid */
+.mode-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.22rem;margin-bottom:.35rem}
+.mbtn{padding:.38rem .15rem;border:1.5px solid var(--bd);border-radius:4px;background:var(--surf2);color:var(--dim);font-size:9px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s;line-height:1.3;user-select:none;touch-action:manipulation}
+.mbtn:hover{border-color:var(--bd2);color:var(--tx)}
+.mbtn.active{border-color:var(--acc);background:rgba(232,93,37,.08);color:var(--acc);font-weight:700}
+.mico{font-size:14px;display:block;margin-bottom:.1rem}
+.kshort{font-size:8px;opacity:.6}
+
+/* Boolean toolbar — floats above canvas when 2 polys selected */
+.bool-bar{position:absolute;z-index:100;background:var(--tx);border-radius:8px;padding:.4rem .5rem;display:flex;gap:.3rem;box-shadow:0 4px 20px rgba(0,0,0,.35);display:none}
+.bb-btn{padding:.3rem .6rem;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;color:#fff;transition:opacity .15s}
+.bb-btn:hover{opacity:.85}
+.bb-union{background:#1a7a4a}
+.bb-diff{background:#c0392b}
+.bb-int{background:#b45309}
+.bb-cancel{background:rgba(255,255,255,.15);font-size:10px}
+
+/* Tool row */
+.tool-row{display:flex;gap:.22rem;flex-wrap:wrap;margin-bottom:.28rem}
+.tbtn{padding:.32rem .45rem;border:1px solid var(--bd);border-radius:4px;background:var(--surf2);color:var(--dim);font-size:10px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;touch-action:manipulation}
+.tbtn:hover{border-color:var(--bd2);color:var(--tx)}
+.tbtn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.tbtn.primary:hover{background:var(--acc2)}
+.tbtn.danger{border-color:var(--fbd);color:var(--fail)}
+.tbtn.danger:hover{background:var(--fail);color:#fff;border-color:var(--fail)}
+.tbtn:disabled{opacity:.35;cursor:not-allowed}
+
+/* Layer list */
+.layer-list{display:flex;flex-direction:column;gap:.16rem;max-height:210px;overflow-y:auto}
+.lbtn{display:flex;align-items:center;gap:.4rem;padding:.25rem .38rem;border-radius:4px;cursor:pointer;border:1.5px solid transparent;font-size:10px;font-weight:500;touch-action:manipulation}
+.lbtn:hover{background:var(--surf2)}.lbtn.active{border-color:currentColor;background:rgba(255,255,255,.7)}
+.lswatch{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.lgrp{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);padding:.15rem .2rem .04rem;margin-top:.18rem}
+
+/* Canvas */
+.canvas-area{position:relative;background:#d4d0ca;overflow:hidden;flex:1}
+#mc{position:absolute;top:0;left:0;touch-action:none}
+#mc.sel{cursor:default}#mc.pan{cursor:grab}#mc.panning{cursor:grabbing}#mc.rect{cursor:crosshair}
+.hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(26,25,22,.72);color:#fff;font-size:10px;padding:.24rem .65rem;border-radius:20px;pointer-events:none;white-space:nowrap;max-width:90%;text-align:center}
+.zoom-ctrls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:.25rem}
+.zcbtn{width:30px;height:30px;background:var(--surf);border:1px solid var(--bd);border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;font-weight:600;color:var(--dim);touch-action:manipulation}
+.zcbtn:hover{border-color:var(--acc);color:var(--acc)}
+.coords-display{position:absolute;bottom:10px;right:12px;font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(255,255,255,.5);background:rgba(26,25,22,.5);padding:.18rem .4rem;border-radius:3px}
+
+/* Right props */
+.props{background:var(--surf);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
+.no-sel{font-size:10px;color:var(--mut);text-align:center;padding:1.2rem .75rem}
+.shape-list{max-height:240px;overflow-y:auto}
+.si{display:flex;align-items:center;gap:.35rem;padding:.24rem .4rem;border-radius:4px;cursor:pointer;font-size:10px;border:1.5px solid transparent}
+.si:hover{background:var(--surf2)}.si.sel{border-color:var(--acc);background:rgba(232,93,37,.05)}
+.si2{border-color:var(--warn)!important;background:rgba(180,83,9,.05)!important}
+.si-sw{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.si-lbl{flex:1;font-weight:500}.si-del{color:var(--mut);font-size:11px;cursor:pointer;padding:0 .1rem}
+.si-del:hover{color:var(--fail)}
+.pf{display:flex;flex-direction:column;gap:.18rem;margin-bottom:.4rem}
+.pf label{font-size:10px;font-weight:500;color:var(--dim)}
+.pf select{background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;padding:.25rem .35rem;width:100%;outline:none}
+.pf select:focus{border-color:var(--acc)}
+.stat-row{display:flex;justify-content:space-between;font-size:10px;padding:.18rem 0;border-bottom:1px solid var(--surf2);color:var(--dim)}
+.stat-row:last-child{border-bottom:none}
+.stat-val{font-family:'JetBrains Mono',monospace;color:var(--tx)}
+.bool-hint{background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.4rem .5rem;font-size:10px;color:var(--dim);margin-top:.4rem}
+.cr-pass{background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.45rem .6rem;font-size:11px;color:var(--pass);margin-bottom:.35rem}
+.cr-fail{background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.45rem .6rem;font-size:11px;color:var(--fail);margin-bottom:.35rem}
+
+/* Modals */
+.overlay{position:fixed;inset:0;background:rgba(26,25,22,.5);z-index:500;display:none;align-items:center;justify-content:center}
+.overlay.open{display:flex}
+.modal{background:var(--surf);border-radius:10px;padding:1.25rem;max-width:370px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h3{font-size:14px;font-weight:700;margin-bottom:.3rem}
+.modal p{font-size:11px;color:var(--dim);margin-bottom:.8rem;line-height:1.6}
+.modal input{width:100%;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;font-size:11px;padding:.32rem .45rem;outline:none;color:var(--tx)}
+.modal input:focus{border-color:var(--acc)}
+.mbns{display:flex;gap:.4rem;margin-top:.8rem;justify-content:flex-end}
+.mprim{padding:.36rem .8rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.mprim:hover{background:var(--acc2)}
+.mghst{padding:.36rem .8rem;background:transparent;border:1px solid var(--bd);border-radius:4px;color:var(--dim);font-size:12px;cursor:pointer}
+.mghst:hover{border-color:var(--bd2);color:var(--tx)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark"></div>
+  <h1><strong>Plan Tracer</strong> — Apt. Compliance</h1>
+  <div class="hflex"></div>
+  <a class="hback" href="/">← Back to Checker</a>
+</header>
+
+<div class="layout">
+
+<!-- ── Left tools ── -->
+<aside class="tools">
+
+  <div class="tsec">
+    <div class="tlabel">Import Floor Plan Image</div>
+    <div class="irow" style="margin-bottom:.35rem">
+      <input type="text" id="urlInput" placeholder="Paste direct image URL (see instructions below)">
+      <button onclick="loadFromUrl()">↗</button>
+    </div>
+    <div id="urlStatus"></div>
+    <div style="font-size:9px;color:var(--mut);margin-top:.3rem;line-height:1.5">
+      <strong>realestate.com.au:</strong> right-click the floor plan → <em>Copy image address</em> → paste above.<br>
+      <strong>Domain.com.au:</strong> right-click the floor plan → <em>Save image as</em> → upload below.
+    </div>
+    <div class="fdrop" id="fdrop" style="margin-top:.3rem">
+      <input type="file" id="imgFile" accept="image/*,.gif">
+      <p>or drop / click to upload from device</p>
+    </div>
+  </div>
+
+  <div class="tsec">
+    <div class="tlabel">Background</div>
+    <div class="slider-row">
+      <span>Opacity</span>
+      <input type="range" id="bgOp" min="0" max="100" value="35" oninput="bgOpacity=+this.value/100;document.getElementById('bgOpV').textContent=this.value+'%';render()">
+      <span id="bgOpV" style="width:28px">35%</span>
+    </div>
+    <div style="margin-top:.4rem">
+      <button class="tbtn" onclick="startScale()" style="width:100%">⊹ Set Scale (click 2 points)</button>
+      <div id="scaleStatus" class="scale-none" style="margin-top:.22rem">No scale set — dimensions approximate</div>
+    </div>
+  </div>
+
+  <div class="tsec">
+    <div class="tlabel">Draw Mode</div>
+    <div class="mode-grid">
+      <div class="mbtn active" data-mode="poly" onclick="setMode('poly')">
+        <span class="mico">⬡</span>Polygon<br><span class="kshort">P</span>
+      </div>
+      <div class="mbtn" data-mode="rect" onclick="setMode('rect')">
+        <span class="mico">▭</span>Rectangle<br><span class="kshort">R</span>
+      </div>
+      <div class="mbtn" data-mode="line" onclick="setMode('line')">
+        <span class="mico">╱</span>Window/Door<br><span class="kshort">L</span>
+      </div>
+      <div class="mbtn" data-mode="select" onclick="setMode('select')">
+        <span class="mico">↖</span>Select<br><span class="kshort">S / V</span>
+      </div>
+    </div>
+    <div style="font-size:9px;color:var(--mut);line-height:1.5">
+      <kbd style="background:var(--surf2);padding:0 3px;border-radius:2px;border:1px solid var(--bd)">Shift</kbd> = 90° lock · Right-drag = pan · Scroll = zoom<br>
+      Select 2 shapes → boolean operations appear
+    </div>
+  </div>
+
+  <div class="tsec">
+    <div class="tlabel">Layer / Element Type</div>
+    <div class="layer-list" id="layerList"></div>
+  </div>
+
+  <div class="tsec" style="flex:1">
+    <div class="tlabel">Actions</div>
+    <div class="tool-row">
+      <button class="tbtn" onclick="undo()">↩ Undo</button>
+      <button class="tbtn" onclick="regularise()" title="Snap all vertices to nearest 90° grid">⊞ Regularise</button>
+      <button class="tbtn" onclick="deleteSelected()">✕ Del</button>
+    </div>
+    <div class="tool-row">
+      <button class="tbtn primary" onclick="runCheck()" id="runBtn" disabled>▶ Run Check</button>
+      <button class="tbtn" onclick="exportDXF()">↓ DXF</button>
+      <button class="tbtn" onclick="exportPNG()">↓ PNG</button>
+    </div>
+    <button class="tbtn danger" onclick="confirmClear()" style="width:100%;margin-top:.1rem">⊗ Clear All</button>
+  </div>
+
+</aside>
+
+<!-- ── Canvas ── -->
+<div class="canvas-area" id="canvasArea">
+  <canvas id="mc"></canvas>
+
+  <!-- Boolean operation toolbar — shown when 2 polys selected and overlapping -->
+  <div class="bool-bar" id="boolBar">
+    <button class="bb-btn bb-union" onclick="boolOp('union')" title="Merge both shapes into one">⊕ Union</button>
+    <button class="bb-btn bb-diff" onclick="boolOp('diff')" title="Cut shape B from shape A">⊖ Subtract</button>
+    <button class="bb-btn bb-int" onclick="boolOp('intersect')" title="Keep only the overlapping area">⊗ Intersect</button>
+    <button class="bb-btn bb-cancel" onclick="hideBoolBar()">✕</button>
+  </div>
+
+  <div class="hint" id="hint">Upload a floor plan image, then trace rooms over it</div>
+  <div class="zoom-ctrls">
+    <div class="zcbtn" onclick="zoom(1.2)">+</div>
+    <div class="zcbtn" onclick="zoom(0.8)">−</div>
+    <div class="zcbtn" onclick="resetView()" title="Fit to window">⊡</div>
+  </div>
+  <div class="coords-display" id="coordsDisplay">0.00, 0.00</div>
+</div>
+
+<!-- ── Right props ── -->
+<aside class="props">
+  <div class="tsec">
+    <div class="tlabel">Elements (<span id="shapeCount">0</span>)</div>
+    <div class="shape-list" id="shapeList"></div>
+  </div>
+  <div class="tsec" id="propPanel">
+    <div class="tlabel">Properties</div>
+    <div class="no-sel">Select an element to edit</div>
+  </div>
+  <div style="padding:.7rem .85rem" id="checkResult" style="display:none"></div>
+</aside>
+
+</div>
+
+<!-- Modals -->
+<div class="overlay" id="scaleModal">
+  <div class="modal">
+    <h3>Set Scale</h3>
+    <p>You clicked two points. Enter the real-world distance between them to calibrate the scale.</p>
+    <input type="number" id="scaleDist" placeholder="Distance in metres" min="0.1" step="0.1" value="1">
+    <div class="mbns">
+      <button class="mghst" onclick="cancelScale()">Cancel</button>
+      <button class="mprim" onclick="confirmScale()">Set Scale</button>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="clearModal">
+  <div class="modal">
+    <h3>Clear everything?</h3>
+    <p>Removes all shapes and the background image. Cannot be undone.</p>
+    <div class="mbns">
+      <button class="mghst" onclick="document.getElementById('clearModal').classList.remove('open')">Cancel</button>
+      <button class="mprim" style="background:var(--fail)" onclick="doClear()">Clear All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// Layer definitions
+// ═══════════════════════════════════════════════════════════════════════════════
+const LAYERS=[
+  {key:'APT_ROOM_MAINBED',        label:'Main Bedroom',  color:'#6366f1',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_BED1',           label:'Bedroom 1',     color:'#8b5cf6',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_BED2',           label:'Bedroom 2',     color:'#a855f7',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_BED3',           label:'Bedroom 3',     color:'#c084fc',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_LIVING',         label:'Living Area',   color:'#1a7a4a',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_BATHROOM',       label:'Bathroom',      color:'#0ea5e9',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_ENSUITE',        label:'Ensuite',       color:'#06b6d4',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_LAUNDRY',        label:'Laundry',       color:'#64748b',type:'poly',group:'Rooms'},
+  {key:'APT_ROOM_ENTRY',          label:'Entry',         color:'#94a3b8',type:'poly',group:'Rooms'},
+  {key:'APT_STORAGE_DESIGNATED',  label:'Storage',       color:'#b45309',type:'poly',group:'Storage'},
+  {key:'APT_STORAGE_SERVICE',     label:'Cabinetry',     color:'#9a3a04',type:'poly',group:'Storage'},
+  {key:'APT_POS',                 label:'Balcony/POS',   color:'#14b8a6',type:'poly',group:'Outdoor'},
+  {key:'APT_POS_GROUND',          label:'Ground POS',    color:'#10b981',type:'poly',group:'Outdoor'},
+  {key:'APT_WINDOW_LIVING',       label:'Window — Living',   color:'#2563eb',type:'line',group:'Windows'},
+  {key:'APT_WINDOW_MAINBED',      label:'Window — Main Bed', color:'#3b82f6',type:'line',group:'Windows'},
+  {key:'APT_WINDOW_BED1',         label:'Window — Bed 1',    color:'#60a5fa',type:'line',group:'Windows'},
+  {key:'APT_WINDOW_BED2',         label:'Window — Bed 2',    color:'#93c5fd',type:'line',group:'Windows'},
+  {key:'APT_WINDOW_BED3',         label:'Window — Bed 3',    color:'#bfdbfe',type:'line',group:'Windows'},
+  {key:'APT_DOOR_ENTRY',          label:'Door — Entry',      color:'#b45309',type:'line',group:'Doors'},
+  {key:'APT_DOOR_ENTRY_MARKER',   label:'Entry Point (marker)',color:'#92400e',type:'line',group:'Doors'},
+  {key:'APT_DOOR_MAINBED',        label:'Door — Main Bed',   color:'#d97706',type:'line',group:'Doors'},
+  {key:'APT_DOOR_BATHROOM',       label:'Door — Bathroom',   color:'#f59e0b',type:'line',group:'Doors'},
+  {key:'APT_DOOR_POS',            label:'Door — Balcony',    color:'#14b8a6',type:'line',group:'Doors'},
+  {key:'APT_NORTH',               label:'North Arrow',       color:'#e85d25',type:'line',group:'Reference'},
+];
+const LMAP=Object.fromEntries(LAYERS.map(l=>[l.key,l]));
+let activeLayer=LAYERS[0];
+
+function drawnPolyLayers(){
+  return new Set(shapes.filter(s=>s.type==='poly').map(s=>s.layer));
+}
+function visibleLayers(){
+  const drawn=drawnPolyLayers();
+  const modeType=drawMode==='line'?'line':drawMode==='select'?null:'poly';
+  return LAYERS.filter(l=>{
+    if(modeType&&l.type!==modeType)return false;
+    if(l.type==='line'){
+      if(l.key.startsWith('APT_WINDOW_')){
+        return drawn.has('APT_ROOM_'+l.key.replace('APT_WINDOW_',''));
+      }
+      if(l.key.startsWith('APT_DOOR_')&&l.key!=='APT_DOOR_ENTRY'&&l.key!=='APT_DOOR_POS'){
+        return drawn.has('APT_ROOM_'+l.key.replace('APT_DOOR_',''));
+      }
+    }
+    return true;
+  });
+}
+function buildLayerList(){
+  const el=document.getElementById('layerList');
+  const vis=visibleLayers();
+  if(!vis.length){el.innerHTML='<div style="font-size:10px;color:var(--mut)">Switch to Polygon or Line mode</div>';return;}
+  let h='',lastGrp='';
+  for(const l of vis){
+    if(l.group!==lastGrp){h+=`<div class="lgrp">${l.group}</div>`;lastGrp=l.group;}
+    h+=`<div class="lbtn ${l===activeLayer?'active':''}" onclick="selectLayer('${l.key}')" style="color:${l.color}">
+      <div class="lswatch" style="background:${l.color}22;border:1.5px solid ${l.color}"></div>${l.label}
+    </div>`;
+  }
+  el.innerHTML=h;
+}
+function selectLayer(key){
+  const l=LMAP[key];if(!l)return;
+  activeLayer=l;
+  if(l.type==='line'&&drawMode!=='line')setMode('line');
+  if(l.type==='poly'&&drawMode==='line')setMode('poly');
+  buildLayerList();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════════
+let shapes=[],selIds=new Set(),drawMode='poly',curPts=[],hoverPt=null;
+let bgImage=null,bgOpacity=0.35;
+let scale=null,scaleP1=null,scaleP2=null,scalePending=false,_scaleClick=null;
+let history=[],nextId=1;
+let vx=0,vy=0,vz=1;
+let panActive=false,panStart=null,panOrigin=null;
+let rectStart=null;
+let dragActive=false,dragBase=null,dragSnaps={};
+let shiftDown=false;
+// Touch
+let touches={};let lastPinchDist=null;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Canvas
+// ═══════════════════════════════════════════════════════════════════════════════
+const cv=document.getElementById('mc'),ctx=cv.getContext('2d');
+const area=document.getElementById('canvasArea');
+function resize(){cv.width=area.clientWidth;cv.height=area.clientHeight;render();}
+window.addEventListener('resize',resize);resize();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mode
+// ═══════════════════════════════════════════════════════════════════════════════
+const HINTS={
+  poly:'Click to add vertices · Shift=90° lock · Double-click or snap to start to close · Esc=cancel',
+  rect:'Click-drag to draw rectangle · Shift=square · Select two overlapping shapes for Union/Subtract',
+  line:'Click start point · Click end point · Shift=90° lock · Esc=cancel',
+  select:'Click to select · Shift-click to add to selection · Drag to move · Select 2 polygons for boolean ops',
+};
+function setMode(m){
+  drawMode=m;curPts=[];rectStart=null;
+  if(m!=='select')selIds.clear();
+  hideBoolBar();
+  document.querySelectorAll('.mbtn[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+  cv.className=m==='select'?'sel':m==='pan'?'pan':m==='rect'?'rect':'';
+  buildLayerList();
+  document.getElementById('hint').textContent=HINTS[m]||'';
+  render();updatePropPanel();
+}
+
+document.addEventListener('keydown',e=>{
+  shiftDown=e.shiftKey;
+  const t=document.activeElement.tagName;
+  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
+  const k=e.key.toLowerCase();
+  if(k==='p')setMode('poly');
+  if(k==='r')setMode('rect');
+  if(k==='l')setMode('line');
+  if(k==='s'||k==='v')setMode('select');
+  if(k==='escape'){curPts=[];rectStart=null;selIds.clear();hideBoolBar();render();updatePropPanel();}
+  if((k==='delete'||k==='backspace')&&selIds.size>0)deleteSelected();
+  if(k==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undo();}
+  if(k==='a'&&(e.ctrlKey||e.metaKey)){e.preventDefault();selIds=new Set(shapes.map(s=>s.id));render();updatePropPanel();}
+});
+document.addEventListener('keyup',e=>{shiftDown=e.shiftKey;});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// View
+// ═══════════════════════════════════════════════════════════════════════════════
+function w2c(wx,wy){return[wx*vz+vx,wy*vz+vy];}
+function c2w(cx,cy){return[(cx-vx)/vz,(cy-vy)/vz];}
+function zoom(f,cx,cy){
+  cx=cx??cv.width/2;cy=cy??cv.height/2;
+  const[wx,wy]=c2w(cx,cy);
+  vz=Math.max(0.03,Math.min(40,vz*f));
+  vx=cx-wx*vz;vy=cy-wy*vz;render();
+}
+function resetView(){vx=0;vy=0;vz=1;if(bgImage)fitBg();render();}
+function fitBg(){
+  const W=cv.width,H=cv.height;
+  const s=Math.min((W-40)/bgImage.width,(H-40)/bgImage.height)*0.92;
+  vz=s;vx=(W-bgImage.width*s)/2;vy=(H-bgImage.height*s)/2;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Image import
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('imgFile').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
+const fd2=document.getElementById('fdrop');
+fd2.addEventListener('dragover',e=>{e.preventDefault();fd2.classList.add('over');});
+fd2.addEventListener('dragleave',()=>fd2.classList.remove('over'));
+fd2.addEventListener('drop',e=>{e.preventDefault();fd2.classList.remove('over');const f=e.dataTransfer.files[0];if(f)loadFile(f);});
+function loadFile(f){
+  const r=new FileReader();
+  r.onload=e=>{const img=new Image();img.onload=()=>{bgImage=img;fitBg();render();enableRun();};img.src=e.target.result;};
+  r.readAsDataURL(f);
+}
+function loadFromUrl(){
+  const raw=document.getElementById('urlInput').value.trim();if(!raw)return;
+  const status=document.getElementById('urlStatus');
+  status.innerHTML='<span style="font-size:9px;color:var(--dim)">Loading…</span>';
+  // Strip webp conversion filters from Domain/realestate CDN URLs so canvas can read them
+  const url=raw.replace(/filters:format\(webp\)[^/]*\//g,'');
+  const src=url.startsWith('http')?`/api/proxy-image?url=${encodeURIComponent(url)}`:url;
+  const img=new Image();img.crossOrigin='anonymous';
+  img.onload=()=>{bgImage=img;fitBg();render();enableRun();status.innerHTML='<span class="imp-ok">✓ Loaded</span>';};
+  img.onerror=()=>{
+    const img2=new Image();img2.crossOrigin='anonymous';
+    img2.onload=()=>{bgImage=img2;fitBg();render();enableRun();status.innerHTML='<span class="imp-ok">✓ Loaded</span>';};
+    img2.onerror=()=>{
+      const isDomain=raw.includes('domain');
+      status.innerHTML=`<span class="imp-err">
+        Could not load image.
+        ${isDomain
+          ? 'Domain.com.au blocks direct image loading. Save the floor plan image to your device first (right-click → Save image as), then use the upload button below.'
+          : 'Make sure you right-clicked the floor plan image itself and chose <em>Copy image address</em> — not the page URL.'}
+      </span>`;
+    };
+    img2.src=url;
+  };
+  img.src=src;
+}
+document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')loadFromUrl();});
+function enableRun(){document.getElementById('runBtn').disabled=false;}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Scale
+// ═══════════════════════════════════════════════════════════════════════════════
+function startScale(){
+  if(_scaleClick)cv.removeEventListener('click',_scaleClick);
+  scalePending=true;scaleP1=scaleP2=null;
+  document.getElementById('scaleStatus').textContent='Click first point on plan…';
+  document.getElementById('scaleStatus').className='scale-pending';
+  _scaleClick=function(e){
+    if(!scalePending)return;
+    const pt=c2w(e.offsetX,e.offsetY);
+    if(!scaleP1){scaleP1=pt;document.getElementById('scaleStatus').textContent='Click second point…';}
+    else{scaleP2=pt;scalePending=false;cv.removeEventListener('click',_scaleClick);
+      document.getElementById('scaleModal').classList.add('open');
+      document.getElementById('scaleDist').focus();render();}
+    render();
+  };
+  cv.addEventListener('click',_scaleClick);
+}
+function confirmScale(){
+  const d=parseFloat(document.getElementById('scaleDist').value);
+  if(!d||d<=0||!scaleP1||!scaleP2){cancelScale();return;}
+  scale={ppm:Math.hypot(scaleP2[0]-scaleP1[0],scaleP2[1]-scaleP1[1])/d};
+  scaleP1=scaleP2=null;
+  document.getElementById('scaleModal').classList.remove('open');
+  document.getElementById('scaleStatus').textContent=`1m = ${Math.round(scale.ppm)}px · Scale set`;
+  document.getElementById('scaleStatus').className='scale-ok';
+  render();
+}
+function cancelScale(){
+  scalePending=false;scaleP1=scaleP2=null;
+  if(_scaleClick)cv.removeEventListener('click',_scaleClick);
+  document.getElementById('scaleModal').classList.remove('open');
+  document.getElementById('scaleStatus').textContent='No scale set — dimensions approximate';
+  document.getElementById('scaleStatus').className='scale-none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Geometry helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+function polyArea(pts){
+  let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i][0]*pts[j][1]-pts[j][0]*pts[i][1];}return Math.abs(a)/2;
+}
+function polyCentroid(pts){
+  let cx=0,cy=0;for(const p of pts){cx+=p[0];cy+=p[1];}return[cx/pts.length,cy/pts.length];
+}
+function r2(n){return Math.round(n*100)/100;}
+function ptInPoly(pt,pts){
+  let inside=false,j=pts.length-1;
+  for(let i=0;i<pts.length;i++){
+    if(((pts[i][1]>pt[1])!=(pts[j][1]>pt[1]))&&pt[0]<(pts[j][0]-pts[i][0])*(pt[1]-pts[i][1])/(pts[j][1]-pts[i][1])+pts[i][0])inside=!inside;
+    j=i;
+  }
+  return inside;
+}
+function ptToSeg(p,a,b){
+  const dx=b[0]-a[0],dy=b[1]-a[1];
+  if(!dx&&!dy)return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)));
+  return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
+}
+function polysOverlap(A,B){
+  // Quick AABB check first
+  const axs=A.map(p=>p[0]),ays=A.map(p=>p[1]);
+  const bxs=B.map(p=>p[0]),bys=B.map(p=>p[1]);
+  if(Math.max(...axs)<Math.min(...bxs)||Math.min(...axs)>Math.max(...bxs))return false;
+  if(Math.max(...ays)<Math.min(...bys)||Math.min(...ays)>Math.max(...bys))return false;
+  // Check if any vertex of A is in B or vice versa
+  for(const p of A)if(ptInPoly(p,B))return true;
+  for(const p of B)if(ptInPoly(p,A))return true;
+  return false;
+}
+function snapToAngle(base,pt){
+  if(!shiftDown)return pt;
+  const dx=pt[0]-base[0],dy=pt[1]-base[1];
+  const ang=Math.atan2(dy,dx);
+  const snap=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+  const len=Math.hypot(dx,dy);
+  return[base[0]+Math.cos(snap)*len,base[1]+Math.sin(snap)*len];
+}
+function snapToVertex(pt){
+  const thresh=14/vz;
+  for(const s of shapes){
+    for(const v of s.pts){
+      if(Math.hypot(v[0]-pt[0],v[1]-pt[1])<thresh)return[...v];
+    }
+  }
+  return pt;
+}
+function squarify([x1,y1],[x2,y2]){
+  const s=Math.max(Math.abs(x2-x1),Math.abs(y2-y1));
+  return[x1+(x2>x1?s:-s),y1+(y2>y1?s:-s)];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Polygon boolean operations — edge-walk algorithm
+// Handles non-convex polygons and shared collinear edges correctly
+// ═══════════════════════════════════════════════════════════════════════════════
+const BEPS=1e-7;
+function bNear(a,b){return Math.abs(a[0]-b[0])<BEPS&&Math.abs(a[1]-b[1])<BEPS;}
+function bOnSeg(p,a,b){
+  const dx=b[0]-a[0],dy=b[1]-a[1];
+  if(Math.abs(dx)<BEPS&&Math.abs(dy)<BEPS)return bNear(p,a);
+  if(Math.abs(dx)>Math.abs(dy)){const t=(p[0]-a[0])/dx;return t>=-BEPS&&t<=1+BEPS&&Math.abs(p[1]-a[1]-t*dy)<BEPS*10;}
+  else{const t=(p[1]-a[1])/dy;return t>=-BEPS&&t<=1+BEPS&&Math.abs(p[0]-a[0]-t*dx)<BEPS*10;}
+}
+function bStrictlyIn(pt,poly){
+  const n=poly.length;
+  for(let i=0;i<n;i++)if(bOnSeg(pt,poly[i],poly[(i+1)%n]))return false;
+  let inside=false,j=n-1;const x=pt[0],y=pt[1];
+  for(let i=0;i<n;i++){
+    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+    if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi+1e-12)+xi)inside=!inside;j=i;
+  }
+  return inside;
+}
+function bOnBoundary(pt,poly){
+  const n=poly.length;
+  for(let i=0;i<n;i++)if(bOnSeg(pt,poly[i],poly[(i+1)%n]))return true;
+  return false;
+}
+function bSegX(p1,p2,p3,p4){
+  const d1=[p2[0]-p1[0],p2[1]-p1[1]],d2=[p4[0]-p3[0],p4[1]-p3[1]];
+  const denom=d1[0]*d2[1]-d1[1]*d2[0];
+  if(Math.abs(denom)<1e-9)return null;
+  const dx=p3[0]-p1[0],dy=p3[1]-p1[1];
+  let t=(dx*d2[1]-dy*d2[0])/denom,s=(dx*d1[1]-dy*d1[0])/denom;
+  t=Math.max(0,Math.min(1,t));s=Math.max(0,Math.min(1,s));
+  if(t>=-BEPS&&t<=1+BEPS&&s>=-BEPS&&s<=1+BEPS)return[p1[0]+t*d1[0],p1[1]+t*d1[1]];
+  return null;
+}
+function bAugment(poly,other){
+  const result=[],n=poly.length,m=other.length;
+  for(let i=0;i<n;i++){
+    const p=poly[i],q=poly[(i+1)%n];result.push([...p]);
+    const newPts=[];
+    for(const ov of other){
+      if(bNear(ov,p)||bNear(ov,q))continue;
+      if(bOnSeg(ov,p,q)){
+        const dx=q[0]-p[0],dy=q[1]-p[1];
+        const t=Math.abs(dx)>Math.abs(dy)?(ov[0]-p[0])/dx:(ov[1]-p[1])/dy;
+        if(t>BEPS&&t<1-BEPS)newPts.push([t,[...ov]]);
+      }
+    }
+    for(let j=0;j<m;j++){
+      const ix=bSegX(p,q,other[j],other[(j+1)%m]);
+      if(ix){
+        const dx=q[0]-p[0],dy=q[1]-p[1];
+        const t=Math.abs(dx)>Math.abs(dy)?(ix[0]-p[0])/dx:(ix[1]-p[1])/dy;
+        if(t>BEPS&&t<1-BEPS&&!newPts.some(e=>bNear(ix,e[1])))newPts.push([t,ix]);
+      }
+    }
+    newPts.sort((a,b)=>a[0]-b[0]);result.push(...newPts.map(e=>e[1]));
+  }
+  return result;
+}
+function bClean(pts){
+  if(!pts.length)return pts;
+  const r=[pts[0]];
+  for(let i=1;i<pts.length;i++)if(!bNear(pts[i],r[r.length-1]))r.push(pts[i]);
+  while(r.length>1&&bNear(r[0],r[r.length-1]))r.pop();
+  return r;
+}
+function shClip(subject,clip){
+  const inside=(p,a,b)=>(b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])>=-1e-10;
+  const inter=(p1,p2,p3,p4)=>{
+    const x1=p1[0],y1=p1[1],x2=p2[0],y2=p2[1],x3=p3[0],y3=p3[1],x4=p4[0],y4=p4[1];
+    const d=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
+    if(Math.abs(d)<1e-10)return p1;
+    const t=((x1-x3)*(y3-y4)-(y1-y3)*(x3-x4))/d;return[x1+t*(x2-x1),y1+t*(y2-y1)];
+  };
+  let out=[...subject];const n=clip.length;
+  for(let i=0;i<n;i++){
+    if(!out.length)return[];
+    const inp=[...out];out=[];const es=clip[i],ee=clip[(i+1)%n];
+    for(let j=0;j<inp.length;j++){
+      const c=inp[j],pv=inp[(j+inp.length-1)%inp.length];
+      const ci=inside(c,es,ee),pi=inside(pv,es,ee);
+      if(ci){if(!pi)out.push(inter(pv,c,es,ee));out.push(c);}
+      else if(pi)out.push(inter(pv,c,es,ee));
+    }
+  }
+  return bClean(out);
+}
+function bBuildPolygons(rawEdges){
+  // Step 1: deduplicate same-direction edges
+  const edges=[];
+  for(const[p,q]of rawEdges)
+    if(!edges.some(([r,s])=>bNear(p,r)&&bNear(q,s)))edges.push([[...p],[...q]]);
+  // Step 2: remove bidirectional pairs (interior shared edges)
+  const remove=new Set();
+  for(let i=0;i<edges.length;i++){
+    if(remove.has(i))continue;
+    const[p,q]=edges[i];
+    for(let j=i+1;j<edges.length;j++){
+      const[r,s]=edges[j];
+      if(bNear(p,s)&&bNear(q,r)){remove.add(i);remove.add(j);break;}
+    }
+  }
+  const active=edges.filter((_,i)=>!remove.has(i));
+  if(!active.length)return[];
+  // Step 3: extract all closed loops
+  const used=new Array(active.length).fill(false);const polys=[];
+  for(let si=0;si<active.length;si++){
+    if(used[si])continue;
+    const result=[[...active[si][0]],[...active[si][1]]];
+    const usedThis=new Array(active.length).fill(false);usedThis[si]=true;
+    for(let iter=0;iter<active.length*4;iter++){
+      const last=result[result.length-1];let found=false;
+      for(let i=0;i<active.length;i++){
+        if(!used[i]&&!usedThis[i]&&bNear(active[i][0],last)){
+          result.push([...active[i][1]]);usedThis[i]=true;found=true;break;
+        }
+      }
+      if(!found)break;
+      if(result.length>2&&bNear(result[result.length-1],result[0])){
+        result.pop();const r=bClean(result);
+        if(r.length>=3){polys.push(r);for(let i=0;i<active.length;i++)if(usedThis[i])used[i]=true;}
+        break;
+      }
+    }
+  }
+  return polys;
+}
+
+function boolIntersect(A,B){const r=shClip(A,B);return r.length>=3?r:null;}
+
+function boolUnion(A,B){
+  const augA=bAugment(A,B),augB=bAugment(B,A);
+  const edges=[];const nA=augA.length,nB=augB.length;
+  for(let i=0;i<nA;i++){
+    const p=augA[i],q=augA[(i+1)%nA],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+    if(!bStrictlyIn(mp,B))edges.push([p,q]);
+  }
+  for(let i=0;i<nB;i++){
+    const p=augB[i],q=augB[(i+1)%nB],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+    if(!bStrictlyIn(mp,A))edges.push([p,q]);
+  }
+  const r=bBuildPolygons(edges);
+  if(r.length)return r[0];  // return first (largest) polygon for single-result ops
+  if(bStrictlyIn(A[0],B))return B;
+  if(bStrictlyIn(B[0],A))return A;
+  return A;  // fallback: can't merge (caller handles multi-poly)
+}
+
+function boolDiff(A,B){
+  const augA=bAugment(A,B),augB=bAugment(B,A);
+  const edges=[];const nA=augA.length,nB=augB.length;
+  for(let i=0;i<nA;i++){
+    const p=augA[i],q=augA[(i+1)%nA],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+    const excl=bStrictlyIn(mp,B)||(bOnBoundary(mp,A)&&bOnBoundary(mp,B));
+    if(!excl)edges.push([p,q]);
+  }
+  for(let i=0;i<nB;i++){
+    const p=augB[i],q=augB[(i+1)%nB],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
+    if(bStrictlyIn(mp,A))edges.push([q,p]);  // reversed
+  }
+  const r=bBuildPolygons(edges);
+  if(r.length)return r[0];
+  if(bStrictlyIn(A[0],B))return null;
+  if(bStrictlyIn(B[0],A))return A;
+  return A;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Boolean operation toolbar
+// ═══════════════════════════════════════════════════════════════════════════════
+function checkBoolBar(){
+  const bar=document.getElementById('boolBar');
+  const selPolys=shapes.filter(s=>selIds.has(s.id)&&s.type==='poly'&&s.closed);
+  if(selPolys.length===2&&polysOverlap(selPolys[0].pts,selPolys[1].pts)){
+    // Position bar at midpoint between centroids
+    const c0=polyCentroid(selPolys[0].pts),c1=polyCentroid(selPolys[1].pts);
+    const[mx,my]=w2c((c0[0]+c1[0])/2,(c0[1]+c1[1])/2);
+    const W=cv.width;
+    bar.style.left=Math.min(mx-100,W-240)+'px';
+    bar.style.top=(my-55)+'px';
+    bar.style.display='flex';
+  }else hideBoolBar();
+}
+function hideBoolBar(){document.getElementById('boolBar').style.display='none';}
+
+function boolOp(op){
+  const selPolys=shapes.filter(s=>selIds.has(s.id)&&s.type==='poly'&&s.closed);
+  if(selPolys.length!==2)return;
+  const[A,B]=selPolys;
+  saveHistory();
+  let result;
+  if(op==='union')result=boolUnion(A.pts,B.pts);
+  else if(op==='intersect')result=boolIntersect(A.pts,B.pts);
+  else result=boolDiff(A.pts,B.pts);
+  if(!result||result.length<3){alert('Boolean operation produced no valid shape. Try with more clearly overlapping rectangles.');return;}
+  shapes=shapes.filter(s=>!selIds.has(s.id));
+  shapes.push({id:nextId++,type:'poly',layer:A.layer,pts:result,closed:true,label:A.label});
+  // For union, also remove B (already in result). For diff, keep B untouched if needed:
+  // B was already removed above since it's in selPolys.
+  selIds.clear();hideBoolBar();render();buildLayerList();updatePropPanel();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mouse & touch events
+// ═══════════════════════════════════════════════════════════════════════════════
+cv.addEventListener('mousemove',onMouseMove);
+cv.addEventListener('mousedown',onMouseDown);
+cv.addEventListener('mouseup',onMouseUp);
+cv.addEventListener('click',onClick);
+cv.addEventListener('dblclick',onDblClick);
+cv.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:0.89,e.offsetX,e.offsetY);},{passive:false});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+function getEvtPos(e){return{x:e.offsetX,y:e.offsetY};}
+
+function onMouseMove(e){
+  shiftDown=e.shiftKey;
+  let pt=c2w(e.offsetX,e.offsetY);
+
+  // Right-drag pan
+  if(panActive&&panStart){
+    vx=panOrigin[0]+(e.clientX-panStart[0]);
+    vy=panOrigin[1]+(e.clientY-panStart[1]);
+  }
+
+  // Shape drag
+  if(dragActive&&dragBase){
+    const[wx,wy]=c2w(e.offsetX,e.offsetY);
+    const dx=wx-dragBase[0],dy=wy-dragBase[1];
+    for(const id of selIds){
+      const s=shapes.find(x=>x.id===id);
+      if(s&&dragSnaps[id])s.pts=dragSnaps[id].map(([x,y])=>[x+dx,y+dy]);
+    }
+  }
+
+  // Snap
+  if(drawMode==='poly'||drawMode==='line')pt=snapToVertex(pt);
+  if(shiftDown&&curPts.length>0)pt=snapToAngle(curPts[curPts.length-1],pt);
+  hoverPt=pt;
+
+  // Coords
+  if(scale)document.getElementById('coordsDisplay').textContent=`${r2(pt[0]/scale.ppm)}m, ${r2(pt[1]/scale.ppm)}m`;
+  else document.getElementById('coordsDisplay').textContent=`${Math.round(pt[0])}, ${Math.round(pt[1])}`;
+
+  render();
+}
+
+function onMouseDown(e){
+  shiftDown=e.shiftKey;
+  // Right-click pan
+  if(e.button===2){panStart=[e.clientX,e.clientY];panOrigin=[vx,vy];panActive=true;cv.classList.add('panning');return;}
+  if(panActive||scalePending)return;
+  if(drawMode==='select'){
+    const pt=c2w(e.offsetX,e.offsetY);
+    const hit=hitTest(pt);
+    if(hit){
+      if(!shiftDown&&!selIds.has(hit.id)){selIds.clear();}
+      selIds.add(hit.id);
+      dragBase=[...pt];
+      dragSnaps={};
+      for(const id of selIds){const s=shapes.find(x=>x.id===id);if(s)dragSnaps[id]=s.pts.map(p=>[...p]);}
+      dragActive=true;
+    }else{if(!shiftDown)selIds.clear();}
+    render();updatePropPanel();return;
+  }
+  if(drawMode==='rect'){rectStart=c2w(e.offsetX,e.offsetY);}
+}
+
+function onMouseUp(e){
+  if(e.button===2){panActive=false;panStart=null;cv.classList.remove('panning');return;}
+  if(dragActive){dragActive=false;dragBase=null;dragSnaps={};saveHistory();}
+  if(drawMode==='rect'&&rectStart){
+    let pt=c2w(e.offsetX,e.offsetY);
+    if(shiftDown)pt=squarify(rectStart,pt);
+    const[x1,y1]=rectStart,[x2,y2]=pt;
+    if(Math.hypot(x2-x1,y2-y1)>5/vz){
+      saveHistory();
+      shapes.push({id:nextId++,type:'poly',layer:activeLayer.key,
+        pts:[[x1,y1],[x2,y1],[x2,y2],[x1,y2]],closed:true,label:activeLayer.label});
+      enableRun();buildLayerList();
+    }
+    rectStart=null;render();return;
+  }
+  // Select mode: check if 2 overlapping polys selected
+  if(drawMode==='select')checkBoolBar();
+}
+
+function onClick(e){
+  if(e.button!==0||panActive||scalePending||drawMode==='select'||drawMode==='rect')return;
+  let pt=c2w(e.offsetX,e.offsetY);
+  pt=snapToVertex(pt);
+  if(shiftDown&&curPts.length>0)pt=snapToAngle(curPts[curPts.length-1],pt);
+
+  if(drawMode==='line'){
+    if(!curPts.length){curPts=[pt];}
+    else{
+      saveHistory();
+      shapes.push({id:nextId++,type:'line',layer:activeLayer.key,pts:[curPts[0],pt],closed:false});
+      curPts=[];enableRun();buildLayerList();
+    }
+    render();return;
+  }
+  if(drawMode==='poly'){
+    if(curPts.length>=3){
+      const d=Math.hypot(pt[0]-curPts[0][0],pt[1]-curPts[0][1]);
+      if(d<14/vz){closePolygon();return;}
+    }
+    curPts.push(pt);render();
+  }
+}
+
+function onDblClick(e){if(drawMode==='poly'&&curPts.length>=3)closePolygon();}
+
+function closePolygon(){
+  if(curPts.length<3)return;
+  saveHistory();
+  shapes.push({id:nextId++,type:'poly',layer:activeLayer.key,pts:[...curPts],closed:true});
+  curPts=[];enableRun();buildLayerList();render();
+}
+
+function hitTest(pt){
+  for(let i=shapes.length-1;i>=0;i--){
+    const s=shapes[i];
+    if(s.type==='poly'&&s.closed&&ptInPoly(pt,s.pts))return s;
+    if(s.type==='line'&&s.pts.length>=2&&ptToSeg(pt,s.pts[0],s.pts[1])<12/vz)return s;
+  }
+  return null;
+}
+
+// ── Touch events ──────────────────────────────────────────────────────────────
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(e.touches.length===2){
+    lastPinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    return;
+  }
+  const t=e.touches[0];
+  const rect=cv.getBoundingClientRect();
+  const fake={offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,button:0,clientX:t.clientX,clientY:t.clientY,shiftKey:false};
+  onMouseDown(fake);
+},{passive:false});
+
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(lastPinchDist){
+      const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      const rect=cv.getBoundingClientRect();
+      zoom(d/lastPinchDist,mx-rect.left,my-rect.top);
+    }
+    lastPinchDist=d;return;
+  }
+  lastPinchDist=null;
+  const t=e.touches[0];
+  const rect=cv.getBoundingClientRect();
+  onMouseMove({offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,clientX:t.clientX,clientY:t.clientY,shiftKey:false,button:0});
+},{passive:false});
+
+cv.addEventListener('touchend',e=>{
+  e.preventDefault();lastPinchDist=null;
+  const rect=cv.getBoundingClientRect();
+  const t=e.changedTouches[0];
+  const fake={offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,button:0,clientX:t.clientX,clientY:t.clientY};
+  onMouseUp(fake);
+  // Simulate click for drawing modes
+  if(drawMode!=='select'&&drawMode!=='rect')
+    onClick({...fake,button:0});
+},{passive:false});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Render
+// ═══════════════════════════════════════════════════════════════════════════════
+function render(){
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#d4d0ca';ctx.fillRect(0,0,W,H);
+
+  // Grid
+  const gs=100*vz,ox=((vx%gs)+gs)%gs,oy=((vy%gs)+gs)%gs;
+  ctx.strokeStyle='rgba(0,0,0,.05)';ctx.lineWidth=1;
+  for(let x=ox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=oy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+
+  // Background
+  if(bgImage){ctx.save();ctx.globalAlpha=bgOpacity;ctx.drawImage(bgImage,vx,vy,bgImage.width*vz,bgImage.height*vz);ctx.restore();}
+
+  // Scale points
+  for(const p of[scaleP1,scaleP2].filter(Boolean)){
+    const[cx,cy]=w2c(p[0],p[1]);ctx.fillStyle='#e85d25';ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();
+  }
+
+  // Shapes
+  for(const s of shapes)drawShape(s);
+
+  // Rect preview
+  if(drawMode==='rect'&&rectStart&&hoverPt){
+    let[x2,y2]=shiftDown?squarify(rectStart,hoverPt):hoverPt;
+    const[cx1,cy1]=w2c(rectStart[0],rectStart[1]),[cx2,cy2]=w2c(x2,y2);
+    ctx.strokeStyle=activeLayer.color+'99';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.strokeRect(Math.min(cx1,cx2),Math.min(cy1,cy2),Math.abs(cx2-cx1),Math.abs(cy2-cy1));
+    ctx.setLineDash([]);
+    // Show area if scale set
+    if(scale){
+      const w=Math.abs(x2-rectStart[0])/scale.ppm,h=Math.abs(y2-rectStart[1])/scale.ppm;
+      ctx.fillStyle='rgba(26,25,22,.7)';ctx.font='10px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(`${r2(w)}×${r2(h)}m`,(cx1+cx2)/2,(cy1+cy2)/2);
+    }
+  }
+
+  // In-progress drawing
+  if(curPts.length>0){
+    const l=activeLayer;
+    ctx.strokeStyle=l.color+'99';ctx.lineWidth=1.8;ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    const[sx,sy]=w2c(curPts[0][0],curPts[0][1]);ctx.moveTo(sx,sy);
+    for(let i=1;i<curPts.length;i++){const[px,py]=w2c(curPts[i][0],curPts[i][1]);ctx.lineTo(px,py);}
+    if(hoverPt){const[hx,hy]=w2c(hoverPt[0],hoverPt[1]);ctx.lineTo(hx,hy);}
+    ctx.stroke();ctx.setLineDash([]);
+    // Close snap indicator
+    if(drawMode==='poly'&&curPts.length>=3&&hoverPt){
+      const d=Math.hypot(hoverPt[0]-curPts[0][0],hoverPt[1]-curPts[0][1]);
+      if(d<14/vz){const[cx,cy]=w2c(curPts[0][0],curPts[0][1]);ctx.strokeStyle=l.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,9,0,Math.PI*2);ctx.stroke();}
+    }
+    ctx.fillStyle=l.color;
+    for(const p of curPts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,3.5,0,Math.PI*2);ctx.fill();}
+  }
+
+  updateShapeList();
+}
+
+function drawShape(s){
+  const l=LMAP[s.layer]||{color:'#666'};
+  const isSel=selIds.has(s.id);
+  const col=l.color;
+
+  if(s.type==='poly'){
+    if(s.pts.length<2)return;
+    ctx.beginPath();
+    const[sx,sy]=w2c(s.pts[0][0],s.pts[0][1]);ctx.moveTo(sx,sy);
+    for(let i=1;i<s.pts.length;i++){const[px,py]=w2c(s.pts[i][0],s.pts[i][1]);ctx.lineTo(px,py);}
+    if(s.closed)ctx.closePath();
+    ctx.fillStyle=isSel?col+'35':col+'1a';ctx.fill();
+    ctx.strokeStyle=col+(isSel?'':'aa');ctx.lineWidth=isSel?2.5:1.8;ctx.stroke();
+    // Second-selected highlight
+    if(selIds.size===2&&isSel){
+      ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
+    }
+    // Label & area
+    if(s.closed&&s.pts.length>=3){
+      const[cx,cy]=w2c(s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length,s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length);
+      const a=polyArea(s.pts),aM=scale?r2(a/scale.ppm**2):null;
+      const fs=Math.max(8,Math.min(11,vz*10));
+      ctx.fillStyle='rgba(26,25,22,.75)';ctx.font=`600 ${fs}px Inter,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(l.label,cx,cy-(aM?6:0));
+      if(aM){ctx.font=`400 ${Math.max(7,fs-1)}px JetBrains Mono,monospace`;ctx.fillStyle='rgba(107,104,96,.65)';ctx.fillText(`${aM}m²`,cx,cy+6);}
+    }
+    if(isSel){ctx.fillStyle=col;for(const p of s.pts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();}}
+  }
+
+  if(s.type==='line'&&s.pts.length>=2){
+    const[x1,y1]=w2c(s.pts[0][0],s.pts[0][1]),[x2,y2]=w2c(s.pts[1][0],s.pts[1][1]);
+    const isWin=s.layer.startsWith('APT_WINDOW'),isDoor=s.layer.startsWith('APT_DOOR'),isNorth=s.layer==='APT_NORTH';
+    ctx.strokeStyle=isSel?col:col+'cc';ctx.lineWidth=isWin?4:isDoor?3:2;
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    if(isWin){
+      const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len,steps=Math.max(2,Math.floor(len/7));
+      ctx.strokeStyle=col+'55';ctx.lineWidth=1.2;
+      for(let k=1;k<steps;k++){const t=k/steps;ctx.beginPath();ctx.moveTo(x1+t*dx+nx*3.5,y1+t*dy+ny*3.5);ctx.lineTo(x1+t*dx-nx*3.5,y1+t*dy-ny*3.5);ctx.stroke();}
+    }
+    if(isDoor){
+      const ang=Math.atan2(y2-y1,x2-x1),w=Math.hypot(x2-x1,y2-y1);
+      ctx.strokeStyle=col+'44';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(x1,y1,w,ang,ang-Math.PI/2,true);ctx.stroke();ctx.setLineDash([]);
+      if(scale){const dm=Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1])/scale.ppm;ctx.fillStyle=col;ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='center';ctx.fillText(`${Math.round(dm*1000)}mm`,(x1+x2)/2,(y1+y2)/2-10);}
+    }
+    if(isNorth){
+      const ang=Math.atan2(y1-y2,x1-x2);
+      ctx.fillStyle=col;ctx.save();ctx.translate(x1,y1);ctx.rotate(ang);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-8,-13);ctx.lineTo(0,-7);ctx.lineTo(8,-13);ctx.closePath();ctx.fill();
+      ctx.restore();ctx.font='bold 10px Inter,sans-serif';ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('N',(x1+x2)/2,(y1+y2)/2);
+    }
+    if(isSel){ctx.fillStyle=col;for(const p of s.pts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();}}
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Shape list & properties
+// ═══════════════════════════════════════════════════════════════════════════════
+function updateShapeList(){
+  document.getElementById('shapeCount').textContent=shapes.length;
+  const el=document.getElementById('shapeList');
+  if(!shapes.length){el.innerHTML='<div style="font-size:10px;color:var(--mut);padding:.2rem">No elements yet</div>';return;}
+  el.innerHTML=shapes.map(s=>{
+    const l=LMAP[s.layer]||{color:'#666',label:s.layer};
+    const isSel=selIds.has(s.id);
+    return `<div class="si ${isSel?'sel':''} ${selIds.size===2&&isSel?'si2':''}" onclick="clickShapeItem(${s.id},event)">
+      <div class="si-sw" style="background:${l.color}22;border:1.5px solid ${l.color}"></div>
+      <div class="si-lbl">${l.label}</div>
+      <div class="si-del" onclick="event.stopPropagation();deleteShape(${s.id})">✕</div>
+    </div>`;
+  }).join('');
+}
+function clickShapeItem(id,e){
+  if(e.shiftKey||e.ctrlKey){selIds.has(id)?selIds.delete(id):selIds.add(id);}
+  else{selIds.clear();selIds.add(id);}
+  render();updatePropPanel();checkBoolBar();
+}
+function updatePropPanel(){
+  const el=document.getElementById('propPanel');
+  const sel=shapes.filter(s=>selIds.has(s.id));
+  if(!sel.length){el.innerHTML='<div class="tlabel">Properties</div><div class="no-sel">Select an element</div>';return;}
+  if(sel.length===2){
+    const both=sel.filter(s=>s.type==='poly'&&s.closed);
+    el.innerHTML=`<div class="tlabel">2 Elements Selected</div>
+      ${both.length===2?`<div class="bool-hint">Two polygons selected.<br>Use <strong>Union ⊕</strong>, <strong>Subtract ⊖</strong>, or <strong>Intersect ⊗</strong> from the toolbar on the canvas, or scroll up in the list to see the operations appear above the shapes.</div>`
+      :'<div style="font-size:10px;color:var(--mut)">Select two polygon rooms for boolean operations.</div>'}
+      <button class="tbtn danger" onclick="deleteSelected()" style="width:100%;margin-top:.4rem">Delete both</button>`;
+    return;
+  }
+  const s=sel[0];
+  const l=LMAP[s.layer]||{color:'#666',label:s.layer};
+  const avail=visibleLayers().filter(x=>x.type===s.type);
+  let h=`<div class="tlabel">Properties</div>
+  <div class="pf"><label>Type</label>
+    <select onchange="changeLayer(${s.id},this.value)">
+      ${avail.map(x=>`<option value="${x.key}" ${x.key===s.layer?'selected':''}>${x.label}</option>`).join('')}
+    </select></div>`;
+  if(s.type==='poly'&&s.closed){
+    const a=polyArea(s.pts),aM=scale?r2(a/scale.ppm**2):null;
+    h+=`<div class="stat-row"><span>Area</span><span class="stat-val">${aM!=null?aM+'m²':Math.round(a)+'px²'}</span></div>`;
+    h+=`<div class="stat-row"><span>Vertices</span><span class="stat-val">${s.pts.length}</span></div>`;
+  }
+  if(s.type==='line'&&s.pts.length>=2){
+    const d=Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1]);
+    h+=`<div class="stat-row"><span>Length</span><span class="stat-val">${scale?r2(d/scale.ppm)+'m ('+Math.round(d/scale.ppm*1000)+'mm)':Math.round(d)+'px'}</span></div>`;
+    if(!scale)h+=`<div style="font-size:9px;color:var(--warn);margin-top:.25rem">Set scale for real dimensions</div>`;
+  }
+  h+=`<button class="tbtn danger" onclick="deleteSelected()" style="width:100%;margin-top:.4rem">Delete</button>`;
+  el.innerHTML=h;
+}
+function changeLayer(id,key){
+  const s=shapes.find(x=>x.id===id);if(s){saveHistory();s.layer=key;}render();updatePropPanel();buildLayerList();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Regularise — snap polygon vertices to 90° bounding grid
+// ═══════════════════════════════════════════════════════════════════════════════
+function regularise(){
+  const polys=shapes.filter(s=>s.type==='poly'&&s.closed);
+  if(!polys.length){return;}
+  saveHistory();
+  for(const s of polys){
+    const xs=s.pts.map(p=>p[0]),ys=s.pts.map(p=>p[1]);
+    const mnx=Math.min(...xs),mny=Math.min(...ys),mxx=Math.max(...xs),mxy=Math.max(...ys);
+    const gx=(mxx-mnx)||100,gy=(mxy-mny)||100;
+    // Snap to grid cells proportional to shape size
+    const divX=Math.max(1,Math.round(gx/(scale?scale.ppm*0.5:gx/2)));
+    const divY=Math.max(1,Math.round(gy/(scale?scale.ppm*0.5:gy/2)));
+    const cx=gx/divX,cy=gy/divY;
+    s.pts=s.pts.map(([x,y])=>[
+      Math.round((x-mnx)/cx)*cx+mnx,
+      Math.round((y-mny)/cy)*cy+mny,
+    ]);
+    // Deduplicate
+    s.pts=s.pts.filter((p,i,a)=>i===0||Math.hypot(p[0]-a[i-1][0],p[1]-a[i-1][1])>0.5);
+    if(s.pts.length<3)s.pts=[...s.pts,...s.pts]; // safety
+  }
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Edit helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+function saveHistory(){history.push(JSON.parse(JSON.stringify(shapes)));if(history.length>100)history.shift();}
+function undo(){if(history.length){shapes=history.pop();selIds.clear();hideBoolBar();render();updatePropPanel();buildLayerList();}}
+function deleteSelected(){
+  if(!selIds.size)return;saveHistory();
+  shapes=shapes.filter(s=>!selIds.has(s.id));selIds.clear();hideBoolBar();render();updatePropPanel();buildLayerList();
+}
+function deleteShape(id){saveHistory();shapes=shapes.filter(s=>s.id!==id);selIds.delete(id);hideBoolBar();render();updatePropPanel();buildLayerList();}
+function confirmClear(){document.getElementById('clearModal').classList.add('open');}
+function doClear(){
+  shapes=[];curPts=[];selIds.clear();bgImage=null;scale=null;scaleP1=scaleP2=null;history=[];
+  rectStart=null;hideBoolBar();
+  document.getElementById('clearModal').classList.remove('open');
+  document.getElementById('runBtn').disabled=true;
+  document.getElementById('checkResult').style.display='none';
+  document.getElementById('urlStatus').innerHTML='';
+  document.getElementById('scaleStatus').textContent='No scale set — dimensions approximate';
+  document.getElementById('scaleStatus').className='scale-none';
+  vx=0;vy=0;vz=1;render();updatePropPanel();buildLayerList();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Export DXF
+// ═══════════════════════════════════════════════════════════════════════════════
+function toDXF(){
+  const ppm=scale?scale.ppm:1,toM=v=>r2(v/ppm);
+  let d='  0\nSECTION\n  2\nENTITIES\n';
+  for(const s of shapes){
+    if(s.type==='poly'&&s.pts.length>=3){
+      d+=`  0\nLWPOLYLINE\n  8\n${s.layer}\n 90\n${s.pts.length}\n 70\n1\n`;
+      for(const[x,y]of s.pts)d+=` 10\n${toM(x)}\n 20\n${toM(-y)}\n`;
+    }
+    if(s.type==='line'&&s.pts.length>=2){
+      const[[x1,y1],[x2,y2]]=s.pts;
+      d+=`  0\nLINE\n  8\n${s.layer}\n 10\n${toM(x1)}\n 20\n${toM(-y1)}\n 11\n${toM(x2)}\n 21\n${toM(-y2)}\n`;
+    }
+  }
+  return d+'  0\nENDSEC\n  0\nEOF\n';
+}
+function exportDXF(){
+  if(!shapes.length){alert('Nothing to export.');return;}
+  if(!scale&&!confirm('No scale set. Exporting in pixel coordinates. Continue?'))return;
+  const b=new Blob([toDXF()],{type:'application/octet-stream'});
+  Object.assign(document.createElement('a'),{href:URL.createObjectURL(b),download:'traced_apartment.dxf'}).click();
+}
+function exportPNG(){
+  if(!shapes.length&&!bgImage){alert('Nothing to export.');return;}
+  Object.assign(document.createElement('a'),{href:cv.toDataURL('image/png'),download:'traced_apartment.png'}).click();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Run compliance check
+// ═══════════════════════════════════════════════════════════════════════════════
+async function runCheck(){
+  if(!shapes.length)return;
+  if(!scale&&!confirm('No scale set — results will be inaccurate. Continue?'))return;
+  const resultEl=document.getElementById('checkResult');
+  resultEl.style.display='block';resultEl.innerHTML='<div style="font-size:11px;color:var(--dim);padding:.4rem 0">Running…</div>';
+  const dxf=toDXF();
+  const fd=new FormData();
+  fd.append('dxf_file',new Blob([dxf],{type:'application/octet-stream'}),'traced.dxf');
+  fd.append('ceiling_height','2.7');
+  try{
+    const res=await fetch('/api/check',{method:'POST',body:fd});
+    const data=await res.json();
+    if(data.error){resultEl.innerHTML=`<div class="cr-fail">${esc(data.error)}</div>`;return;}
+    const s=data.summary;
+    const fails=Object.entries(s).filter(([k,v])=>k.endsWith('_pass')&&!v&&k!=='all_pass').map(([k])=>k.replace('_pass',''));
+    window._lastDXF=dxf;
+    const fullReportBtn=`<button onclick="openReport()" style="width:100%;padding:.38rem;margin-top:.3rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:11px;font-weight:600;cursor:pointer">View Full Report →</button>`;
+    const backBtn=`<button onclick="window.location.reload()" style="width:100%;padding:.35rem;margin-top:.25rem;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--dim);font-size:11px;cursor:pointer">← Edit Plan</button>`;
+    resultEl.innerHTML=(s.all_pass
+      ?`<div class="cr-pass">✓ All checks passed</div>`
+      :`<div class="cr-fail">✗ ${fails.length} failed: ${fails.join(', ')}</div>`
+    )+fullReportBtn+backBtn;
+  }catch(e){resultEl.innerHTML=`<div class="cr-fail">${esc(e.message)}</div>`;}
+}
+function openReport(){
+  if(!window._lastDXF)return;
+  sessionStorage.setItem('tracerDXF',window._lastDXF);
+  sessionStorage.setItem('tracerDXFName','traced_apartment.dxf');
+  window.open('/?from_tracer=1','_blank');
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Init
+buildLayerList();render();
+</script>
+</body>
+</html>
