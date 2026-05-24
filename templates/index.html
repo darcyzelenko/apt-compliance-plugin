@@ -670,6 +670,25 @@ const CHECKS_META=[
 ];
 
 function renderAll(data){
+  // Normalise structure -- engine returns nested {summary, meta, bedrooms...}
+  // Ensure summary and meta always exist
+  if(!data.summary){
+    // Old engine format or flat format -- build summary from top-level keys
+    data = Object.assign({}, data);
+    data.summary = data.summary || {};
+    data.meta = data.meta || {};
+    // Pull pass keys up if they exist at top level
+    const passKeys = ['bedrooms_pass','living_pass','room_depth_pass','windows_pass',
+      'storage_pass','pos_pass','ventilation_pass','doors_pass','accessibility_pass',
+      'daylight_pass','energy_pass','noise_pass','apt_area_pass','glass_area_pass',
+      'ceiling_pass','all_pass'];
+    passKeys.forEach(k=>{ if(data[k]!==undefined) data.summary[k]=data[k]; });
+    if(data.summary.all_pass===undefined)
+      data.summary.all_pass = passKeys.filter(k=>k!=='all_pass').every(k=>data.summary[k]!==false);
+  }
+  if(!data.meta) data.meta={};
+  if(!data.meta.bedroom_count) data.meta.bedroom_count = data.bedroom_count||0;
+  if(!data.meta.jurisdiction) data.meta.jurisdiction = data.jurisdiction||'VIC';
   showState('results');
   printBtn.style.display='';
   renderChecks(data);
@@ -1760,26 +1779,41 @@ renderGlossary();
     setTimeout(()=>runCheck(),200);
     return;
   }
-  // Plugin token flow — URL is /report/<token>
+  // Plugin token flow -- URL is /report/<token>
   const match=location.pathname.match(/^\/report\/([a-f0-9]+)$/);
   if(match){
     const token=match[1];
+    let lastTs=0;
     showState('loading');
-    document.getElementById('progressMsg').textContent='Loading results from plugin...';
-    fetch('/api/results/'+token)
-      .then(r=>r.json())
-      .then(data=>{
-        if(data.error){showErr(data.error);return;}
-        DATA=data;
-        renderAll(data);
-        // Show a banner indicating source
-        const banner=document.createElement('div');
-        banner.style.cssText='position:fixed;top:58px;right:12px;background:var(--acc);color:#fff;font-size:10px;font-weight:600;padding:.3rem .65rem;border-radius:4px;z-index:300;opacity:.9';
-        banner.textContent='Loaded from Rhino';
-        document.body.appendChild(banner);
-        setTimeout(()=>banner.remove(),4000);
-      })
-      .catch(e=>showErr('Could not load results: '+e.message));
+    document.getElementById('progressMsg').textContent='Loading results from Rhino...';
+
+    function loadResults(){
+      fetch('/api/results/'+token)
+        .then(r=>r.json())
+        .then(data=>{
+          if(data.error){showErr(data.error);return;}
+          const results=data.results||data;
+          console.log('Plugin results structure:', Object.keys(results), results.summary);
+          const ts=data.ts||0;
+          if(ts!==lastTs){
+            lastTs=ts;
+            DATA=results;
+            renderAll(results);
+            const existing=document.getElementById('plugin-banner');
+            if(existing)existing.remove();
+            const banner=document.createElement('div');
+            banner.id='plugin-banner';
+            banner.style.cssText='position:fixed;top:58px;right:12px;background:var(--acc);color:#fff;font-size:10px;font-weight:600;padding:.3rem .65rem;border-radius:4px;z-index:300;transition:opacity .5s';
+            banner.textContent=lastTs===ts&&lastTs>0?'Updated from Rhino':'Loaded from Rhino';
+            document.body.appendChild(banner);
+            setTimeout(()=>{banner.style.opacity='0';setTimeout(()=>banner.remove(),600);},2500);
+          }
+        })
+        .catch(()=>{});
+    }
+
+    loadResults();
+    setInterval(loadResults,2500);
   }
 })();
 
