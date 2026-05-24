@@ -427,8 +427,20 @@ def store_results():
 
 @app.route('/report/<token>')
 def report(token):
-    """Serve the main page — JS will fetch results using the token."""
+    """Serve the main page -- JS will fetch results using the token."""
     return render_template('index.html')
+
+
+@app.route('/about')
+@app.route('/about/')
+def about():
+    return render_template('marketing.html')
+
+
+@app.route('/standards')
+@app.route('/standards/')
+def standards():
+    return render_template('standards.html')
 
 
 @app.route('/api/results/<token>')

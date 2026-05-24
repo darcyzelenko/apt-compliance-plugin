@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Standards Database — Apt. Compliance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0f0e0c;
+  --paper:#f5f2ec;
+  --cream:#ede9e0;
+  --warm:#e8e2d6;
+  --rule:#d4cfc4;
+  --acc:#c94f1a;
+  --pass:#1a6b3a;
+  --passbg:#f0faf4;
+  --dim:#7a7568;
+  --serif:'DM Serif Display',Georgia,serif;
+  --sans:'DM Sans',system-ui,sans-serif;
+  --mono:'DM Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65;overflow-x:hidden}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle,rgba(15,14,12,.06) 1px,transparent 1px);
+  background-size:32px 32px;
+}
+
+/* Nav */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  display:flex;align-items:center;padding:1rem 2.5rem;gap:2rem;
+  background:rgba(245,242,236,.92);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--rule);
+}
+.logo{font-family:var(--serif);font-size:1.4rem;color:var(--ink);text-decoration:none;letter-spacing:-.02em}
+.logo span{color:var(--acc)}
+.nav-links{display:flex;gap:2rem;margin-left:auto;list-style:none}
+.nav-links a{font-size:12px;font-weight:500;color:var(--dim);text-decoration:none;letter-spacing:.06em;text-transform:uppercase;transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-btn{
+  margin-left:.5rem;padding:.42rem 1.1rem;background:var(--acc);color:#fff;
+  font-size:12px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;
+  text-decoration:none;border-radius:3px;transition:background .15s;
+}
+.nav-btn:hover{background:#a83e12}
+
+/* Page header */
+.page-header{
+  padding:7rem 7rem 4rem;border-bottom:1px solid var(--rule);
+  position:relative;z-index:1;
+}
+.header-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:1.5rem;display:flex;align-items:center;gap:.6rem;
+}
+.header-tag::before{content:'';width:28px;height:1px;background:var(--acc)}
+.page-header h1{
+  font-family:var(--serif);font-size:clamp(2.5rem,5vw,4rem);line-height:1.05;
+  letter-spacing:-.03em;margin-bottom:1.25rem;
+}
+.page-header h1 em{font-style:italic;color:var(--acc)}
+.page-header p{
+  font-size:1rem;color:var(--dim);line-height:1.75;max-width:60ch;
+  font-weight:300;margin-bottom:2rem;
+}
+.jur-strip{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:2rem}
+.jbadge{
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  padding:.3rem .65rem;border-radius:3px;border:1px solid var(--rule);
+  color:var(--dim);background:#fff;cursor:pointer;transition:all .15s;
+}
+.jbadge.active,.jbadge:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.jbadge.vic-active{background:var(--acc);border-color:var(--acc);color:#fff}
+
+/* Search */
+.search-wrap{
+  position:sticky;top:60px;z-index:100;
+  background:rgba(245,242,236,.95);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--rule);padding:1rem 7rem;
+}
+.search-inner{display:flex;align-items:center;gap:1rem;max-width:1100px;margin:0 auto}
+.search-icon{font-size:14px;color:var(--dim);flex-shrink:0}
+#searchInput{
+  flex:1;background:transparent;border:none;outline:none;
+  font-family:var(--sans);font-size:14px;color:var(--ink);
+  placeholder-color:var(--dim);
+}
+#searchInput::placeholder{color:var(--rule)}
+.search-count{font-family:var(--mono);font-size:10px;color:var(--dim);white-space:nowrap}
+
+/* Layout */
+.layout{
+  display:grid;grid-template-columns:220px 1fr;
+  max-width:1100px;margin:0 auto;padding:0 7rem;
+  position:relative;z-index:1;
+}
+
+/* Sidebar nav */
+.sidebar{
+  padding:3rem 2rem 3rem 0;position:sticky;top:120px;
+  height:calc(100vh - 120px);overflow-y:auto;
+  border-right:1px solid var(--rule);align-self:start;
+}
+.sidebar-title{
+  font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:1rem;
+}
+.sidebar-nav{display:flex;flex-direction:column;gap:.1rem}
+.snav-item{
+  font-size:12px;color:var(--dim);text-decoration:none;padding:.4rem .6rem;
+  border-radius:3px;transition:all .15s;display:block;
+  border-left:2px solid transparent;
+}
+.snav-item:hover,.snav-item.active{
+  color:var(--ink);background:var(--cream);border-left-color:var(--acc);
+}
+.snav-count{
+  font-family:var(--mono);font-size:8px;color:var(--rule);
+  float:right;margin-top:.1rem;
+}
+
+/* Main content */
+.main{padding:3rem 0 3rem 3rem}
+
+.section-block{margin-bottom:4rem}
+.section-block:last-child{margin-bottom:8rem}
+
+.section-header{
+  display:flex;align-items:baseline;gap:1rem;
+  border-bottom:2px solid var(--ink);padding-bottom:.75rem;
+  margin-bottom:1.5rem;
+}
+.section-title{
+  font-family:var(--serif);font-size:1.5rem;letter-spacing:-.02em;
+}
+.section-clause{
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--acc);
+}
+.section-count{
+  font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:auto;
+}
+
+/* Standard item card */
+.std-item{
+  border:1px solid var(--rule);border-radius:4px;margin-bottom:1px;
+  background:#fff;transition:all .2s;overflow:hidden;
+}
+.std-item:hover{border-color:var(--ink);box-shadow:0 2px 12px rgba(15,14,12,.06)}
+.std-item.hidden{display:none}
+
+.std-header{
+  padding:1.25rem 1.5rem;cursor:pointer;
+  display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;
+}
+.std-term{font-weight:500;font-size:.9rem;color:var(--ink);margin-bottom:.25rem}
+.std-ref{
+  font-family:var(--mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--acc);
+}
+.std-jurs{display:flex;gap:.25rem;margin-top:.35rem;flex-wrap:wrap}
+.std-jur{
+  font-family:var(--mono);font-size:7px;letter-spacing:.08em;text-transform:uppercase;
+  padding:.12rem .35rem;border-radius:2px;
+}
+.jur-vic{background:#dbeafe;color:#1d4ed8}
+.jur-nsw{background:#fef3c7;color:#92400e}
+.jur-both{background:#0f0e0c;color:#f5f2ec}
+.jur-bca{background:#f3e8ff;color:#7e22ce}
+.jur-diag{background:#f1f5f9;color:#64748b}
+
+.std-threshold{
+  background:var(--passbg);border:1px solid #a7f3d0;border-radius:3px;
+  padding:.45rem .75rem;font-family:var(--mono);font-size:9px;color:var(--pass);
+  letter-spacing:.04em;white-space:nowrap;flex-shrink:0;align-self:start;
+  margin-top:.1rem;
+}
+
+.std-body{
+  padding:0 1.5rem 1.25rem;border-top:1px solid var(--cream);
+  display:none;
+}
+.std-body.open{display:block}
+.std-def{
+  font-size:.85rem;color:var(--dim);line-height:1.75;
+  padding-top:1rem;
+}
+.std-detail-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:1rem;
+  margin-top:1rem;padding-top:1rem;border-top:1px solid var(--cream);
+}
+.std-detail-item label{
+  font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);display:block;margin-bottom:.3rem;
+}
+.std-detail-item p{font-size:.82rem;color:var(--ink);line-height:1.6}
+.std-note{
+  margin-top:1rem;padding:.65rem .85rem;
+  background:rgba(201,79,26,.05);border-left:2px solid var(--acc);border-radius:0 3px 3px 0;
+  font-size:.8rem;color:var(--dim);line-height:1.65;
+}
+.std-note strong{color:var(--ink);font-weight:500}
+
+/* NSW diff highlight */
+.nsw-diff{
+  margin-top:.75rem;padding:.5rem .75rem;
+  background:#fef3c7;border-left:2px solid #f59e0b;border-radius:0 3px 3px 0;
+  font-size:.8rem;color:#92400e;line-height:1.6;
+}
+.nsw-diff::before{
+  content:'NSW: ';font-family:var(--mono);font-size:8px;letter-spacing:.08em;
+  font-weight:500;
+}
+
+/* No results */
+.no-results{
+  padding:4rem 1.5rem;text-align:center;color:var(--dim);
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;display:none;
+}
+.no-results.visible{display:block}
+
+/* Responsive */
+@media(max-width:960px){
+  .layout{grid-template-columns:1fr;padding:0 1.75rem}
+  .sidebar{display:none}
+  .main{padding:2rem 0}
+  .page-header,.search-wrap{padding-left:1.75rem;padding-right:1.75rem}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="index.html"><span>Apt.</span></a>
+  <ul class="nav-links">
+    <li><a href="index.html#checks">Checks</a></li>
+    <li><a href="index.html#workflow">Workflow</a></li>
+    <li><a href="index.html#pricing">Pricing</a></li>
+    <li><a href="standards.html" style="color:var(--ink)">Standards</a></li>
+  </ul>
+  <a class="nav-btn" href="https://web-production-2a931.up.railway.app" target="_blank">Open App</a>
+</nav>
+
+<div class="page-header">
+  <div class="header-tag">Reference</div>
+  <h1>Apartment Design<br><em>Standards Database</em></h1>
+  <p>Every requirement Apt. checks — with clause references, thresholds, method notes, and differences between VIC and NSW. Use this as a reference alongside your design work, or to understand exactly how each check is calculated.</p>
+  <div class="jur-strip">
+    <span class="jbadge vic-active" onclick="filterJur('all')">All jurisdictions</span>
+    <span class="jbadge" onclick="filterJur('vic')">VIC ADG 2017 only</span>
+    <span class="jbadge" onclick="filterJur('nsw')">NSW ADG 2015 only</span>
+  </div>
+</div>
+
+<div class="search-wrap">
+  <div class="search-inner">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="searchInput" placeholder="Search standards, clauses, thresholds…" autocomplete="off">
+    <span class="search-count" id="searchCount"></span>
+  </div>
+</div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-title">Sections</div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+  </aside>
+
+  <main class="main" id="mainContent">
+    <div class="no-results" id="noResults">No standards match your search.</div>
+  </main>
+</div>
+
+<script>
+const STANDARDS = [
+  {
+    id: 'functional',
+    section: 'Functional Layout',
+    clause: 'Cl. 55.04 · Table D7–D8',
+    items: [
+      {
+        term: 'Main Bedroom Dimensions',
+        ref: 'Table D7 · p.54',
+        jurs: ['both'],
+        def: 'The main bedroom must have a minimum clear internal width of 3.0m and minimum clear internal depth of 3.4m. Measurements use the minimum bounding rectangle of the room plan. Wardrobe areas do not count toward these minimums.',
+        threshold: 'Width ≥ 3.0m · Depth ≥ 3.4m',
+        detail: {
+          method: 'Minimum bounding rectangle. Width = shorter dimension, depth = longer dimension of the bounding rect.',
+          vic: '3.0m × 3.4m minimum. No minimum area.',
+          nsw: '3.0m minimum width. Minimum area 10m². No minimum depth.',
+        },
+        note: 'Wardrobe areas must be provided in addition to these minimums. The robe area does not contribute to the measured bedroom area.',
+        nsw_diff: 'NSW measures minimum area (10m²) rather than depth. A 3.0m wide room must be at least 3.33m deep to achieve 10m² — in practice similar outcome.',
+      },
+      {
+        term: 'Secondary Bedroom Dimensions',
+        ref: 'Table D7 · p.54',
+        jurs: ['both'],
+        def: 'All bedrooms other than the main bedroom (BED1, BED2, BED3, BED4) must have minimum clear internal width of 3.0m and minimum clear internal depth of 3.0m.',
+        threshold: 'Width ≥ 3.0m · Depth ≥ 3.0m',
+        detail: {
+          method: 'Minimum bounding rectangle. Apt. checks all APT_ROOM_BED1 through BED4 layers.',
+          vic: '3.0m × 3.0m minimum. No minimum area.',
+          nsw: '3.0m minimum width. Minimum area 9m².',
+        },
+        nsw_diff: 'NSW requires minimum 9m² area for secondary bedrooms.',
+      },
+      {
+        term: 'Living Area Width',
+        ref: 'Table D8 · p.54',
+        jurs: ['both'],
+        def: 'The living area (excluding dining and kitchen) must meet minimum width requirements based on the number of bedrooms in the apartment. Width is the shorter dimension of the minimum bounding rectangle.',
+        threshold: 'Studio/1-bed ≥ 3.3m · 2-bed+ ≥ 3.6m',
+        detail: {
+          method: 'Minimum bounding rectangle shorter dimension.',
+          vic: '1-bed or studio: 3.3m. 2-bed or more: 3.6m.',
+          nsw: '1-bed: 3.6m. 2-bed or more: 4.0m.',
+        },
+        nsw_diff: 'NSW requires wider living areas: 3.6m for 1-bed (vs 3.3m VIC), 4.0m for 2-bed+ (vs 3.6m VIC).',
+      },
+      {
+        term: 'Living Area Size',
+        ref: 'Table D8 · p.54',
+        jurs: ['vic'],
+        def: 'The living area (excluding dining and kitchen) must meet minimum area requirements. Areas measured from the APT_ROOM_LIVING polygon.',
+        threshold: 'Studio/1-bed ≥ 10m² · 2-bed+ ≥ 12m²',
+        detail: {
+          method: 'Direct polygon area calculation (shoelace formula).',
+          vic: 'Studio/1-bed ≥ 10m². 2-bed+ ≥ 12m².',
+          nsw: 'No separate minimum area — width requirement effectively determines minimum useful area.',
+        },
+      },
+      {
+        term: 'Minimum Apartment Area',
+        ref: 'Table 2C · NSW ADG',
+        jurs: ['nsw'],
+        def: 'NSW requires minimum gross floor area for the entire apartment, measured to the internal face of external walls. Balconies and car parks excluded.',
+        threshold: 'Studio ≥ 35m² · 1-bed ≥ 50m² · 2-bed ≥ 70m² · 3-bed+ ≥ 90m²',
+        detail: {
+          method: 'Sum of all APT_ROOM_* polygon areas. Does not include POS or storage.',
+          vic: 'No equivalent minimum apartment area requirement in VIC ADG.',
+          nsw: 'Studio 35m², 1-bed 50m², 2-bed 70m², 3-bed+ 90m².',
+        },
+        note: 'VIC ADG does not have an equivalent minimum apartment area requirement.',
+      },
+    ],
+  },
+  {
+    id: 'depth',
+    section: 'Room Depth',
+    clause: 'Standard D25 · p.57',
+    items: [
+      {
+        term: 'Room Depth Ratio',
+        ref: 'Standard D25 · p.57',
+        jurs: ['both'],
+        def: 'Single-aspect habitable rooms must not exceed a depth of 2.5 times the ceiling height, measured from the internal face of the external window wall to the opposite wall. This is the primary determinant of natural light penetration.',
+        threshold: 'Depth ≤ 2.5 × ceiling height',
+        detail: {
+          method: 'Room depth = longer dimension of bounding rectangle. Ceiling height from panel input. Limit = ceiling_height × 2.5.',
+          vic: 'Limit = ceiling height × 2.5.',
+          nsw: 'Same ratio. NSW also requires minimum ceiling height of 2.7m for habitable rooms.',
+        },
+        note: 'A 2.7m ceiling permits maximum room depth of 6.75m. A 3.0m ceiling permits 7.5m. Increasing ceiling height is one way to justify deeper rooms.',
+      },
+      {
+        term: 'Open-Plan Exception',
+        ref: 'Standard D25 · p.57',
+        jurs: ['both'],
+        def: 'A single-aspect combined open-plan living/dining/kitchen may have a depth greater than the 2.5× ratio, up to a maximum absolute depth. The kitchen must be at the rear of the room (furthest from the window), and ceiling height must be at least 2.7m.',
+        threshold: 'VIC: max 9.0m · NSW: max 8.0m · ceiling ≥ 2.7m · kitchen at rear',
+        detail: {
+          method: 'APT_ROOM_LIVING depth checked against this limit (not the ratio). Apt. uses the open-plan limit for all living areas.',
+          vic: 'Maximum 9.0m depth for open-plan living.',
+          nsw: 'Maximum 8.0m depth for open-plan living.',
+        },
+        nsw_diff: 'NSW reduces the open-plan maximum from 9.0m to 8.0m.',
+      },
+    ],
+  },
+  {
+    id: 'daylight',
+    section: 'Windows and Daylight',
+    clause: 'Standard D26 · p.60 · ADG Cl. 4.1',
+    items: [
+      {
+        term: 'External Window Requirement',
+        ref: 'Standard D26 · p.60',
+        jurs: ['both'],
+        def: 'Each habitable room must have a window in an external wall with direct sky access. Borrowed light from an adjoining room or via a rooflight does not satisfy this requirement. Apt. checks that each APT_ROOM_* polygon has a corresponding APT_WINDOW_* line.',
+        threshold: 'External window required in each habitable room',
+        detail: {
+          method: 'Presence check: APT_WINDOW_MAINBED, APT_WINDOW_BED1–4, APT_WINDOW_LIVING.',
+          vic: 'Required in all habitable rooms.',
+          nsw: 'Same requirement. NSW adds minimum glazing ratio.',
+        },
+      },
+      {
+        term: 'Glazing Ratio',
+        ref: 'ADG Cl. 4.1 · NSW ADG',
+        jurs: ['nsw'],
+        def: 'Total window area as a percentage of room floor area. NSW requires minimum 10% window-to-floor-area ratio for habitable rooms. Window area calculated from APT_WINDOW_* line length × ceiling height.',
+        threshold: 'Window area ≥ 10% of floor area',
+        detail: {
+          method: 'WFAR = (sum of window line lengths × ceiling height) / room area × 100.',
+          vic: 'No minimum glazing ratio in VIC ADG. Apt. calculates and flags as a diagnostic.',
+          nsw: 'Minimum 10% glazing ratio required.',
+        },
+        nsw_diff: 'NSW explicitly requires ≥10% WFAR. VIC has no equivalent hard requirement — Apt. shows it as a diagnostic.',
+      },
+      {
+        term: 'Daylight Factor',
+        ref: 'BRE simplified method · Diagnostic',
+        jurs: ['diag'],
+        def: 'Average Daylight Factor (DF) is the percentage of outdoor horizontal illuminance available inside the room. Apt. uses the BRE simplified geometric method — a solid-angle approximation based on window geometry, ceiling height, and room depth. This is not a hard VIC or NSW ADG requirement, but is widely used as a quality benchmark.',
+        threshold: 'Target: living areas ≥ 2% DF · Bedrooms ≥ 1% DF',
+        detail: {
+          method: 'BRE simplified solid-angle method. Window solid angle calculated from window dimensions, ceiling height, and distance to window from each room grid point. Results shown as a heatmap.',
+          vic: 'No minimum DF requirement in VIC ADG. Used as diagnostic.',
+          nsw: 'No minimum DF requirement in NSW ADG. Used as diagnostic.',
+        },
+        note: 'The BRE simplified method is an approximation and does not account for internal reflectances, external obstructions, or sky component variations. For compliance-critical projects, commission a DALI or IES simulation.',
+      },
+      {
+        term: 'June 21 Sunlight Hours',
+        ref: 'Standard D8 · Cl.58.03-3',
+        jurs: ['both'],
+        def: 'Living areas and private open space should receive at least 2 hours of direct sunlight on June 21 (winter solstice) between 9am and 3pm. Apt. calculates sun position for Melbourne latitude (−37.8°) and traces shadow geometry based on room orientation.',
+        threshold: '≥ 2 hours direct sun between 9am–3pm, 21 June',
+        detail: {
+          method: 'Solar geometry for lat −37.8° (Melbourne), Jun 21. Sun elevation and azimuth at each hour interval. Window orientation determined from APT_NORTH and APT_WINDOW_* lines.',
+          vic: 'Stated as a design objective, not a hard test.',
+          nsw: 'NSW applies to both living areas and POS.',
+        },
+      },
+    ],
+  },
+  {
+    id: 'storage',
+    section: 'Storage',
+    clause: 'Table D6 · p.63',
+    items: [
+      {
+        term: 'Total Storage Volume',
+        ref: 'Table D6 · p.63',
+        jurs: ['both'],
+        def: 'Total storage is the sum of all APT_STORAGE_DESIGNATED and APT_STORAGE_SERVICE polygon areas multiplied by the ceiling height. Whitegoods, bicycle and car parking are excluded. Storage must be directly accessible from within the apartment.',
+        threshold: 'Studio 8m³ · 1-bed 10m³ · 2-bed 14m³ · 3-bed+ 18m³',
+        detail: {
+          method: 'Volume = (APT_STORAGE_DESIGNATED area + APT_STORAGE_SERVICE area) × ceiling height.',
+          vic: 'Studio 8m³, 1-bed 10m³, 2-bed 14m³, 3-bed+ 18m³.',
+          nsw: 'Studio 4m³, 1-bed 6m³, 2-bed 8m³, 3-bed+ 10m³.',
+        },
+        nsw_diff: 'NSW storage requirements are lower: 1-bed 6m³ (vs 10m³ VIC), 2-bed 8m³ (vs 14m³ VIC).',
+      },
+      {
+        term: 'Internal Storage Volume',
+        ref: 'Table D6 · p.63',
+        jurs: ['vic'],
+        def: 'A minimum portion of the total storage must be internal designated storage — wardrobes, linen cupboards, general storage within the apartment itself. This is measured from APT_STORAGE_DESIGNATED polygons only, not service storage.',
+        threshold: 'Studio 5m³ · 1-bed 6m³ · 2-bed 9m³ · 3-bed+ 12m³',
+        detail: {
+          method: 'Volume = APT_STORAGE_DESIGNATED area × ceiling height. APT_STORAGE_SERVICE is not counted.',
+          vic: 'Studio 5m³, 1-bed 6m³, 2-bed 9m³, 3-bed+ 12m³.',
+          nsw: 'NSW does not specify a separate internal storage minimum.',
+        },
+        note: 'VIC ADG makes a distinction between internal (designated) and service storage. NSW ADG counts all storage toward a single total.',
+      },
+      {
+        term: 'Service Storage',
+        ref: 'Guidance 13.1 · p.64',
+        jurs: ['both'],
+        def: 'Kitchen and bathroom cabinetry counts as service storage. Drawing guide: 600mm deep full-height cabinet ≈ 1.44m³ per linear metre. 300mm overhead cabinet ≈ 0.225m³ per linear metre. Draw as APT_STORAGE_SERVICE polygons.',
+        threshold: 'Counts toward total — not toward internal minimum',
+        detail: {
+          method: 'APT_STORAGE_SERVICE polygon area × ceiling height.',
+          vic: 'Counts toward total storage. Does not count toward internal (designated) minimum.',
+          nsw: 'Counts toward total storage.',
+        },
+      },
+    ],
+  },
+  {
+    id: 'ventilation',
+    section: 'Natural Ventilation',
+    clause: 'Standard D27 · p.66',
+    items: [
+      {
+        term: 'Cross Ventilation',
+        ref: 'Standard D27 · p.66',
+        jurs: ['both'],
+        def: 'A dwelling achieves cross ventilation when it has openable windows or doors on different orientations — at least 60° apart — with an unobstructed breeze path between them of 5 to 18 metres. At least 40% of dwellings in a building must comply.',
+        threshold: 'Openings ≥ 60° apart · Path 5–18m · 40% of dwellings',
+        detail: {
+          method: 'Apt. checks for window openings on different aspects using APT_WINDOW_* lines and APT_NORTH orientation. Breeze path estimated as straight-line between window midpoints.',
+          vic: '40% of dwellings must achieve cross ventilation.',
+          nsw: '60% of dwellings must achieve cross ventilation.',
+        },
+        nsw_diff: 'NSW raises the cross ventilation requirement from 40% to 60% of dwellings.',
+      },
+      {
+        term: 'Ceiling Height (Habitable)',
+        ref: 'NSW ADG · Cl. 4.2',
+        jurs: ['nsw'],
+        def: 'NSW ADG specifies minimum ceiling heights for habitable and non-habitable rooms. VIC ADG does not specify minimum ceiling heights directly — ceiling height is an input used to calculate depth limits and storage volumes.',
+        threshold: 'Habitable rooms ≥ 2.7m · Non-habitable ≥ 2.4m',
+        detail: {
+          method: 'NSW check: if ceiling height input < 2.7m, flags habitable room ceiling height failure.',
+          vic: 'No minimum ceiling height requirement. Ceiling height is an input for other calculations.',
+          nsw: 'Habitable rooms must be at least 2.7m. Non-habitable (bathroom, laundry, corridor) at least 2.4m.',
+        },
+        nsw_diff: 'NSW explicitly specifies minimum ceiling heights. VIC does not.',
+      },
+    ],
+  },
+  {
+    id: 'pos',
+    section: 'Private Open Space',
+    clause: 'Table D5 · p.69',
+    items: [
+      {
+        term: 'Balcony Requirements',
+        ref: 'Table D5 · p.69',
+        jurs: ['both'],
+        def: 'Each apartment must have a balcony or private open space. Minimum area and minimum usable dimension requirements scale with bedroom count. Storage, AC units and planting boxes are excluded from the minimum area measurement.',
+        threshold: '1-bed: 8m², 1.8m · 2-bed: 8m², 2.0m · 3-bed+: 12m², 2.4m',
+        detail: {
+          method: 'Area from APT_POS polygon (shoelace). Minimum dimension = shorter side of bounding rectangle.',
+          vic: '1-bed 8m²/1.8m, 2-bed 8m²/2.0m, 3-bed+ 12m²/2.4m.',
+          nsw: '1-bed 8m²/2.0m, 2-bed 10m²/2.0m, 3-bed+ 12m²/2.4m.',
+        },
+        nsw_diff: 'NSW 2-bed requires 10m² (vs 8m² VIC). NSW 1-bed minimum dimension is 2.0m (vs 1.8m VIC).',
+      },
+      {
+        term: 'Ground-Level POS',
+        ref: 'Standard D19 · p.69',
+        jurs: ['both'],
+        def: 'Ground-floor apartments may substitute a private garden or courtyard (APT_POS_GROUND) for a balcony. Must have direct access from the living area.',
+        threshold: '≥ 25m² · ≥ 3.0m min dimension · Living room access',
+        detail: {
+          method: 'Area from APT_POS_GROUND polygon. Minimum dimension from bounding rectangle.',
+          vic: '≥ 25m², ≥ 3.0m min dimension.',
+          nsw: '≥ 25m², ≥ 3.0m min dimension.',
+        },
+      },
+      {
+        term: 'Rooftop POS',
+        ref: 'Standard D19 · p.69',
+        jurs: ['both'],
+        def: 'Rooftop private open space (APT_POS_ROOFTOP) may substitute for a balcony in appropriate locations. Must have direct access from the living area.',
+        threshold: '≥ 10m² · ≥ 2.0m min dimension · Living room access',
+        detail: {
+          method: 'Area from APT_POS_ROOFTOP polygon.',
+          vic: '≥ 10m², ≥ 2.0m min dimension.',
+          nsw: '≥ 10m², ≥ 2.0m min dimension.',
+        },
+      },
+    ],
+  },
+  {
+    id: 'accessibility',
+    section: 'Accessibility',
+    clause: 'Standard D17 · BCA D3',
+    items: [
+      {
+        term: 'Entry Door Width',
+        ref: 'BCA D3.3 · Standard D17',
+        jurs: ['both'],
+        def: 'The apartment entry door must have a minimum clear opening width. Apt. checks APT_DOOR_ENTRY line length. Clear opening is the width of the doorleaf measured without stops.',
+        threshold: '≥ 850mm clear opening',
+        detail: {
+          method: 'APT_DOOR_ENTRY line length in mm. Divide by MM constant (1000) for metres. Threshold 0.85m.',
+          vic: '≥ 850mm.',
+          nsw: '≥ 850mm.',
+        },
+      },
+      {
+        term: 'Habitable Room Door Width',
+        ref: 'Standard D17 · p.73',
+        jurs: ['both'],
+        def: 'Bedroom and other habitable room doors must meet minimum clear width for adaptable dwelling requirements. Apt. checks APT_DOOR_MAINBED and APT_DOOR_BATHROOM lines.',
+        threshold: '≥ 850mm clear opening',
+        detail: {
+          method: 'APT_DOOR_MAINBED, APT_DOOR_BATHROOM, APT_DOOR_ENSUITE line lengths.',
+          vic: '≥ 850mm for adaptable dwellings (50% of dwellings).',
+          nsw: '≥ 850mm.',
+        },
+        note: 'VIC ADG requires 50% of dwellings to be adaptable. Apt. flags all door widths regardless — checking one apartment in isolation cannot determine the building-wide percentage.',
+      },
+    ],
+  },
+  {
+    id: 'adjacency',
+    section: 'Adjacency and Circulation',
+    clause: 'ADG Cl. 2.3',
+    items: [
+      {
+        term: 'Entry to Living Adjacency',
+        ref: 'ADG Cl. 2.3',
+        jurs: ['both'],
+        def: 'The apartment entry must be directly adjacent to the living area — a resident entering the apartment should pass through or directly into the living area, not through a bedroom or wet room.',
+        threshold: 'Entry polygon must share boundary with living polygon',
+        detail: {
+          method: 'Geometric adjacency check: shared edge length > threshold between APT_ROOM_ENTRY and APT_ROOM_LIVING polygons.',
+          vic: 'Required.',
+          nsw: 'Required.',
+        },
+      },
+      {
+        term: 'Bedroom Accessibility',
+        ref: 'ADG Cl. 2.3',
+        jurs: ['both'],
+        def: 'No bedroom should be accessible only by passing through a bathroom or ensuite. The circulation path from entry to bedroom must not require passing through a wet room.',
+        threshold: 'No bedroom accessible only via bathroom',
+        detail: {
+          method: 'Adjacency graph analysis. If the only path from living/entry to a bedroom passes through APT_ROOM_BATHROOM or APT_ROOM_ENSUITE, flagged as error.',
+          vic: 'Required — flagged as error.',
+          nsw: 'Required — flagged as error.',
+        },
+      },
+    ],
+  },
+  {
+    id: 'noise',
+    section: 'Noise and Amenity',
+    clause: 'Standard D16 · Table D3',
+    items: [
+      {
+        term: 'Road Noise Influence Area',
+        ref: 'Table D3 · p.39',
+        jurs: ['both'],
+        def: 'Buildings within 300m of a freeway, tollway or road carrying more than 40,000 vehicles per day are in a road noise influence area and require acoustic treatment. Apt. looks up the site address using OpenStreetMap Overpass API to identify nearby major roads.',
+        threshold: '≤ 300m from major road (≥ 40,000 AADT)',
+        detail: {
+          method: 'Site address geocoded via Nominatim. Overpass API queries roads within 300m radius. Major roads identified by OSM highway classification.',
+          vic: 'Standard D16 — acoustic report and treatment required.',
+          nsw: 'Same requirement.',
+        },
+        note: 'The OSM-based lookup is a desktop screening tool only. An acoustic engineer should assess the actual noise environment and confirm treatment requirements.',
+      },
+      {
+        term: 'Target Interior Noise Levels',
+        ref: 'Standard D16 · p.38',
+        jurs: ['both'],
+        def: 'Target interior noise levels for habitable rooms, assessed with windows closed. These are the design targets that acoustic treatment must achieve.',
+        threshold: 'Bedrooms ≤ 35 dB(A) LAeq,8h (night) · Living ≤ 40 dB(A) LAeq,16h (day)',
+        detail: {
+          method: 'Not directly calculated by Apt. — these are reference targets for acoustic engineering.',
+          vic: 'Bedrooms ≤ 35 dB(A), living areas ≤ 40 dB(A).',
+          nsw: 'Same targets.',
+        },
+      },
+    ],
+  },
+  {
+    id: 'energy',
+    section: 'Energy and Sustainability',
+    clause: 'Standard D6 · Cl.58.03-1',
+    items: [
+      {
+        term: 'Solar Orientation',
+        ref: 'Standard D6 · Cl.58.03-1',
+        jurs: ['both'],
+        def: 'Buildings should be oriented to make appropriate use of solar energy. Living areas and private open space should face north where practicable. Apt. uses the APT_NORTH layer to determine building orientation and assess whether living areas and POS have north-facing windows.',
+        threshold: 'Living area and POS should have north-facing window',
+        detail: {
+          method: 'APT_NORTH line direction defines north. Window orientations calculated relative to north. Living area and POS windows assessed for north-facing component.',
+          vic: 'Design objective — not a hard compliance test.',
+          nsw: 'Design objective.',
+        },
+      },
+      {
+        term: 'East/West Glazing Caution',
+        ref: 'Standard D6 · Table D1',
+        jurs: ['both'],
+        def: 'East and west facing glazing produces the highest summer solar heat gain and the highest cooling load. Apt. flags apartments with high proportions of east or west glazing as a diagnostic for cooling load risk.',
+        threshold: 'E/W glazing < 40% of total glazing recommended',
+        detail: {
+          method: 'Window orientation classified from APT_NORTH and APT_WINDOW_* line angles. E/W component percentage calculated.',
+          vic: 'Diagnostic only — no hard maximum.',
+          nsw: 'Diagnostic only.',
+        },
+        note: 'NatHERS climate zone 21 (Melbourne) has a maximum annual cooling load. High E/W glazing is a primary risk factor. Consider external shading for E/W windows.',
+      },
+    ],
+  },
+];
+
+// ── Build the page ──────────────────────────────────────────────────────────
+
+const jurLabels = {
+  vic: {label: 'VIC', cls: 'jur-vic'},
+  nsw: {label: 'NSW', cls: 'jur-nsw'},
+  both: {label: 'VIC + NSW', cls: 'jur-both'},
+  bca: {label: 'BCA', cls: 'jur-bca'},
+  diag: {label: 'Diagnostic', cls: 'jur-diag'},
+};
+
+function buildPage() {
+  const main = document.getElementById('mainContent');
+  const nav = document.getElementById('sidebarNav');
+  let allItems = [];
+
+  STANDARDS.forEach(section => {
+    // Sidebar nav
+    const a = document.createElement('a');
+    a.className = 'snav-item';
+    a.href = '#sec-' + section.id;
+    a.innerHTML = section.section + '<span class="snav-count">' + section.items.length + '</span>';
+    nav.appendChild(a);
+
+    // Section block
+    const block = document.createElement('div');
+    block.className = 'section-block';
+    block.id = 'sec-' + section.id;
+
+    block.innerHTML = '<div class="section-header">' +
+      '<span class="section-title">' + section.section + '</span>' +
+      '<span class="section-clause">' + section.clause + '</span>' +
+      '<span class="section-count">' + section.items.length + ' standard' + (section.items.length !== 1 ? 's' : '') + '</span>' +
+      '</div>';
+
+    section.items.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'std-item';
+      card.dataset.section = section.id;
+      card.dataset.jurs = item.jurs.join(' ');
+      card.dataset.search = (section.section + ' ' + item.term + ' ' + (item.def || '') + ' ' + (item.threshold || '') + ' ' + (item.ref || '')).toLowerCase();
+
+      // Build jur badges
+      const jurHTML = item.jurs.map(j => {
+        const jl = jurLabels[j] || {label: j, cls: 'jur-diag'};
+        return '<span class="std-jur ' + jl.cls + '">' + jl.label + '</span>';
+      }).join('');
+
+      // Detail grid
+      let detailHTML = '';
+      if (item.detail) {
+        detailHTML = '<div class="std-detail-grid">' +
+          (item.detail.method ? '<div class="std-detail-item"><label>Calculation method</label><p>' + item.detail.method + '</p></div>' : '') +
+          (item.detail.vic ? '<div class="std-detail-item"><label>VIC ADG 2017</label><p>' + item.detail.vic + '</p></div>' : '') +
+          (item.detail.nsw ? '<div class="std-detail-item"><label>NSW ADG 2015</label><p>' + item.detail.nsw + '</p></div>' : '') +
+          '</div>';
+      }
+
+      const noteHTML = item.note ? '<div class="std-note">' + item.note + '</div>' : '';
+      const nswHTML = item.nsw_diff ? '<div class="nsw-diff">' + item.nsw_diff + '</div>' : '';
+
+      card.innerHTML =
+        '<div class="std-header" onclick="toggleItem(this)">' +
+          '<div>' +
+            '<div class="std-term">' + item.term + '</div>' +
+            '<div class="std-ref">' + item.ref + '</div>' +
+            '<div class="std-jurs">' + jurHTML + '</div>' +
+          '</div>' +
+          (item.threshold ? '<div class="std-threshold">' + item.threshold + '</div>' : '') +
+        '</div>' +
+        '<div class="std-body">' +
+          '<div class="std-def">' + (item.def || '') + '</div>' +
+          detailHTML +
+          nswHTML +
+          noteHTML +
+        '</div>';
+
+      block.appendChild(card);
+      allItems.push(card);
+    });
+
+    main.insertBefore(block, document.getElementById('noResults'));
+  });
+
+  return allItems;
+}
+
+function toggleItem(header) {
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+}
+
+// ── Search ──────────────────────────────────────────────────────────────────
+
+let allItems = [];
+
+function updateSearch(q, jurFilter) {
+  q = q.toLowerCase().trim();
+  let visible = 0;
+  allItems.forEach(item => {
+    const matchSearch = !q || item.dataset.search.includes(q);
+    const itemJurs = item.dataset.jurs || '';
+    let matchJur = true;
+    if (jurFilter === 'vic') matchJur = itemJurs.includes('vic') || itemJurs.includes('both');
+    if (jurFilter === 'nsw') matchJur = itemJurs.includes('nsw') || itemJurs.includes('both');
+    const show = matchSearch && matchJur;
+    item.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+
+  // Show/hide section blocks
+  document.querySelectorAll('.section-block').forEach(block => {
+    const anyVisible = Array.from(block.querySelectorAll('.std-item')).some(i => !i.classList.contains('hidden'));
+    block.style.display = anyVisible ? '' : 'none';
+  });
+
+  const count = document.getElementById('searchCount');
+  count.textContent = q || jurFilter !== 'all' ? visible + ' standard' + (visible !== 1 ? 's' : '') : '';
+
+  document.getElementById('noResults').classList.toggle('visible', visible === 0);
+}
+
+let currentJur = 'all';
+
+function filterJur(jur) {
+  currentJur = jur;
+  document.querySelectorAll('.jbadge').forEach(b => b.classList.remove('active', 'vic-active'));
+  event.target.classList.add(jur === 'all' ? 'vic-active' : 'active');
+  updateSearch(document.getElementById('searchInput').value, jur);
+}
+
+document.getElementById('searchInput').addEventListener('input', function() {
+  updateSearch(this.value, currentJur);
+});
+
+// ── Sidebar active state on scroll ──────────────────────────────────────────
+
+function updateSidebarActive() {
+  const sections = document.querySelectorAll('.section-block');
+  let current = '';
+  sections.forEach(s => {
+    const top = s.getBoundingClientRect().top;
+    if (top < 200) current = s.id;
+  });
+  document.querySelectorAll('.snav-item').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+}
+
+window.addEventListener('scroll', updateSidebarActive, {passive: true});
+
+// Init
+allItems = buildPage();
+updateSidebarActive();
+</script>
+</body>
+</html>

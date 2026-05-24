@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apt. — Compliance checking for apartment architects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0f0e0c;
+  --paper:#f5f2ec;
+  --cream:#ede9e0;
+  --warm:#e8e2d6;
+  --rule:#d4cfc4;
+  --acc:#c94f1a;
+  --acc2:#a83e12;
+  --pass:#1a6b3a;
+  --dim:#7a7568;
+  --serif:'DM Serif Display',Georgia,serif;
+  --sans:'DM Sans',system-ui,sans-serif;
+  --mono:'DM Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65;overflow-x:hidden}
+
+/* Subtle dot grid */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle,rgba(15,14,12,.07) 1px,transparent 1px);
+  background-size:32px 32px;
+}
+
+/* ── Nav ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  display:flex;align-items:center;padding:1rem 2.5rem;gap:2rem;
+  background:rgba(245,242,236,.9);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--rule);
+}
+.logo{font-family:var(--serif);font-size:1.4rem;color:var(--ink);text-decoration:none;letter-spacing:-.02em}
+.logo span{color:var(--acc)}
+.nav-links{display:flex;gap:2rem;margin-left:auto;list-style:none}
+.nav-links a{font-size:12px;font-weight:500;color:var(--dim);text-decoration:none;letter-spacing:.06em;text-transform:uppercase;transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-btn{
+  margin-left:.5rem;padding:.42rem 1.1rem;background:var(--acc);color:#fff;
+  font-size:12px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;
+  text-decoration:none;border-radius:3px;transition:background .15s;white-space:nowrap;
+}
+.nav-btn:hover{background:var(--acc2)}
+
+/* ── Hero ── */
+.hero{
+  min-height:100vh;padding:0 7rem;
+  display:flex;flex-direction:column;justify-content:center;
+  position:relative;z-index:1;border-bottom:1px solid var(--rule);
+}
+.hero-inner{max-width:900px;padding-top:80px;padding-bottom:5rem}
+.hero-label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:2rem;display:flex;align-items:center;gap:.6rem;
+}
+.hero-label::before{content:'';width:28px;height:1px;background:var(--acc)}
+h1{
+  font-family:var(--serif);font-size:clamp(3rem,6vw,5.2rem);line-height:1.04;
+  letter-spacing:-.03em;margin-bottom:2rem;
+}
+h1 em{font-style:italic;color:var(--acc)}
+h1 .muted{color:var(--rule)}
+.hero-body{
+  display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:end;margin-bottom:3rem;
+}
+.hero-p{font-size:1.05rem;color:var(--dim);line-height:1.75;font-weight:300;max-width:44ch}
+.hero-p strong{color:var(--ink);font-weight:500}
+.hero-stats{display:flex;flex-direction:column;gap:1.5rem}
+.stat{border-left:2px solid var(--rule);padding-left:1.25rem}
+.stat-num{font-family:var(--serif);font-size:2.2rem;letter-spacing:-.04em;line-height:1;color:var(--ink)}
+.stat-label{font-size:11px;color:var(--dim);margin-top:.2rem;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.hero-actions{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.btn-primary{
+  padding:.75rem 1.75rem;background:var(--acc);color:#fff;
+  font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  text-decoration:none;border-radius:3px;transition:all .2s;display:inline-block;
+}
+.btn-primary:hover{background:var(--acc2);transform:translateY(-1px)}
+.btn-outline{
+  padding:.75rem 1.5rem;border:1.5px solid var(--rule);color:var(--dim);
+  font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  text-decoration:none;border-radius:3px;transition:all .2s;display:inline-block;
+}
+.btn-outline:hover{border-color:var(--ink);color:var(--ink)}
+.hero-footnote{
+  font-family:var(--mono);font-size:10px;color:var(--rule);
+  margin-top:2rem;letter-spacing:.06em;
+}
+
+/* ── The problem ── */
+.problem{
+  padding:8rem 7rem;background:var(--ink);color:var(--paper);
+  position:relative;z-index:1;overflow:hidden;
+}
+.problem::before{
+  content:'';position:absolute;right:-10%;top:-20%;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(201,79,26,.08),transparent 70%);
+  pointer-events:none;
+}
+.problem-inner{max-width:1100px;margin:0 auto}
+.sec-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:1.5rem;display:flex;align-items:center;gap:.6rem;
+}
+.sec-tag::before{content:'';width:20px;height:1px;background:var(--acc)}
+.problem h2{
+  font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);
+  line-height:1.1;letter-spacing:-.03em;margin-bottom:1.5rem;max-width:20ch;
+}
+.problem h2 em{font-style:italic;color:var(--acc)}
+.problem-grid{display:grid;grid-template-columns:1fr 1fr;gap:5rem;margin-top:4rem;align-items:start}
+.problem-copy p{font-size:1rem;color:rgba(245,242,236,.55);line-height:1.8;margin-bottom:1.25rem;font-weight:300}
+.problem-copy p strong{color:rgba(245,242,236,.85);font-weight:500}
+.pain-list{display:flex;flex-direction:column;gap:0}
+.pain-item{
+  padding:1.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex;gap:1.25rem;align-items:flex-start;
+}
+.pain-item:first-child{border-top:1px solid rgba(255,255,255,.06)}
+.pain-num{
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;color:rgba(255,255,255,.2);
+  flex-shrink:0;padding-top:.2rem;min-width:28px;
+}
+.pain-title{font-size:.9rem;font-weight:500;color:rgba(245,242,236,.85);margin-bottom:.35rem}
+.pain-desc{font-size:.82rem;color:rgba(245,242,236,.4);line-height:1.65}
+
+/* ── Solution / checks ── */
+.solution{padding:8rem 7rem;background:var(--cream);position:relative;z-index:1}
+.solution-inner{max-width:1100px;margin:0 auto}
+.solution-head{display:grid;grid-template-columns:1fr 1fr;gap:4rem;margin-bottom:5rem;align-items:end}
+.solution h2{font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);line-height:1.1;letter-spacing:-.03em}
+.solution h2 em{font-style:italic;color:var(--acc)}
+.solution-sub{font-size:.95rem;color:var(--dim);line-height:1.75;font-weight:300}
+.solution-sub strong{color:var(--ink);font-weight:500}
+
+/* Checks table */
+.checks-table{width:100%;border-collapse:collapse}
+.checks-table thead tr{border-bottom:2px solid var(--ink)}
+.checks-table th{
+  font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim);padding:.75rem 1rem .75rem 0;text-align:left;font-weight:500;
+}
+.checks-table td{padding:.9rem 1rem .9rem 0;border-bottom:1px solid var(--rule);vertical-align:top}
+.checks-table tr:last-child td{border-bottom:none}
+.checks-table tr:hover td{background:rgba(255,255,255,.5)}
+.ct-check{font-weight:500;font-size:.88rem;color:var(--ink)}
+.ct-clause{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:var(--acc);text-transform:uppercase}
+.ct-desc{font-size:.82rem;color:var(--dim);line-height:1.6;max-width:44ch}
+.ct-jur{display:flex;gap:.3rem;flex-wrap:wrap}
+.jbadge{
+  font-family:var(--mono);font-size:7px;letter-spacing:.08em;text-transform:uppercase;
+  padding:.15rem .4rem;border-radius:2px;background:var(--warm);color:var(--dim);
+}
+.jbadge.both{background:#0f0e0c;color:#f5f2ec}
+.ct-auto{font-family:var(--mono);font-size:8px;color:var(--pass)}
+
+/* ── Workflow ── */
+.workflow{padding:8rem 7rem;background:var(--paper);position:relative;z-index:1;border-top:1px solid var(--rule)}
+.workflow-inner{max-width:1100px;margin:0 auto}
+.workflow h2{font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);line-height:1.1;letter-spacing:-.03em;margin-bottom:.75rem}
+.workflow h2 em{font-style:italic;color:var(--acc)}
+.workflow-sub{font-size:.95rem;color:var(--dim);line-height:1.75;font-weight:300;margin-bottom:4rem;max-width:50ch}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule)}
+.step{background:var(--paper);padding:2rem 1.75rem;position:relative}
+.step-n{font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--acc);margin-bottom:1.25rem}
+.step h3{font-family:var(--serif);font-size:1.15rem;line-height:1.2;margin-bottom:.65rem}
+.step p{font-size:.82rem;color:var(--dim);line-height:1.65}
+.step-code{
+  font-family:var(--mono);font-size:8px;color:var(--rule);margin-top:1rem;
+  letter-spacing:.06em;
+}
+
+/* Live indicator */
+.live-demo{
+  margin-top:3rem;padding:2rem;background:var(--ink);border-radius:4px;
+  display:grid;grid-template-columns:1fr auto;gap:2rem;align-items:center;
+}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:.4rem;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.85)}}
+.live-text{font-family:var(--mono);font-size:11px;color:rgba(245,242,236,.6);letter-spacing:.06em}
+.live-text strong{color:#4ade80;font-weight:400}
+.live-desc{font-size:.85rem;color:rgba(245,242,236,.4);margin-top:.25rem}
+
+/* ── Platforms ── */
+.platforms{padding:8rem 7rem;background:var(--cream);position:relative;z-index:1}
+.platforms-inner{max-width:1100px;margin:0 auto}
+.platforms h2{font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);line-height:1.1;letter-spacing:-.03em;margin-bottom:.75rem}
+.platforms h2 em{font-style:italic;color:var(--acc)}
+.platforms-sub{font-size:.95rem;color:var(--dim);line-height:1.75;font-weight:300;margin-bottom:3rem;max-width:50ch}
+.platform-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule)}
+.pf{background:var(--cream);padding:2.25rem 2rem;transition:background .2s}
+.pf:hover{background:#fff}
+.pf-header{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem}
+.pf-ico{font-size:1.5rem}
+.pf-name{font-weight:500;font-size:.95rem}
+.pf-badge{
+  margin-left:auto;font-family:var(--mono);font-size:8px;letter-spacing:.08em;
+  text-transform:uppercase;padding:.2rem .5rem;border-radius:2px;
+}
+.live-badge{background:#dcfce7;color:#15803d}
+.soon-badge{background:#f3f4f6;color:#9ca3af}
+.pf p{font-size:.82rem;color:var(--dim);line-height:1.65;margin-bottom:.75rem}
+.pf-detail{font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--rule);text-transform:uppercase}
+
+/* ── Pricing ── */
+.pricing{padding:8rem 7rem;background:var(--paper);position:relative;z-index:1;border-top:1px solid var(--rule)}
+.pricing-inner{max-width:1100px;margin:0 auto}
+.pricing h2{font-family:var(--serif);font-size:clamp(2rem,3.5vw,3rem);line-height:1.1;letter-spacing:-.03em;margin-bottom:.75rem}
+.pricing h2 em{font-style:italic;color:var(--acc)}
+.pricing-sub{font-size:.95rem;color:var(--dim);line-height:1.75;margin-bottom:3.5rem;max-width:44ch;font-weight:300}
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule)}
+.plan{background:var(--paper);padding:2.5rem 2rem;transition:all .3s}
+.plan:hover{background:#fff}
+.plan.featured{background:var(--ink);color:var(--paper)}
+.plan-name{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);margin-bottom:1.25rem}
+.plan-price{font-family:var(--serif);font-size:3rem;line-height:1;letter-spacing:-.04em;margin-bottom:.2rem}
+.plan.featured .plan-price{color:var(--paper)}
+.plan-term{font-size:.8rem;color:var(--dim);margin-bottom:2rem;font-family:var(--mono);letter-spacing:.04em}
+.plan.featured .plan-term{color:rgba(245,242,236,.35)}
+.plan-features{list-style:none;display:flex;flex-direction:column;gap:.55rem;margin-bottom:2.25rem}
+.plan-features li{font-size:.83rem;display:flex;gap:.6rem;align-items:baseline;color:var(--dim);line-height:1.5}
+.plan.featured .plan-features li{color:rgba(245,242,236,.5)}
+.plan-features li::before{content:'--';font-family:var(--mono);font-size:8px;color:var(--rule);flex-shrink:0}
+.plan.featured .plan-features li::before{color:rgba(255,255,255,.15)}
+.plan-features strong{color:var(--ink);font-weight:500}
+.plan.featured .plan-features strong{color:var(--paper);font-weight:400}
+
+/* ── Pull quote ── */
+.quote{
+  padding:8rem 7rem;background:var(--acc);position:relative;z-index:1;overflow:hidden;
+}
+.quote::before{
+  content:'"';position:absolute;left:5%;top:-10%;
+  font-family:var(--serif);font-size:30rem;line-height:1;
+  color:rgba(255,255,255,.06);pointer-events:none;
+}
+.quote-inner{max-width:900px;margin:0 auto}
+.quote blockquote{
+  font-family:var(--serif);font-size:clamp(1.75rem,3.5vw,2.8rem);
+  color:#fff;line-height:1.2;letter-spacing:-.02em;margin-bottom:2.5rem;
+  font-style:italic;
+}
+.quote blockquote em{font-style:normal;opacity:.6}
+.quote-actions{display:flex;gap:1rem;align-items:center}
+.btn-white{
+  padding:.8rem 1.85rem;background:#fff;color:var(--acc);
+  font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  text-decoration:none;border-radius:3px;transition:all .2s;display:inline-block;
+}
+.btn-white:hover{background:var(--paper);transform:translateY(-1px)}
+.quote-note{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.06em}
+
+/* ── Footer ── */
+footer{
+  background:var(--ink);color:rgba(245,242,236,.3);
+  padding:3.5rem 7rem;display:flex;align-items:center;gap:2.5rem;
+  border-top:1px solid rgba(255,255,255,.06);
+  position:relative;z-index:1;
+}
+.footer-logo{font-family:var(--serif);font-size:1.1rem;color:rgba(245,242,236,.6);text-decoration:none}
+.footer-logo span{color:var(--acc)}
+.footer-links{display:flex;gap:1.75rem;list-style:none;margin-left:auto}
+.footer-links a{font-size:11px;color:rgba(245,242,236,.25);text-decoration:none;letter-spacing:.06em;text-transform:uppercase;transition:color .15s}
+.footer-links a:hover{color:rgba(245,242,236,.6)}
+.footer-copy{font-family:var(--mono);font-size:10px;letter-spacing:.04em}
+
+/* ── Responsive ── */
+@media(max-width:960px){
+  .hero,.problem,.solution,.workflow,.platforms,.pricing,.quote,footer{padding:4rem 1.75rem}
+  .hero-body{grid-template-columns:1fr}
+  .problem-grid{grid-template-columns:1fr}
+  .solution-head{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr 1fr}
+  .platform-grid,.plan-grid{grid-template-columns:1fr}
+  .nav-links{display:none}
+  nav{padding:.9rem 1.5rem}
+  .live-demo{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .steps{grid-template-columns:1fr}
+  .checks-table thead{display:none}
+  .checks-table td{display:block;padding:.5rem 0}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="#"><span>Apt.</span></a>
+  <ul class="nav-links">
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#checks">What it checks</a></li>
+    <li><a href="#workflow">Workflow</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+  </ul>
+  <a class="nav-btn" href="https://web-production-2a931.up.railway.app" target="_blank">Open App &rarr;</a>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-label">Apartment compliance for architects</div>
+    <h1>Less time<br>on the <em>checklist.</em><br>More time on <span class="muted">—</span><br>the design.</h1>
+    <div class="hero-body">
+      <p class="hero-p">
+        Apt. automates the tedious, mandatory work of apartment compliance checking — <strong>ADG Victoria, ADG NSW, BCA</strong> — so you can focus on the decisions that actually require an architect.
+        <br><br>
+        Upload a DXF, or trace a floor plan directly in the browser. Get a full compliance report in under a minute.
+      </p>
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-num">12+</div>
+          <div class="stat-label">Checks per apartment</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">&lt;60s</div>
+          <div class="stat-label">To a full report</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">VIC &amp; NSW</div>
+          <div class="stat-label">ADG jurisdictions</div>
+        </div>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <a class="btn-primary" href="https://web-production-2a931.up.railway.app" target="_blank">Try it free — no account needed</a>
+      <a class="btn-outline" href="#workflow">See how it works</a>
+    </div>
+    <div class="hero-footnote">// Rhino 8 plugin available &nbsp;&mdash;&nbsp; // Live sync with browser &nbsp;&mdash;&nbsp; // Revit coming soon</div>
+  </div>
+</section>
+
+<!-- ── The problem ── -->
+<section class="problem" id="problem">
+  <div class="problem-inner">
+    <div class="sec-tag">The problem</div>
+    <h2>Compliance checking is <em>not</em> why you became an architect.</h2>
+    <div class="problem-grid">
+      <div class="problem-copy">
+        <p>Every apartment project in Victoria and NSW requires careful checking against the Apartment Design Guidelines — bedroom dimensions, living area widths, storage volumes, daylight factors, open space, door widths, room depth, ventilation paths. <strong>Clause by clause, room by room.</strong></p>
+        <p>In practice, this means hours of cross-referencing drawings against planning requirements — work that is essential, but repetitive. Work that happens at the expense of the design thinking, spatial reasoning and creative problem-solving that defines good architecture.</p>
+        <p>It happens early in design when decisions are still fluid, and again at DA lodgement when errors are expensive. <strong>Every hour spent checking is an hour not spent designing.</strong></p>
+      </div>
+      <div class="pain-list">
+        <div class="pain-item">
+          <span class="pain-num">01</span>
+          <div>
+            <div class="pain-title">It is slow and error-prone by hand</div>
+            <div class="pain-desc">Checking 12+ requirements across multiple rooms, manually measuring from drawings and cross-referencing schedules, creates opportunity for mistakes — particularly late in a project when time pressure is highest.</div>
+          </div>
+        </div>
+        <div class="pain-item">
+          <span class="pain-num">02</span>
+          <div>
+            <div class="pain-title">It happens too late in the process</div>
+            <div class="pain-desc">Most compliance checking happens at DA stage, after design decisions have been locked in. Problems discovered late are expensive. A continuous feedback loop during schematic design changes the conversation entirely.</div>
+          </div>
+        </div>
+        <div class="pain-item">
+          <span class="pain-num">03</span>
+          <div>
+            <div class="pain-title">The guidelines are genuinely complex</div>
+            <div class="pain-desc">ADG VIC and NSW ADG have different requirements. BCA accessibility requirements overlay both. Best practice thresholds exist beyond minimum compliance. Keeping all of this in your head while designing is a significant cognitive load.</div>
+          </div>
+        </div>
+        <div class="pain-item">
+          <span class="pain-num">04</span>
+          <div>
+            <div class="pain-title">Junior staff time is poorly spent on it</div>
+            <div class="pain-desc">Compliance checking is typically delegated to junior architects and graduates — work that is important enough to get right, but not the best use of developing professional judgment.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── What it checks ── -->
+<section class="solution" id="checks">
+  <div class="solution-inner">
+    <div class="solution-head">
+      <div>
+        <div class="sec-tag">What Apt. checks</div>
+        <h2>Every clause,<br><em>automatically.</em></h2>
+      </div>
+      <div class="solution-sub">
+        Apt. checks your apartment design against the <strong>ADG Victoria 2017</strong> (Clauses 55 and 58) and the <strong>NSW Apartment Design Guide 2015</strong> — automatically, with clause references and pass/fail for every room.
+        <br><br>
+        Switch jurisdiction with a single click. Best practice thresholds available beyond minimum compliance.
+      </div>
+    </div>
+
+    <table class="checks-table">
+      <thead>
+        <tr>
+          <th style="width:20%">Check</th>
+          <th style="width:36%">What it measures</th>
+          <th style="width:14%">Jurisdiction</th>
+          <th style="width:14%">Clause</th>
+          <th style="width:16%">Method</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><div class="ct-check">Bedroom dimensions</div></td>
+          <td><div class="ct-desc">Minimum clear width and depth for main bedroom (3.0×3.4m VIC) and secondary bedrooms (3.0×3.0m). NSW checks minimum area (10m² main, 9m² secondary).</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">Cl. 55.04-1</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Living area</div></td>
+          <td><div class="ct-desc">Minimum width (3.3m 1-bed, 3.6m 2-bed+ VIC) and minimum area. Scales with bedroom count.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">Cl. 55.04-2</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Room depth</div></td>
+          <td><div class="ct-desc">Maximum depth of habitable rooms relative to ceiling height — the 2.5× rule that governs natural light penetration. Open plan living capped at 9m VIC, 8m NSW.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 2.5</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Storage volume</div></td>
+          <td><div class="ct-desc">Total storage volume and internal (designated) storage by bedroom count. VIC: 8m³ studio to 18m³ 3-bed+. Computed from polygon area × ceiling height.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">Cl. 58.04-2</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Private open space</div></td>
+          <td><div class="ct-desc">Balcony and POS minimum area and minimum dimension by bedroom count. Differentiates ground-level POS and rooftop terraces.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">Cl. 55.05-3</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Daylight factor</div></td>
+          <td><div class="ct-desc">Average daylight factor per room using BRE simplified geometric method — window solid angles, glazing area, ceiling height. Minimum 2% DF for living areas, 1% for bedrooms.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 4.1</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Apartment area (NSW)</div></td>
+          <td><div class="ct-desc">Minimum total apartment gross floor area: 35m² studio, 50m² 1-bed, 70m² 2-bed, 90m² 3-bed+.</div></td>
+          <td><div class="ct-jur"><span class="jbadge">NSW</span></div></td>
+          <td><div class="ct-clause">Table 2C</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Glazing ratio (NSW)</div></td>
+          <td><div class="ct-desc">Window area as a percentage of floor area — minimum 10% for habitable rooms under NSW ADG.</div></td>
+          <td><div class="ct-jur"><span class="jbadge">NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 4.1</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Adjacency &amp; circulation</div></td>
+          <td><div class="ct-desc">Room connectivity graph — entry must be adjacent to living, bedrooms must not be accessible only through wet rooms, rooms must not be isolated from circulation.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 2.3</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Cross ventilation</div></td>
+          <td><div class="ct-desc">Ventilation path analysis — checks for dual-aspect opportunity through the apartment for natural cross-ventilation.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 4.2</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Door widths</div></td>
+          <td><div class="ct-desc">Minimum 850mm clear opening for entry and habitable room doors. Drawn as line objects on APT_DOOR_* layers.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">BCA D3.3</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+        <tr>
+          <td><div class="ct-check">Noise influence</div></td>
+          <td><div class="ct-desc">OpenStreetMap-based road noise lookup for the site address. Identifies if the site falls within a road noise influence area requiring acoustic treatment.</div></td>
+          <td><div class="ct-jur"><span class="jbadge both">VIC + NSW</span></div></td>
+          <td><div class="ct-clause">ADG Cl. 7.1</div></td>
+          <td><div class="ct-auto">Automatic</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── Workflow ── -->
+<section class="workflow" id="workflow">
+  <div class="workflow-inner">
+    <div class="sec-tag">Workflow</div>
+    <h2>Works the way<br><em>you already work.</em></h2>
+    <p class="workflow-sub">Three ways to get a compliance report — all feeding the same engine, all producing the same detailed output.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">01 &mdash; DXF Upload</div>
+        <h3>Upload any DXF</h3>
+        <p>Draw rooms as closed curves on APT_ layers in any CAD software. Upload the DXF. Full report in seconds.</p>
+        <div class="step-code">APT_ROOM_MAINBED<br>APT_ROOM_LIVING<br>APT_STORAGE_DESIGNATED<br>APT_POS ...</div>
+      </div>
+      <div class="step">
+        <div class="step-n">02 &mdash; Plan Tracer</div>
+        <h3>Trace a floor plan image</h3>
+        <p>Paste a URL from realestate.com.au or Domain, or upload an image. Trace rooms using polygon and rectangle tools. Set scale, run check.</p>
+        <div class="step-code">// Works on mobile<br>// Boolean union / diff<br>// AI analysis coming soon</div>
+      </div>
+      <div class="step">
+        <div class="step-n">03 &mdash; Rhino Plugin</div>
+        <h3>Design live in Rhino 8</h3>
+        <p>The Rhino plugin reads your model geometry directly. Press Connect — rooms go green or red in your viewport. Enable Live Sync and the browser report updates automatically as you design.</p>
+        <div class="step-code">// RunPythonScript<br>// Live viewport highlight<br>// 1.5s debounce on change</div>
+      </div>
+      <div class="step">
+        <div class="step-n">04 &mdash; Report</div>
+        <h3>Full report in browser</h3>
+        <p>Every check, every room, every clause. Daylight heatmaps, adjacency graph, energy and noise analysis, exportable PDF. Shareable link for the whole project team.</p>
+        <div class="step-code">// VIC or NSW ADG<br>// Best practice mode<br>// PDF export</div>
+      </div>
+    </div>
+    <div class="live-demo">
+      <div>
+        <div class="live-text"><span class="live-dot"></span><strong>Live sync active</strong> &mdash; last updated 2s ago</div>
+        <div class="live-desc">With Live Sync enabled, the Rhino plugin watches for geometry changes and pushes updates to the browser report automatically. Move a wall — see compliance results change in real time.</div>
+      </div>
+      <a class="btn-primary" href="https://web-production-2a931.up.railway.app" target="_blank" style="white-space:nowrap">Try it now</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Platforms ── -->
+<section class="platforms" id="platforms">
+  <div class="platforms-inner">
+    <div class="sec-tag">Platforms</div>
+    <h2>Where you<br><em>already model.</em></h2>
+    <p class="platforms-sub">Apt. meets you in your environment. No exports, no format conversions, no workflow interruptions.</p>
+    <div class="platform-grid">
+      <div class="pf">
+        <div class="pf-header">
+          <div class="pf-ico">🦏</div>
+          <div class="pf-name">Rhino 8</div>
+          <span class="pf-badge live-badge">Available</span>
+        </div>
+        <p>Native Eto panel docked in Rhino. Reads geometry directly from your model. Real-time viewport highlighting — rooms go green or red as compliance changes. Live sync pushes to browser report on every geometry change.</p>
+        <div class="pf-detail">RunPythonScript &mdash; single file install &mdash; no dependencies</div>
+      </div>
+      <div class="pf">
+        <div class="pf-header">
+          <div class="pf-ico">🌐</div>
+          <div class="pf-name">Web — DXF Upload</div>
+          <span class="pf-badge live-badge">Available</span>
+        </div>
+        <p>Upload a DXF from any source — Rhino, AutoCAD, ArchiCAD, Vectorworks. Place rooms on APT_ layers, export DXF, drag and drop. Works in any browser on any device. No account needed.</p>
+        <div class="pf-detail">DXF format &mdash; any source software &mdash; APT_ layer convention</div>
+      </div>
+      <div class="pf">
+        <div class="pf-header">
+          <div class="pf-ico">✏️</div>
+          <div class="pf-name">Web — Plan Tracer</div>
+          <span class="pf-badge live-badge">Available</span>
+        </div>
+        <p>No DXF? Trace directly over a floor plan image from any listing or reference. Polygon, rectangle, and boolean tools. Set real-world scale, assign room types, run compliance. Useful for due diligence on existing buildings.</p>
+        <div class="pf-detail">Image URL or file upload &mdash; scale calibration &mdash; DXF export</div>
+      </div>
+      <div class="pf">
+        <div class="pf-header">
+          <div class="pf-ico">🏗️</div>
+          <div class="pf-name">Revit</div>
+          <span class="pf-badge soon-badge">Coming soon</span>
+        </div>
+        <p>Reads room boundaries directly from Revit SpatialElement objects. Same browser report, same API, same workflow. Same APT_ layer convention maps to Revit room names. No DXF export step.</p>
+        <div class="pf-detail">Room boundary reader &mdash; same API endpoint &mdash; browser report</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pricing ── -->
+<section class="pricing" id="pricing">
+  <div class="pricing-inner">
+    <div class="sec-tag">Pricing</div>
+    <h2>Start free.<br><em>Scale as you need.</em></h2>
+    <p class="pricing-sub">The web tool is free, forever. The Rhino plugin and advanced features are for professional use.</p>
+    <div class="plan-grid">
+      <div class="plan">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-term">no account required</div>
+        <ul class="plan-features">
+          <li><strong>Unlimited</strong> web compliance checks</li>
+          <li><strong>VIC &amp; NSW</strong> ADG — both jurisdictions</li>
+          <li><strong>Plan Tracer</strong> — trace over images</li>
+          <li><strong>PDF</strong> report export</li>
+          <li>Shareable report links</li>
+          <li>Daylight, adjacency, noise analysis</li>
+        </ul>
+        <a class="btn-outline" href="https://web-production-2a931.up.railway.app" target="_blank" style="display:block;text-align:center">Open the app</a>
+      </div>
+      <div class="plan featured">
+        <div class="plan-name">Studio</div>
+        <div class="plan-price">$49</div>
+        <div class="plan-term">per month &mdash; coming soon</div>
+        <ul class="plan-features">
+          <li><strong>Everything</strong> in Free</li>
+          <li><strong>Rhino 8</strong> plugin — live viewport highlighting</li>
+          <li><strong>Live sync</strong> — browser updates as you design</li>
+          <li><strong>AI plan recognition</strong> — auto-trace floor plans</li>
+          <li><strong>Best practice</strong> thresholds beyond minimum compliance</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="btn-primary" href="mailto:hello@apt.design" style="display:block;text-align:center">Join waitlist</a>
+      </div>
+      <div class="plan">
+        <div class="plan-name">Practice</div>
+        <div class="plan-price">$199</div>
+        <div class="plan-term">per month &mdash; coming soon</div>
+        <ul class="plan-features">
+          <li><strong>Everything</strong> in Studio</li>
+          <li><strong>Revit</strong> plugin — reads room boundaries directly</li>
+          <li><strong>Unlimited seats</strong> — whole practice</li>
+          <li><strong>API access</strong> — integrate into your workflow</li>
+          <li><strong>Custom</strong> jurisdiction configurations</li>
+          <li>Dedicated support</li>
+        </ul>
+        <a class="btn-outline" href="mailto:hello@apt.design" style="display:block;text-align:center">Get in touch</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pull quote / CTA ── -->
+<section class="quote">
+  <div class="quote-inner">
+    <blockquote>
+      "The compliance checklist is not the hard part of apartment design. <em>Apt. handles the checklist so you can focus on the hard part.</em>"
+    </blockquote>
+    <div class="quote-actions">
+      <a class="btn-white" href="https://web-production-2a931.up.railway.app" target="_blank">Try Apt. free &rarr;</a>
+      <span class="quote-note">// No account &nbsp;&nbsp; // VIC &amp; NSW &nbsp;&nbsp; // Under 60 seconds</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <a class="footer-logo" href="#"><span>Apt.</span> Compliance</a>
+  <ul class="footer-links">
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#checks">Checks</a></li>
+    <li><a href="#workflow">Workflow</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="mailto:hello@apt.design">Contact</a></li>
+  </ul>
+  <span class="footer-copy">&copy; 2026 Apt. Compliance</span>
+</footer>
+
+<script>
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting){
+      e.target.style.opacity='1';
+      e.target.style.transform='none';
+      e.target.style.transition='opacity .6s ease, transform .6s ease';
+    }
+  });
+},{threshold:0.08});
+
+document.querySelectorAll('.pain-item,.step,.pf,.plan,.stat').forEach(el=>{
+  el.style.opacity='0';
+  el.style.transform='translateY(16px)';
+  io.observe(el);
+});
+</script>
+</body>
+</html>
