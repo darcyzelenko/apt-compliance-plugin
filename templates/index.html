@@ -670,25 +670,24 @@ const CHECKS_META=[
 ];
 
 function renderAll(data){
-  // Normalise structure -- engine returns nested {summary, meta, bedrooms...}
-  // Ensure summary and meta always exist
-  if(!data.summary){
-    // Old engine format or flat format -- build summary from top-level keys
-    data = Object.assign({}, data);
-    data.summary = data.summary || {};
-    data.meta = data.meta || {};
-    // Pull pass keys up if they exist at top level
+  // Fully defensive normalisation -- handle any engine version or structure
+  data = Object.assign({}, data);
+  if(!data.summary || typeof data.summary !== 'object') data.summary = {};
+  if(!data.meta    || typeof data.meta    !== 'object') data.meta    = {};
+  if(!data.adjacency) data.adjacency = {};
+
+  // Ensure all_pass exists in summary
+  if(data.summary.all_pass === undefined){
     const passKeys = ['bedrooms_pass','living_pass','room_depth_pass','windows_pass',
       'storage_pass','pos_pass','ventilation_pass','doors_pass','accessibility_pass',
-      'daylight_pass','energy_pass','noise_pass','apt_area_pass','glass_area_pass',
-      'ceiling_pass','all_pass'];
-    passKeys.forEach(k=>{ if(data[k]!==undefined) data.summary[k]=data[k]; });
-    if(data.summary.all_pass===undefined)
-      data.summary.all_pass = passKeys.filter(k=>k!=='all_pass').every(k=>data.summary[k]!==false);
+      'daylight_pass','energy_pass','noise_pass'];
+    data.summary.all_pass = passKeys.every(k => data.summary[k] !== false);
   }
-  if(!data.meta) data.meta={};
-  if(!data.meta.bedroom_count) data.meta.bedroom_count = data.bedroom_count||0;
-  if(!data.meta.jurisdiction) data.meta.jurisdiction = data.jurisdiction||'VIC';
+
+  // Ensure meta fields exist
+  if(!data.meta.bedroom_count) data.meta.bedroom_count = data.bedroom_count || 0;
+  if(!data.meta.jurisdiction)  data.meta.jurisdiction  = data.jurisdiction  || 'VIC';
+  if(!data.meta.ceiling_h)     data.meta.ceiling_h     = data.ceiling_h     || 2.7;
   showState('results');
   printBtn.style.display='';
   renderChecks(data);
@@ -1791,29 +1790,53 @@ renderGlossary();
       fetch('/api/results/'+token)
         .then(r=>r.json())
         .then(data=>{
-          if(data.error){showErr(data.error);return;}
+          if(data.error){
+            // Session expired -- stop polling, show soft message not crash
+            clearInterval(pollTimer);
+            const banner=document.getElementById('plugin-banner');
+            if(banner){
+              banner.style.background='var(--dim)';
+              banner.textContent='Rhino session ended -- re-run plugin to reconnect';
+              banner.style.opacity='1';
+            } else {
+              // If we never loaded, show the error
+              showErr('Rhino session ended. Re-run the plugin in Rhino to reconnect.');
+            }
+            return;
+          }
           const results=data.results||data;
           console.log('Plugin results structure:', Object.keys(results), results.summary);
           const ts=data.ts||0;
           if(ts!==lastTs){
             lastTs=ts;
             DATA=results;
-            renderAll(results);
+            try {
+              renderAll(results);
+            } catch(renderErr) {
+              console.error('renderAll failed:', renderErr);
+              console.error('Results structure:', JSON.stringify(results).slice(0,500));
+              // Don't wipe the page -- keep last good render visible
+            }
             const existing=document.getElementById('plugin-banner');
             if(existing)existing.remove();
             const banner=document.createElement('div');
             banner.id='plugin-banner';
             banner.style.cssText='position:fixed;top:58px;right:12px;background:var(--acc);color:#fff;font-size:10px;font-weight:600;padding:.3rem .65rem;border-radius:4px;z-index:300;transition:opacity .5s';
-            banner.textContent=lastTs===ts&&lastTs>0?'Updated from Rhino':'Loaded from Rhino';
+            const d=new Date(ts*1000);
+            const t=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+            banner.textContent='Live from Rhino -- '+t;
             document.body.appendChild(banner);
-            setTimeout(()=>{banner.style.opacity='0';setTimeout(()=>banner.remove(),600);},2500);
+            setTimeout(()=>{banner.style.opacity='0';setTimeout(()=>{if(banner.parentNode)banner.remove();},600);},3000);
           }
         })
-        .catch(()=>{});
+        .catch(()=>{
+          // Network error -- don't crash, just skip this poll
+        });
     }
 
+    let pollTimer;
     loadResults();
-    setInterval(loadResults,2500);
+    pollTimer=setInterval(loadResults,2500);
   }
 })();
 

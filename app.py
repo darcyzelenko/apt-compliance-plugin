@@ -344,7 +344,7 @@ import time
 
 # In-memory session store — results live for 15 minutes
 _sessions = {}
-SESSION_TTL = 900  # seconds
+SESSION_TTL = 7200  # seconds (2 hours)
 
 def _clean_sessions():
     now = time.time()
