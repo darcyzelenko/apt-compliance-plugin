@@ -341,16 +341,55 @@ def proxy_image():
 
 import uuid
 import time
+import json
+import os
+import threading
 
-# In-memory session store — results live for 15 minutes
-_sessions = {}
-SESSION_TTL = 7200  # seconds (2 hours)
+# File-backed session store -- survives server restarts within same dyno
+# Falls back gracefully if filesystem not writable
+SESSION_TTL = 7200  # 2 hours
+_SESSION_FILE = '/tmp/apt_sessions.json'
+_session_lock = threading.Lock()
 
-def _clean_sessions():
-    now = time.time()
-    expired = [k for k, v in _sessions.items() if now - v['ts'] > SESSION_TTL]
-    for k in expired:
-        del _sessions[k]
+def _load_sessions():
+    try:
+        if os.path.exists(_SESSION_FILE):
+            with open(_SESSION_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_sessions(sessions):
+    try:
+        with open(_SESSION_FILE, 'w') as f:
+            json.dump(sessions, f)
+    except Exception:
+        pass
+
+def _clean_and_load():
+    with _session_lock:
+        sessions = _load_sessions()
+        now = time.time()
+        sessions = {k: v for k, v in sessions.items() if now - v['ts'] < SESSION_TTL}
+        _save_sessions(sessions)
+    return sessions
+
+def _get_session(token):
+    with _session_lock:
+        sessions = _load_sessions()
+        s = sessions.get(token)
+        if s and time.time() - s['ts'] < SESSION_TTL:
+            return s
+        return None
+
+def _set_session(token, results, ts=None):
+    with _session_lock:
+        sessions = _load_sessions()
+        entry = {'results': results, 'ts': ts or time.time()}
+        sessions[token] = entry
+        _save_sessions(sessions)
+        return entry
 
 
 @app.route('/api/store', methods=['POST'])
@@ -361,8 +400,6 @@ def store_results():
     POST multipart: dxf_file, ceiling_height, jurisdiction
     Returns: { token: "abc123", url: "https://.../report/abc123" }
     """
-    _clean_sessions()
-
     if 'dxf_file' not in request.files:
         return jsonify({'error': 'No DXF file'}), 400
 
@@ -379,7 +416,7 @@ def store_results():
         return jsonify({'error': str(e)}), 500
 
     token = uuid.uuid4().hex[:12]
-    _sessions[token] = {'results': results, 'ts': time.time()}
+    _set_session(token, results)
 
     base_url = request.host_url.rstrip('/')
     return jsonify({
@@ -396,8 +433,7 @@ def report(token):
 
 @app.route('/api/results/<token>')
 def get_results(token):
-    _clean_sessions()
-    session = _sessions.get(token)
+    session = _get_session(token)
     if not session:
         return jsonify({'error': 'Session not found or expired'}), 404
     return jsonify({'results': session['results'], 'ts': session['ts']})
@@ -405,8 +441,7 @@ def get_results(token):
 
 @app.route('/api/update/<token>', methods=['POST'])
 def update_results(token):
-    _clean_sessions()
-    if token not in _sessions:
+    if not _get_session(token):
         return jsonify({'error': 'Session not found'}), 404
     if 'dxf_file' not in request.files:
         return jsonify({'error': 'No DXF file'}), 400
@@ -418,8 +453,9 @@ def update_results(token):
         results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    _sessions[token] = {'results': results, 'ts': time.time()}
-    return jsonify({'ok': True, 'ts': _sessions[token]['ts']})
+    ts_now = time.time()
+    _set_session(token, results, ts_now)
+    return jsonify({'ok': True, 'ts': ts_now})
 
 
 
