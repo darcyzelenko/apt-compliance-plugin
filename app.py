@@ -538,7 +538,7 @@ RULES:
                 'content-type': 'application/json',
             },
             json={
-                'model': 'claude-opus-4-5',
+                'model': 'claude-sonnet-4-5-20251022',
                 'max_tokens': 2000,
                 'messages': [{
                     'role': 'user',
