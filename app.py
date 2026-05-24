@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 from compliance_engine import run_compliance
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
+from flask_cors import CORS
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
 
