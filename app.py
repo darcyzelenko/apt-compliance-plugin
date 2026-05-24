@@ -396,12 +396,30 @@ def report(token):
 
 @app.route('/api/results/<token>')
 def get_results(token):
-    """Return stored results for a token."""
     _clean_sessions()
     session = _sessions.get(token)
     if not session:
         return jsonify({'error': 'Session not found or expired'}), 404
-    return jsonify(session['results'])
+    return jsonify({'results': session['results'], 'ts': session['ts']})
+
+
+@app.route('/api/update/<token>', methods=['POST'])
+def update_results(token):
+    _clean_sessions()
+    if token not in _sessions:
+        return jsonify({'error': 'Session not found'}), 404
+    if 'dxf_file' not in request.files:
+        return jsonify({'error': 'No DXF file'}), 400
+    f = request.files['dxf_file']
+    text = f.read().decode('utf-8', errors='replace')
+    ceiling_h = float(request.form.get('ceiling_height', 2.7))
+    jurisdiction = request.form.get('jurisdiction', 'VIC').upper()
+    try:
+        results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    _sessions[token] = {'results': results, 'ts': time.time()}
+    return jsonify({'ok': True, 'ts': _sessions[token]['ts']})
 
 
 
