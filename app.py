@@ -470,6 +470,115 @@ def update_results(token):
     return jsonify({'ok': True, 'ts': ts_now})
 
 
+@app.route('/api/analyse-image', methods=['POST'])
+def analyse_image():
+    """
+    Send a floor plan image to Claude vision API.
+    Returns structured room data: polygons, scale, north.
+    POST JSON: { image: "<base64>", media_type: "image/jpeg" }
+    """
+    import os, requests as req
+
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not api_key:
+        return jsonify({'error': 'ANTHROPIC_API_KEY not configured on server'}), 500
+
+    body = request.get_json()
+    if not body or 'image' not in body:
+        return jsonify({'error': 'No image provided'}), 400
+
+    image_data = body['image']
+    media_type = body.get('media_type', 'image/jpeg')
+
+    prompt = """Analyse this apartment floor plan image and extract room geometry.
+
+Return ONLY a JSON object in this exact format, no other text:
+{
+  "rooms": [
+    {
+      "layer": "APT_ROOM_LIVING",
+      "label": "Living",
+      "vertices": [[0.12, 0.15], [0.45, 0.15], [0.45, 0.48], [0.12, 0.48]]
+    }
+  ],
+  "scale": {
+    "found": true,
+    "pixels_per_metre": null,
+    "dimension_text": "3200",
+    "dimension_metres": 3.2,
+    "note": "Found '3200' label on bedroom"
+  },
+  "north": {
+    "found": false,
+    "direction_degrees": 0
+  }
+}
+
+RULES:
+- vertices are [x, y] as proportions of image width and height (0.0 to 1.0), origin top-left
+- trace the actual room boundaries as accurately as possible, use 4-8 vertices per room
+- do not overlap rooms - each area belongs to one room only
+- layer must be one of: APT_ROOM_MAINBED, APT_ROOM_BED1, APT_ROOM_BED2, APT_ROOM_BED3, APT_ROOM_LIVING, APT_ROOM_BATHROOM, APT_ROOM_ENSUITE, APT_ROOM_LAUNDRY, APT_ROOM_ENTRY, APT_STORAGE_DESIGNATED, APT_POS
+- identify balconies/outdoor areas as APT_POS
+- identify combined bathroom+toilet as APT_ROOM_BATHROOM, separate toilet as APT_ROOM_BATHROOM
+- identify WIR/wardrobe as APT_STORAGE_DESIGNATED
+- if you see a dimension annotation (e.g. "3200" or "3.2m"), report it in scale
+- north: 0=up, 90=right, 180=down, 270=left
+- if the plan is too small or unclear, still return your best attempt
+- ONLY return the JSON object, nothing else"""
+
+    try:
+        response = req.post(
+            'https://api.anthropic.com/v1/messages',
+            headers={
+                'x-api-key': api_key,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json',
+            },
+            json={
+                'model': 'claude-opus-4-5',
+                'max_tokens': 2000,
+                'messages': [{
+                    'role': 'user',
+                    'content': [
+                        {
+                            'type': 'image',
+                            'source': {
+                                'type': 'base64',
+                                'media_type': media_type,
+                                'data': image_data,
+                            }
+                        },
+                        {
+                            'type': 'text',
+                            'text': prompt
+                        }
+                    ]
+                }]
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        data = response.json()
+        text = data['content'][0]['text'].strip()
+
+        # Strip markdown fences if present
+        if text.startswith('```'):
+            text = text.split('```')[1]
+            if text.startswith('json'):
+                text = text[4:]
+        text = text.strip()
+
+        import json as json_mod
+        result = json_mod.loads(text)
+        return jsonify(result)
+
+    except req.exceptions.RequestException as e:
+        return jsonify({'error': 'API request failed: ' + str(e)}), 502
+    except Exception as e:
+        return jsonify({'error': 'Analysis failed: ' + str(e)}), 500
+
+
 
 if __name__ == '__main__':
     import os

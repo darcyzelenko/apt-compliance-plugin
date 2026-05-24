@@ -214,6 +214,8 @@ header h1 strong{color:#fff}
       <button class="tbtn" onclick="exportDXF()">↓ DXF</button>
       <button class="tbtn" onclick="exportPNG()">↓ PNG</button>
     </div>
+    <button class="tbtn" id="aiBtn" onclick="analyseWithAI()" disabled style="width:100%;margin-top:.1rem;background:var(--tx);color:#fff;border-color:var(--tx)">✦ Analyse with AI</button>
+    <div id="aiStatus" style="font-size:9px;color:var(--dim);margin-top:.2rem;line-height:1.4;display:none"></div>
     <button class="tbtn danger" onclick="confirmClear()" style="width:100%;margin-top:.1rem">⊗ Clear All</button>
   </div>
 
@@ -467,7 +469,111 @@ function loadFromUrl(){
   img.src=src;
 }
 document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')loadFromUrl();});
-function enableRun(){document.getElementById('runBtn').disabled=false;}
+function enableRun(){
+  document.getElementById('runBtn').disabled=false;
+  document.getElementById('aiBtn').disabled=false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI image analysis
+// ═══════════════════════════════════════════════════════════════════════════════
+async function analyseWithAI(){
+  if(!bgImage){alert('Load a floor plan image first.');return;}
+  const btn=document.getElementById('aiBtn');
+  const status=document.getElementById('aiStatus');
+  btn.disabled=true;
+  btn.textContent='✦ Analysing...';
+  status.style.display='block';
+  status.textContent='Sending image to Claude — this takes about 15 seconds...';
+  status.style.color='var(--dim)';
+
+  try{
+    // Draw image to offscreen canvas and get base64
+    const offscreen=document.createElement('canvas');
+    // Cap at 1500px on longest side to keep token cost reasonable
+    const maxDim=1500;
+    const scale=Math.min(1,maxDim/Math.max(bgImage.width,bgImage.height));
+    offscreen.width=Math.round(bgImage.width*scale);
+    offscreen.height=Math.round(bgImage.height*scale);
+    const octx=offscreen.getContext('2d');
+    octx.drawImage(bgImage,0,0,offscreen.width,offscreen.height);
+    const dataUrl=offscreen.toDataURL('image/jpeg',0.85);
+    const base64=dataUrl.split(',')[1];
+    const W=offscreen.width, H=offscreen.height;
+
+    const resp=await fetch('/api/analyse-image',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:base64,media_type:'image/jpeg'})
+    });
+    const data=await resp.json();
+
+    if(data.error){
+      status.textContent='Error: '+data.error;
+      status.style.color='var(--fail)';
+      return;
+    }
+
+    // Set scale if found
+    if(data.scale&&data.scale.found&&data.scale.dimension_metres&&data.scale.pixels_per_metre){
+      scale={ppm:data.scale.pixels_per_metre};
+      document.getElementById('scaleStatus').textContent='Scale set by AI';
+      document.getElementById('scaleStatus').className='scale-ok';
+    }
+
+    // Draw rooms
+    const rooms=data.rooms||[];
+    if(!rooms.length){
+      status.textContent='No rooms detected. Try a clearer image or trace manually.';
+      status.style.color='var(--warn)';
+      return;
+    }
+
+    saveHistory();
+    let added=0;
+    for(const room of rooms){
+      const lkey=room.layer||'APT_ROOM_LIVING';
+      const verts=room.vertices||[];
+      if(verts.length<3)continue;
+      // Convert proportional coords to world coords
+      // Image is drawn at vx,vy with scale vz on the canvas
+      // World coords: x = (px - vx)/vz, y = (py - vy)/vz
+      // px = propX * bgImage.width * vz + vx (in canvas pixels)
+      // So world x = propX * bgImage.width, world y = propY * bgImage.height
+      const pts=verts.map(([px,py])=>[px*bgImage.width, py*bgImage.height]);
+      shapes.push({
+        id:nextId++,
+        type:'poly',
+        layer:lkey,
+        pts,
+        closed:true,
+        aiGenerated:true, // flag for review highlighting
+      });
+      added++;
+    }
+
+    buildLayerList();
+    enableRun();
+    render();
+
+    // Show AI shapes in a distinct review state
+    _aiReviewMode=true;
+    status.textContent=added+' rooms detected — shown with dashed outlines. Review, adjust, then run check.';
+    status.style.color='var(--pass)';
+
+    // Highlight AI shapes briefly
+    setTimeout(()=>{_aiReviewMode=false;render();},8000);
+
+  }catch(e){
+    status.textContent='Failed: '+e.message;
+    status.style.color='var(--fail)';
+  }finally{
+    btn.disabled=false;
+    btn.textContent='✦ Analyse with AI';
+  }
+}
+
+let _aiReviewMode=false;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Scale
@@ -1010,7 +1116,16 @@ function drawShape(s){
     for(let i=1;i<s.pts.length;i++){const[px,py]=w2c(s.pts[i][0],s.pts[i][1]);ctx.lineTo(px,py);}
     if(s.closed)ctx.closePath();
     ctx.fillStyle=isSel?col+'35':col+'1a';ctx.fill();
-    ctx.strokeStyle=col+(isSel?'':'aa');ctx.lineWidth=isSel?2.5:1.8;ctx.stroke();
+    // AI review mode: dashed outline
+    if(s.aiGenerated&&_aiReviewMode){
+      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+      // Review label
+      const[cx,cy]=w2c(s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length,s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length);
+      ctx.fillStyle='rgba(232,93,37,.85)';ctx.font='bold 9px Inter,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('AI',cx,cy);
+    } else {
+      ctx.strokeStyle=col+(isSel?'':'aa');ctx.lineWidth=isSel?2.5:1.8;ctx.stroke();
+    }
     // Second-selected highlight
     if(selIds.size===2&&isSel){
       ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
