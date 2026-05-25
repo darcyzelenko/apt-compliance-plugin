@@ -188,17 +188,46 @@ def max_depth_from_windows(poly: List[Pt], win_lines: List) -> Optional[float]:
         x += step
     return round(max_d,2) if found else None
 
-def window_normal_angle(wl, north=(0.0,1.0)) -> float:
-    """Compass angle (0=N, 90=E, 180=S, 270=W) of window outward normal."""
+def window_normal_angle(wl, north=(0.0,1.0), room_centroid=None) -> float:
+    """Compass angle (0=N, 90=E, 180=S, 270=W) of window outward normal.
+    If room_centroid is provided, the normal points AWAY from the room centroid
+    (i.e. outward through the external wall), which is direction-agnostic.
+    """
     dx=wl[1][0]-wl[0][0]; dy=wl[1][1]-wl[0][1]
-    nx,ny = -dy,dx
-    l=math.hypot(nx,ny)
+    # Two possible normals
+    nx1,ny1 = -dy, dx
+    nx2,ny2 =  dy,-dx
+    l=math.hypot(nx1,ny1)
     if l<1e-9: return 0.0
-    nx/=l; ny/=l
+    nx1/=l; ny1/=l; nx2/=l; ny2/=l
+
+    if room_centroid is not None:
+        # Window midpoint
+        wmx=(wl[0][0]+wl[1][0])/2; wmy=(wl[0][1]+wl[1][1])/2
+        # Vector from window to room centroid
+        to_room_x=room_centroid[0]-wmx; to_room_y=room_centroid[1]-wmy
+        # Outward normal is the one pointing AWAY from the room
+        dot1=nx1*to_room_x+ny1*to_room_y
+        # Use the normal that points away (negative dot with to_room vector)
+        nx,ny = (nx2,ny2) if dot1>0 else (nx1,ny1)
+    else:
+        nx,ny = nx1,ny1
+
+    # Rotate by north vector to get compass angle
+    # north vector defines what "up" (north) means in world space
+    nn=math.hypot(north[0],north[1])
+    if nn>1e-9:
+        nx_n=north[0]/nn; ny_n=north[1]/nn
+        # Rotate so north aligns with Y+
+        rx = nx*ny_n - ny*nx_n
+        ry = nx*nx_n + ny*ny_n
+        nx,ny=rx,ry
+
     return math.degrees(math.atan2(nx,ny)) % 360
 
-def window_aspect(wl, north=(0.0,1.0)) -> str:
-    ang = window_normal_angle(wl, north)
+
+def window_aspect(wl, north=(0.0,1.0), room_centroid=None) -> str:
+    ang = window_normal_angle(wl, north, room_centroid)
     sectors = ['N','NE','E','SE','S','SW','W','NW']
     return sectors[int((ang+22.5)/45) % 8]
 
@@ -1092,11 +1121,20 @@ def check_daylight(layers, windows, north, ceiling_h):
 def check_energy(layers, windows, north, ceiling_h):
     asp_summary={}; total_a=north_a=ew_a=0.0
     win_list=[]
+
+    # Build room centroid lookup for direction-aware window aspect
+    room_centroids={}
+    for lk, polys in layers.items():
+        if lk.startswith('APT_ROOM_') and polys:
+            rk=lk.replace('APT_ROOM_','')
+            room_centroids[rk]=poly_centroid(polys[0])
+
     for rk,wl in windows.items():
+        cent=room_centroids.get(rk)
         for w in wl:
             if len(w)<2: continue
             wlen=seg_len(w[0],w[1]); wa=wlen*ceiling_h
-            asp=window_aspect(w,north)
+            asp=window_aspect(w, north, cent)
             total_a+=wa
             if asp in ('N','NE','NW'): north_a+=wa
             if asp in ('E','W'): ew_a+=wa
@@ -1107,7 +1145,8 @@ def check_energy(layers, windows, north, ceiling_h):
 
     north_pct=round(north_a/total_a*100,1) if total_a>0 else 0.0
     ew_pct=round(ew_a/total_a*100,1) if total_a>0 else 0.0
-    liv_north=any(window_aspect(w,north) in ('N','NE','NW') for w in windows.get('LIVING',[]))
+    liv_cent=room_centroids.get('LIVING')
+    liv_north=any(window_aspect(w,north,liv_cent) in ('N','NE','NW') for w in windows.get('LIVING',[]))
     risk='High' if ew_pct>=40 else ('Medium' if ew_pct>=25 else 'Low')
 
     checks=[
