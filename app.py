@@ -400,23 +400,32 @@ def store_results():
     POST multipart: dxf_file, ceiling_height, jurisdiction
     Returns: { token: "abc123", url: "https://.../report/abc123" }
     """
-    if 'dxf_file' not in request.files:
-        return jsonify({'error': 'No DXF file'}), 400
+    try:
+        if 'dxf_file' not in request.files:
+            return jsonify({'error': 'No DXF file'}), 400
 
-    f = request.files['dxf_file']
-    text = f.read().decode('utf-8', errors='replace')
-    ceiling_h = float(request.form.get('ceiling_height', 2.7))
-    jurisdiction = request.form.get('jurisdiction', 'VIC').upper()
-    if jurisdiction not in ('VIC', 'NSW', 'BEST_PRACTICE'):
-        jurisdiction = 'VIC'
+        f = request.files['dxf_file']
+        text = f.read().decode('utf-8', errors='replace')
+        ceiling_h = float(request.form.get('ceiling_height', 2.7))
+        jurisdiction = request.form.get('jurisdiction', 'VIC').upper()
+        if jurisdiction not in ('VIC', 'NSW', 'BEST_PRACTICE'):
+            jurisdiction = 'VIC'
+    except Exception as e:
+        import traceback
+        return jsonify({'error': 'Request parsing failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
 
     try:
         results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-    token = uuid.uuid4().hex[:12]
-    _set_session(token, results)
+    try:
+        token = uuid.uuid4().hex[:12]
+        _set_session(token, results)
+    except Exception as e:
+        import traceback
+        return jsonify({'error': 'Session storage failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
 
     base_url = request.host_url.rstrip('/')
     return jsonify({

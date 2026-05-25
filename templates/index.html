@@ -558,6 +558,11 @@ canvas{display:block;width:100%}
     <div class="panel" id="panel-kitchen">
       <div class="slabel" style="margin-bottom:.5rem">Kitchen Analysis</div>
       <div id="kitchenContent"><p style="font-size:11px;color:var(--dim)">Draw kitchen geometry on APT_KITCHEN_BENCH and APT_KITCHEN_APPLIANCE layers, then run the check to see kitchen analysis.</p></div>
+      <div id="kitchenCanvasWrap" style="display:none;margin-top:.75rem">
+        <div class="slabel" style="margin-bottom:.4rem">Kitchen Plan</div>
+        <p style="font-size:11px;color:var(--dim);margin-bottom:.5rem">Work triangle shown in orange · clearance dimensions in blue · appliances labelled</p>
+        <div class="canvaswrap"><canvas id="kitchenCanvas" height="340"></canvas></div>
+      </div>
     </div>
 
     <div class="panel" id="panel-diagnostics">
@@ -641,6 +646,7 @@ document.querySelectorAll('.vt').forEach(t=>t.addEventListener('click',()=>{
 function onTabSwitch(tab){
   if(tab==='plan'){redrawPlan('plan-clean');redrawPlan('plan-depth');redrawPlan('plan-vent');}
   if(tab==='adjacency')drawAdjacency();
+  if(tab==='kitchen' && DATA) renderKitchen(DATA);
   if(tab==='daylight')drawDaylightFull();
 }
 
@@ -1745,122 +1751,222 @@ async function lookupAddress(){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Diagnostics
-// ═══════════════════════════════════════════════════════════════════════════════
 // Kitchen analysis
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderKitchen(data){
-  const k = data.kitchen || {};
-  const el = document.getElementById('kitchenContent');
+  const k   = data.kitchen  || {};
+  const fix = data.fixtures || [];
+  const el  = document.getElementById('kitchenContent');
+  const wrap = document.getElementById('kitchenCanvasWrap');
   if(!el) return;
 
   if(!k.found){
+    if(wrap) wrap.style.display='none';
     el.innerHTML = `
       <div style="font-size:11px;color:var(--dim);margin-bottom:1rem">
         No kitchen geometry found. Draw closed curves on
         <code style="background:var(--surf2);padding:.1rem .3rem;border-radius:3px">APT_KITCHEN_BENCH</code> and
         <code style="background:var(--surf2);padding:.1rem .3rem;border-radius:3px">APT_KITCHEN_APPLIANCE</code> layers.
       </div>
-      <div class="std-card" style="padding:1rem;background:var(--surf2);border-radius:4px;font-size:11px;color:var(--dim)">
-        <div style="font-weight:600;margin-bottom:.5rem;color:var(--tx)">What to draw</div>
-        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_BENCH</strong> — Closed polygon tracing the bench/island footprint</div>
-        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_APPLIANCE</strong> — Separate polygon for each appliance: fridge, oven/cooktop, dishwasher</div>
-        <div>Label appliances by naming the object in Rhino, or place them in sequence: first = fridge, second = cooktop, third = sink</div>
+      <div style="padding:1rem;background:var(--surf2);border-radius:4px;font-size:11px;color:var(--dim)">
+        <div style="font-weight:600;margin-bottom:.5rem;color:var(--tx)">How to draw</div>
+        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_BENCH</strong> — Closed polygon of the bench/island footprint</div>
+        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_APPLIANCE</strong> — One polygon per appliance</div>
+        <div>Draw 3 appliances in order of size: largest = fridge, middle = cooktop/oven, smallest = sink</div>
       </div>`;
     return;
   }
 
-  let h = '';
-
-  // Pass/fail summary strip
+  // ── Text summary ─────────────────────────────────────────────────────────
+  const APPL_NAMES = ['Fridge','Cooktop','Sink'];
   const checks = [
-    ['Bench Run',      k.bench_run],
-    ['Clearance',      k.clearance],
-    ['Work Triangle',  k.work_triangle],
-    ['Storage',        k.storage],
+    ['Bench Run',     k.bench_run],
+    ['Clearance',     k.clearance],
+    ['Work Triangle', k.work_triangle],
   ].filter(([,v])=>v);
 
-  if(checks.length){
-    h += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem">';
-    for(const [label, check] of checks){
-      const pass = check.pass !== false;
-      h += `<div style="padding:.25rem .6rem;border-radius:3px;font-size:10px;font-weight:600;background:${pass?'var(--passbg)':'var(--failbg)'};color:${pass?'var(--pass)':'var(--fail)'}">
-        ${pass?'✓':'✗'} ${label}</div>`;
-    }
-    h += '</div>';
+  let h = '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.85rem">';
+  for(const [label, check] of checks){
+    const pass = check?.pass !== false;
+    h+=`<div style="padding:.25rem .65rem;border-radius:3px;font-size:10px;font-weight:600;background:${pass?'var(--passbg)':'var(--failbg)'};color:${pass?'var(--pass)':'var(--fail)'}">
+      ${pass?'✓':'✗'} ${label}</div>`;
   }
+  h+='</div>';
 
-  // Bench run
+  if(k.work_triangle?.perimeter_m!=null){
+    const t=k.work_triangle, pass=t.pass!==false;
+    h+=`<div class="row-item ${pass?'':'fail'}" style="margin-bottom:.4rem">
+      <div class="ri-head"><span class="dot ${pass?'pass':'fail'}"></span><span>Work triangle</span>
+      <span class="ri-val">${t.perimeter_m?.toFixed(1)}m perimeter</span></div>
+      <div class="ri-body">
+        <div class="ri-row"><span>Fridge → Cooktop</span><span>${t.cooktop_to_fridge_m?.toFixed(2)}m</span></div>
+        <div class="ri-row"><span>Cooktop → Sink</span><span>${t.sink_to_cooktop_m?.toFixed(2)}m</span></div>
+        <div class="ri-row"><span>Sink → Fridge</span><span>${t.fridge_to_sink_m?.toFixed(2)}m</span></div>
+        <div class="ri-row"><span>Target</span><span>4.0 – 7.0m perimeter</span></div>
+        ${t.note?`<div class="ri-row fail-note">${esc(t.note)}</div>`:''}
+      </div></div>`;
+  }
   if(k.bench_run){
-    const b = k.bench_run;
-    const pass = b.pass !== false;
-    h += `<div class="row-item ${pass?'':'fail'}">
-      <div class="ri-head">
-        <span class="dot ${pass?'pass':'fail'}"></span>
-        <span>Bench run length</span>
-        <span class="ri-val">${b.total_length_m?.toFixed(1)||'?'}m</span>
-      </div>
+    const b=k.bench_run, pass=b.pass!==false;
+    h+=`<div class="row-item ${pass?'':'fail'}" style="margin-bottom:.4rem">
+      <div class="ri-head"><span class="dot ${pass?'pass':'fail'}"></span><span>Bench run</span>
+      <span class="ri-val">${b.longest_run_m?.toFixed(2)}m longest</span></div>
       <div class="ri-body">
-        ${b.segments?.length ? b.segments.map(s=>`<div class="ri-row"><span>Segment</span><span>${s.length_m?.toFixed(2)||'?'}m</span></div>`).join('') : ''}
-        <div class="ri-row"><span>Required (min)</span><span>1.5m continuous</span></div>
-        ${!pass?`<div class="ri-row fail-note">Bench run too short — minimum 1.5m continuous length</div>`:''}
-      </div>
-    </div>`;
+        <div class="ri-row"><span>Longest run</span><span>${b.longest_run_m?.toFixed(2)}m (need ≥1.5m)</span></div>
+        <div class="ri-row"><span>Total bench</span><span>~${b.total_length_m?.toFixed(1)}m</span></div>
+      </div></div>`;
   }
-
-  // Clearance
   if(k.clearance){
-    const c = k.clearance;
-    const pass = c.pass !== false;
-    h += `<div class="row-item ${pass?'':'fail'}">
-      <div class="ri-head">
-        <span class="dot ${pass?'pass':'fail'}"></span>
-        <span>Clearance width</span>
-        <span class="ri-val">${c.min_clearance_m?.toFixed(2)||'?'}m</span>
-      </div>
+    const c=k.clearance, pass=c.pass!==false;
+    h+=`<div class="row-item ${pass?'':'fail'}" style="margin-bottom:.4rem">
+      <div class="ri-head"><span class="dot ${pass?'pass':'fail'}"></span><span>Clearance</span>
+      <span class="ri-val">${c.min_clearance_m?.toFixed(2)}m</span></div>
       <div class="ri-body">
-        <div class="ri-row"><span>Measured</span><span>${c.min_clearance_m?.toFixed(2)||'?'}m</span></div>
-        <div class="ri-row"><span>Required</span><span>${c.required_m||1.0}m (${c.context||'single access'})</span></div>
-        ${!pass?`<div class="ri-row fail-note">Insufficient clearance — need ${c.required_m||1.0}m minimum</div>`:''}
-      </div>
+        <div class="ri-row"><span>Measured</span><span>${c.min_clearance_m?.toFixed(2)}m</span></div>
+        <div class="ri-row"><span>Required</span><span>${c.required_m||1.0}m minimum</span></div>
+      </div></div>`;
+  }
+  if(k.natural_light!==undefined){
+    const pass=k.natural_light;
+    h+=`<div class="row-item ${pass?'':'fail'}">
+      <div class="ri-head"><span class="dot ${pass?'pass':'fail'}"></span>
+      <span>Natural light</span><span class="ri-val">${pass?'Window nearby':'No window nearby'}</span></div>
     </div>`;
   }
 
-  // Work triangle
-  if(k.work_triangle){
-    const t = k.work_triangle;
-    const pass = t.pass !== false;
-    h += `<div class="row-item ${pass?'':'fail'}">
-      <div class="ri-head">
-        <span class="dot ${pass?'pass':'fail'}"></span>
-        <span>Work triangle</span>
-        <span class="ri-val">${t.perimeter_m?.toFixed(1)||'?'}m perimeter</span>
-      </div>
-      <div class="ri-body">
-        <div class="ri-row"><span>Sink ↔ Cooktop</span><span>${t.sink_to_cooktop_m?.toFixed(2)||'?'}m</span></div>
-        <div class="ri-row"><span>Cooktop ↔ Fridge</span><span>${t.cooktop_to_fridge_m?.toFixed(2)||'?'}m</span></div>
-        <div class="ri-row"><span>Fridge ↔ Sink</span><span>${t.fridge_to_sink_m?.toFixed(2)||'?'}m</span></div>
-        <div class="ri-row"><span>Perimeter</span><span>${t.perimeter_m?.toFixed(1)||'?'}m (target 4–7m)</span></div>
-        ${!pass?`<div class="ri-row fail-note">${t.note||'Work triangle outside recommended range'}</div>`:''}
-      </div>
-    </div>`;
-  }
-
-  // Natural light
-  if(k.natural_light !== undefined){
-    const pass = k.natural_light;
-    h += `<div class="row-item ${pass?'':'fail'}">
-      <div class="ri-head">
-        <span class="dot ${pass?'pass':'fail'}"></span>
-        <span>Natural light / ventilation to kitchen</span>
-        <span class="ri-val">${pass?'Adjacent window':'No adjacent window'}</span>
-      </div>
-    </div>`;
-  }
-
-  if(!h) h = '<div style="font-size:11px;color:var(--dim)">Kitchen geometry found but no checks could be run. Check layer names.</div>';
   el.innerHTML = h;
+
+  // ── Canvas plan ──────────────────────────────────────────────────────────
+  const benches  = fix.filter(f=>f.layer==='APT_KITCHEN_BENCH');
+  const appls    = fix.filter(f=>f.layer==='APT_KITCHEN_APPLIANCE');
+  if(!wrap) return;
+
+  if(!benches.length && !appls.length){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+
+  const cv = document.getElementById('kitchenCanvas');
+  if(!cv) return;
+  const W = cv.offsetWidth||560; cv.width=W; const H=cv.height;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle='#f5f4f2'; ctx.fillRect(0,0,W,H);
+
+  // Compute bounding box from all kitchen geometry
+  const allPts = [...benches,...appls].flatMap(f=>f.vertices||[]);
+  if(!allPts.length){ wrap.style.display='none'; return; }
+  const pad=40;
+  let mnx=Infinity,mny=Infinity,mxx=-Infinity,mxy=-Infinity;
+  for(const[x,y]of allPts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
+  const sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
+  const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2;
+  const oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
+  const tx=x=>ox+(x-mnx)*sc;
+  const ty=y=>H-(oy+(y-mny)*sc);
+
+  function drawPoly(pts, fill, stroke, lw=1, dash=[]){
+    if(!pts||pts.length<3) return;
+    ctx.beginPath();
+    ctx.moveTo(tx(pts[0][0]),ty(pts[0][1]));
+    for(let i=1;i<pts.length;i++) ctx.lineTo(tx(pts[i][0]),ty(pts[i][1]));
+    ctx.closePath();
+    ctx.setLineDash(dash);
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.stroke();}
+    ctx.setLineDash([]);
+  }
+
+  function polyCenter(pts){
+    if(!pts||!pts.length) return [0,0];
+    return [pts.reduce((a,p)=>a+p[0],0)/pts.length, pts.reduce((a,p)=>a+p[1],0)/pts.length];
+  }
+
+  function dimLine(x1,y1,x2,y2,label,color='#2563eb'){
+    ctx.save();
+    ctx.strokeStyle=color; ctx.lineWidth=1; ctx.setLineDash([3,2]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Ticks
+    const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
+    if(len<1) return;
+    const nx=-dy/len*4,ny=dx/len*4;
+    ctx.beginPath();ctx.moveTo(x1-nx,y1-ny);ctx.lineTo(x1+nx,y1+ny);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x2-nx,y2-ny);ctx.lineTo(x2+nx,y2+ny);ctx.stroke();
+    // Label
+    ctx.fillStyle=color; ctx.font='bold 9px Inter,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    const mx=(x1+x2)/2+nx*2,my=(y1+y2)/2+ny*2;
+    ctx.fillText(label,mx,my);
+    ctx.restore();
+  }
+
+  // Draw bench polygons
+  for(const b of benches){
+    drawPoly(b.vertices,'rgba(251,146,60,.25)','#f97316',1.5);
+  }
+
+  // Draw appliance polygons with labels
+  const applSorted = [...appls].sort((a,b)=>{
+    const area=p=>p.vertices?.reduce((s,_,i,arr)=>{const j=(i+1)%arr.length;return s+arr[i][0]*arr[j][1]-arr[j][0]*arr[i][1];},0)/2||0;
+    return Math.abs(area(b))-Math.abs(area(a));
+  });
+
+  const applColors = ['#3b82f6','#f59e0b','#6366f1'];
+  const applCentroids = [];
+  applSorted.forEach((a,i)=>{
+    const col=applColors[i]||'#a8a49e';
+    drawPoly(a.vertices, col+'33', col, 2);
+    const [cx,cy]=polyCenter(a.vertices);
+    applCentroids.push({x:tx(cx),y:ty(cy),name:APPL_NAMES[i]||`Appl ${i+1}`,col});
+    // Label inside
+    ctx.fillStyle=col; ctx.font='bold 9px Inter,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(APPL_NAMES[i]||`A${i+1}`,tx(cx),ty(cy));
+  });
+
+  // Draw work triangle
+  if(applCentroids.length>=3){
+    const [f,c,s]=applCentroids;
+    ctx.save();
+    ctx.strokeStyle='rgba(232,93,37,.7)'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    ctx.moveTo(f.x,f.y); ctx.lineTo(c.x,c.y); ctx.lineTo(s.x,s.y); ctx.closePath();
+    ctx.stroke();
+    // Fill triangle lightly
+    ctx.fillStyle='rgba(232,93,37,.06)'; ctx.fill();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // Dimension each leg
+    if(k.work_triangle){
+      const t=k.work_triangle;
+      dimLine(f.x,f.y,c.x,c.y,`${t.cooktop_to_fridge_m?.toFixed(2)}m`,'rgba(232,93,37,.85)');
+      dimLine(c.x,c.y,s.x,s.y,`${t.sink_to_cooktop_m?.toFixed(2)}m`,'rgba(232,93,37,.85)');
+      dimLine(s.x,s.y,f.x,f.y,`${t.fridge_to_sink_m?.toFixed(2)}m`,'rgba(232,93,37,.85)');
+    }
+  } else if(applCentroids.length===2){
+    const [a,b]=applCentroids;
+    ctx.strokeStyle='rgba(232,93,37,.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Appliance legend dots
+  applCentroids.forEach((a,i)=>{
+    const lx=12, ly=12+i*16;
+    ctx.beginPath();ctx.arc(lx,ly,5,0,2*Math.PI);ctx.fillStyle=a.col;ctx.fill();
+    ctx.fillStyle='rgba(26,25,22,.7)';ctx.font='9px Inter,sans-serif';
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    ctx.fillText(a.name,lx+9,ly);
+  });
+
+  // Work triangle legend
+  const legY=H-10;
+  ctx.strokeStyle='rgba(232,93,37,.7)';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(12,legY);ctx.lineTo(32,legY);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='rgba(107,104,96,.7)';ctx.font='9px Inter,sans-serif';
+  ctx.textAlign='left';ctx.textBaseline='middle';
+  ctx.fillText('Work triangle',36,legY);
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderDiagnostics(data){
