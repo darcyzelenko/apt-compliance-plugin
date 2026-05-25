@@ -337,7 +337,7 @@ def parse_dxf(text: str):
             for lp in layers['APT_ROOM_LAUNDRY']:
                 lc = poly_centroid(lp)
                 for wp in layers[wet]:
-                    if point_in_polygon(lc[0],lc[1],wp):
+                    if pt_in_poly(lc[0],lc[1],wp):
                         # Laundry is inside this wet room — merge areas
                         # Just flag it; the engine handles them separately anyway
                         layers.setdefault('APT_ROOM_LAUNDRY_IN_'+wet.replace('APT_ROOM_',''),[]).append(lp)
@@ -1213,7 +1213,7 @@ def build_adjacency(layers, windows=None, doors=None):
             if 'APT_FURNITURE' in layers:
                 for fpoly in layers['APT_FURNITURE']:
                     fc = poly_centroid(fpoly)
-                    if point_in_polygon(fc[0], fc[1], poly):
+                    if pt_in_poly(fc[0], fc[1], poly):
                         room_furniture.append({'area_sqm': round(poly_area(fpoly), 2)})
 
             # Kitchen fixtures within room (if living/kitchen zone)
@@ -1222,7 +1222,7 @@ def build_adjacency(layers, windows=None, doors=None):
                 if flk not in layers: continue
                 for fpoly in layers[flk]:
                     fc = poly_centroid(fpoly)
-                    if point_in_polygon(fc[0], fc[1], poly):
+                    if pt_in_poly(fc[0], fc[1], poly):
                         room_fixtures.append({
                             'layer': flk,
                             'area_sqm': round(poly_area(fpoly), 2),
@@ -1586,7 +1586,7 @@ def compute_diagnostics(layers, windows, doors, north, ceiling_h, bedroom_count)
         for lp in layers['APT_ROOM_LAUNDRY']:
             lc=poly_centroid(lp)
             for wp in layers[wet]:
-                if point_in_polygon(lc[0],lc[1],wp):
+                if pt_in_poly(lc[0],lc[1],wp):
                     wet_label='Bathroom' if wet=='APT_ROOM_BATHROOM' else 'Ensuite'
                     diag.append({'id':'laundry_in_wet','severity':'info',
                         'title':f'Laundry drawn inside {wet_label}',
