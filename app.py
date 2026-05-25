@@ -444,12 +444,28 @@ def report(token):
 def api_test():
     """Quick health check -- returns engine version info."""
     try:
-        from compliance_engine import build_adjacency
-        import inspect
+        from compliance_engine import build_adjacency, run_compliance
+        import inspect, os
         sig = str(inspect.signature(build_adjacency))
-        return jsonify({'ok': True, 'build_adjacency_sig': sig, 'version': '2.0'})
+        # Try a minimal compliance run to catch import-time errors
+        test_dxf = '  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF'
+        try:
+            r = run_compliance(test_dxf)
+            run_ok = True
+            run_err = None
+        except Exception as re:
+            run_ok = False
+            run_err = str(re)
+        return jsonify({
+            'ok': True,
+            'build_adjacency_sig': sig,
+            'version': '2.0',
+            'run_compliance_ok': run_ok,
+            'run_compliance_error': run_err,
+        })
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)})
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'traceback': traceback.format_exc()})
 
 
 @app.route('/about')
