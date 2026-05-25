@@ -209,12 +209,26 @@ canvas{display:block;width:100%}
 #adjCanvas{cursor:grab;background:var(--bg)}
 #adjCanvas:active{cursor:grabbing}
 .circ-issues{display:flex;flex-direction:column;gap:.4rem;margin-bottom:.85rem}
-.circ-card{display:flex;align-items:flex-start;gap:.6rem;padding:.55rem .75rem;border-radius:var(--radius);border:1px solid}
+.circ-card{display:flex;align-items:flex-start;gap:.6rem;padding:.55rem .75rem;border-radius:var(--radius);border:1px solid;margin-bottom:.35rem}
 .circ-card.error{background:var(--fbg);border-color:var(--fbd)}
 .circ-card.warning{background:var(--wbg);border-color:var(--wbd)}
 .circ-card.ok{background:var(--pbg);border-color:var(--pbd)}
+.circ-card.info{background:var(--surf2);border-color:var(--rule)}
 .circ-sev{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;flex-shrink:0;margin-top:.15rem}
-.circ-sev.error{color:var(--fail)}.circ-sev.warning{color:var(--warn)}.circ-sev.ok{color:var(--pass)}
+.circ-sev.error{color:var(--fail)}.circ-sev.warning{color:var(--warn)}.circ-sev.ok{color:var(--pass)}.circ-sev.info{color:var(--dim)}
+/* Room detail cards */
+.room-card{background:#fff;border:1px solid var(--rule);border-radius:var(--radius);margin-bottom:.5rem;overflow:hidden}
+.rc-header{display:flex;align-items:center;gap:.5rem;padding:.55rem .75rem;background:var(--surf2);flex-wrap:wrap}
+.rc-name{font-weight:600;font-size:11px;color:var(--tx)}
+.rc-area{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.rc-dims{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.rc-badge{font-size:9px;font-weight:600;padding:.1rem .4rem;border-radius:2px;margin-left:auto}
+.rc-badge.warn{background:var(--wbg);color:var(--warn);border:1px solid var(--wbd)}
+.rc-body{padding:.5rem .75rem;display:flex;flex-direction:column;gap:.2rem}
+.rc-row{display:flex;gap:.5rem;font-size:11px;align-items:baseline;flex-wrap:wrap}
+.rc-label{font-weight:600;color:var(--dim);min-width:72px;flex-shrink:0;font-size:10px}
+.rc-missing .rc-label{color:var(--rule)}
+.rc-missing span:last-child{color:var(--rule);font-style:italic}
 
 /* ── Daylight ── */
 .dl-scalebar{display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:10px;color:var(--mut)}
@@ -508,9 +522,17 @@ canvas{display:block;width:100%}
     <div class="panel" id="panel-adjacency">
       <div class="slabel" style="margin-bottom:.3rem">Room Adjacency &amp; Circulation</div>
       <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Edge weight = shared boundary (m) · <span style="color:var(--pass);font-weight:600">green</span> = ideal · <span style="color:var(--fail);font-weight:600">red dashed</span> = problematic</p>
+      <!-- Circulation issues / ok -->
       <div id="circIssues" style="margin-bottom:.75rem"></div>
-      <div class="canvaswrap"><canvas id="adjCanvas" height="480"></canvas></div>
+      <!-- Topology checks -->
+      <div id="topoChecks" style="margin-bottom:.75rem"></div>
+      <!-- Force graph -->
+      <div class="canvaswrap"><canvas id="adjCanvas" height="400"></canvas></div>
       <div id="adjMissing" style="margin-top:.6rem"></div>
+      <!-- Room detail cards -->
+      <div class="slabel" style="margin-top:1.25rem;margin-bottom:.5rem">Room Detail Cards</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Windows, doors, storage, and fixtures attached to each room.</p>
+      <div id="roomCards"></div>
     </div>
 
     <!-- ── Daylight panel ── -->
@@ -1474,28 +1496,63 @@ function dfColor(r){
 // Adjacency diagram
 // ═══════════════════════════════════════════════════════════════════════════════
 const NODE_COL={bedroom:'#6366f1',living:'#1a7a4a',wet:'#0ea5e9',circulation:'#94a3b8',outdoor:'#14b8a6',other:'#a8a49e'};
+const SEV_ICON={error:'⛔',warning:'⚠',info:'ℹ'};
+const SEV_COL={error:'var(--fail)',warning:'var(--warn)',info:'var(--dim)'};
 
 function drawAdjacency(){
   if(!DATA)return;
-  const adj=DATA.adjacency;
+  const adj=DATA.adjacency||{};
 
-  // Circulation issues
+  // ── Circulation issues ──────────────────────────────────────────────────
   const circEl=document.getElementById('circIssues');
-  if(circEl&&adj?.circ_issues){
+  if(circEl){
     let h='';
-    for(const ci of adj.circ_issues){
-      h+=`<div class="circ-card ${ci.severity}">
-        <div class="circ-sev ${ci.severity}">${ci.severity==='error'?'⛔':'⚠'} ${ci.severity}</div>
-        <div><div style="font-size:11px;font-weight:600;margin-bottom:.1rem">${esc(ci.title)}</div>
-        <div style="font-size:11px;color:var(--dim)">${esc(ci.detail)}</div></div>
-      </div>`;
+    const issues=adj.circ_issues||[];
+    const ok=adj.circ_ok||[];
+    if(issues.length){
+      for(const ci of issues){
+        h+=`<div class="circ-card ${ci.severity}">
+          <div class="circ-sev ${ci.severity}">${SEV_ICON[ci.severity]||'!'} ${ci.severity.toUpperCase()}</div>
+          <div><div style="font-size:11px;font-weight:600;margin-bottom:.1rem">${esc(ci.title)}</div>
+          <div style="font-size:11px;color:var(--dim)">${esc(ci.detail)}</div></div>
+        </div>`;
+      }
     }
-    if(adj.circ_issues.length===0){
-      h='<div class="circ-card ok"><div class="circ-sev ok">✓ OK</div><div style="font-size:11px">No circulation issues detected</div></div>';
+    if(ok.length){
+      for(const c of ok){
+        h+=`<div class="circ-card ok">
+          <div class="circ-sev ok">✓</div>
+          <div><div style="font-size:11px;font-weight:600;color:var(--pass)">${esc(c.check)}</div>
+          <div style="font-size:11px;color:var(--dim)">${esc(c.detail)}</div></div>
+        </div>`;
+      }
+    }
+    if(!issues.length && !ok.length){
+      h='<div class="circ-card ok"><div class="circ-sev ok">✓</div><div style="font-size:11px">No circulation issues detected</div></div>';
     }
     circEl.innerHTML=h;
   }
 
+  // ── Topology checks ─────────────────────────────────────────────────────
+  const topoEl=document.getElementById('topoChecks');
+  if(topoEl){
+    const topo=adj.topo_checks||[];
+    if(topo.length){
+      let h='<div class="slabel" style="margin-bottom:.4rem">Plan Topology</div>';
+      for(const t of topo){
+        h+=`<div class="circ-card ${t.severity}" style="margin-bottom:.3rem">
+          <div class="circ-sev ${t.severity}">${SEV_ICON[t.severity]||'ℹ'} ${t.severity.toUpperCase()}</div>
+          <div><div style="font-size:11px;font-weight:600;margin-bottom:.1rem">${esc(t.title)}</div>
+          <div style="font-size:11px;color:var(--dim)">${esc(t.detail)}</div></div>
+        </div>`;
+      }
+      topoEl.innerHTML=h;
+    } else {
+      topoEl.innerHTML='';
+    }
+  }
+
+  // ── Force graph ──────────────────────────────────────────────────────────
   const cv=document.getElementById('adjCanvas');if(!cv)return;
   if(!adj?.nodes?.length){
     const ctx=cv.getContext('2d');const W=cv.offsetWidth||720;cv.width=W;
@@ -1544,18 +1601,24 @@ function drawAdjacency(){
   const R=22;
   for(const n of nodes){
     const col=NODE_COL[n.type]||'#a8a49e';
-    // Shadow
     ctx.shadowColor='rgba(0,0,0,.1)';ctx.shadowBlur=6;
     ctx.beginPath();ctx.arc(n.x,n.y,R,0,2*Math.PI);
     ctx.fillStyle=col+'20';ctx.fill();ctx.shadowBlur=0;
     ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='rgba(26,25,22,.8)';ctx.font=`600 9px Inter,sans-serif`;
+    // Window indicator dot
+    if(n.has_window){
+      ctx.beginPath();ctx.arc(n.x+R-4,n.y-R+4,4,0,2*Math.PI);
+      ctx.fillStyle='#3b82f6';ctx.fill();
+    }
+    ctx.fillStyle='rgba(26,25,22,.8)';ctx.font='600 9px Inter,sans-serif';
     ctx.textAlign='center';ctx.textBaseline='middle';
     const words=n.label.split(' ');
     if(words.length===1)ctx.fillText(n.label,n.x,n.y);
     else{ctx.fillText(words[0],n.x,n.y-5.5);ctx.fillText(words.slice(1).join(' '),n.x,n.y+5.5);}
     if(n.area_sqm){ctx.fillStyle='rgba(107,104,96,.6)';ctx.font='8px JetBrains Mono,monospace';ctx.fillText(`${n.area_sqm}m²`,n.x,n.y+R+9);}
   }
+
+  // ── Missing ideal adjacencies ─────────────────────────────────────────────
   const mis=document.getElementById('adjMissing');
   if(mis){
     if(adj.ideal_missing?.length){
@@ -1563,6 +1626,40 @@ function drawAdjacency(){
     }else{
       mis.innerHTML=`<div style="font-size:11px;color:var(--pass);margin-top:.3rem">✓ All expected room adjacencies present</div>`;
     }
+  }
+
+  // ── Room detail cards ────────────────────────────────────────────────────
+  const cardsEl=document.getElementById('roomCards');
+  if(cardsEl&&adj.nodes?.length){
+    let h='';
+    for(const n of adj.nodes){
+      const col=NODE_COL[n.type]||'#a8a49e';
+      const wins=n.windows||[]; const drs=n.doors||[];
+      const stor=n.nearby_storage||[]; const fix=n.fixtures||[];
+      const furn=n.furniture||[];
+      // Adjacent rooms
+      const adjRooms=adj.edges?.filter(e=>e.a===n.id||e.b===n.id)
+        .map(e=>({label:e.a===n.id?e.b_label:e.a_label, shared:e.shared_m, ideal:e.is_ideal, bad:e.is_bad})) || [];
+
+      h+=`<div class="room-card" style="border-left:3px solid ${col}">
+        <div class="rc-header">
+          <span class="rc-name">${esc(n.label)}</span>
+          <span class="rc-area">${n.area_sqm}m²</span>
+          <span class="rc-dims">${n.width_m}w × ${n.depth_m}d m</span>
+          ${!n.aspect_ok?`<span class="rc-badge warn">Elongated ${n.aspect_ratio}:1</span>`:''}
+        </div>
+        <div class="rc-body">
+          ${wins.length?`<div class="rc-row"><span class="rc-label">Windows</span><span>${wins.map(w=>`${w.key} (${w.width_m}m)`).join(', ')}</span></div>`:'<div class="rc-row rc-missing"><span class="rc-label">Windows</span><span>None detected</span></div>'}
+          ${drs.length?`<div class="rc-row"><span class="rc-label">Doors</span><span>${drs.map(d=>`${d.key} door (${d.width_m}m)`).join(', ')}</span></div>`:''}
+          ${stor.length?`<div class="rc-row"><span class="rc-label">Storage</span><span>${stor.map(s=>`${s.label} (${s.area_sqm}m²)`).join(', ')}</span></div>`:''}
+          ${fix.length?`<div class="rc-row"><span class="rc-label">Fixtures</span><span>${fix.map(f=>f.label).join(', ')}</span></div>`:''}
+          ${furn.length?`<div class="rc-row"><span class="rc-label">Furniture</span><span>${furn.length} piece${furn.length!==1?'s':''}</span></div>`:''}
+          ${adjRooms.length?`<div class="rc-row"><span class="rc-label">Adjacent to</span><span>${adjRooms.map(r=>`<span style="color:${r.ideal?'var(--pass)':r.bad?'var(--fail)':'inherit'}">${esc(r.label)} (${r.shared}m)</span>`).join(', ')}</span></div>`:''}
+          ${n.total_glazing_m>0?`<div class="rc-row"><span class="rc-label">Total glazing</span><span>${n.total_glazing_m}m</span></div>`:''}
+        </div>
+      </div>`;
+    }
+    cardsEl.innerHTML=h;
   }
 }
 

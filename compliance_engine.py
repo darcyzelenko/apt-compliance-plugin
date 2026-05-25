@@ -544,10 +544,15 @@ IDEAL_ADJ = {
     frozenset(['APT_ROOM_LIVING','APT_POS']),
     frozenset(['APT_ROOM_LIVING','APT_ROOM_ENTRY']),
     frozenset(['APT_ROOM_MAINBED','APT_ROOM_ENSUITE']),
+    frozenset(['APT_ROOM_LIVING','APT_ROOM_BATHROOM']),
+    frozenset(['APT_ROOM_ENTRY','APT_ROOM_BATHROOM']),
 }
 BAD_ADJ = {
     frozenset(['APT_ROOM_MAINBED','APT_ROOM_LAUNDRY']),
     frozenset(['APT_ROOM_BED1','APT_ROOM_LAUNDRY']),
+    frozenset(['APT_ROOM_BED2','APT_ROOM_LAUNDRY']),
+    frozenset(['APT_POS','APT_ROOM_BATHROOM']),
+    frozenset(['APT_POS','APT_ROOM_LAUNDRY']),
 }
 ALL_ROOM_LAYERS=['APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2','APT_ROOM_BED3',
                  'APT_ROOM_BED4','APT_ROOM_LIVING','APT_ROOM_BATHROOM','APT_ROOM_ENSUITE',
@@ -558,8 +563,8 @@ ROOM_TYPE_MAP={'APT_ROOM_MAINBED':'bedroom','APT_ROOM_BED1':'bedroom','APT_ROOM_
                'APT_ROOM_BATHROOM':'wet','APT_ROOM_ENSUITE':'wet','APT_ROOM_LAUNDRY':'wet',
                'APT_ROOM_ENTRY':'circulation','APT_POS':'outdoor','APT_POS_GROUND':'outdoor',
                'APT_POS_PODIUM':'outdoor','APT_POS_ROOF':'outdoor'}
-DISPLAY_NAME={'APT_ROOM_MAINBED':'Main Bed','APT_ROOM_BED1':'Bed 1','APT_ROOM_BED2':'Bed 2',
-              'APT_ROOM_BED3':'Bed 3','APT_ROOM_BED4':'Bed 4','APT_ROOM_LIVING':'Living',
+DISPLAY_NAME={'APT_ROOM_MAINBED':'Main Bedroom','APT_ROOM_BED1':'Bedroom 1','APT_ROOM_BED2':'Bedroom 2',
+              'APT_ROOM_BED3':'Bedroom 3','APT_ROOM_BED4':'Bedroom 4','APT_ROOM_LIVING':'Living',
               'APT_ROOM_BATHROOM':'Bathroom','APT_ROOM_ENSUITE':'Ensuite',
               'APT_ROOM_LAUNDRY':'Laundry','APT_ROOM_ENTRY':'Entry',
               'APT_POS':'Balcony','APT_POS_GROUND':'Courtyard',
@@ -1147,49 +1152,136 @@ def check_noise(layers):
 
 
 # ── 13. Adjacency graph ────────────────────────────────────────────────────────
-def build_adjacency(layers):
-    nodes=[]
+def build_adjacency(layers, windows=None, doors=None):
+    """
+    Full topological analysis of apartment layout.
+    Returns nodes (rooms with detail cards), edges (adjacencies),
+    circulation checks, and fine-grain topology feedback.
+    """
+    windows = windows or {}
+    doors   = doors   or {}
+
+    # ── Build nodes with rich detail cards ──────────────────────────────────
+    nodes = []
     for ln in ALL_ROOM_LAYERS:
         if ln not in layers: continue
-        for idx,poly in enumerate(layers[ln]):
-            if len(poly)<3: continue
-            nid=f'{ln}_{idx}'
-            suffix=f' #{idx+1}' if len(layers[ln])>1 else ''
-            nodes.append({'id':nid,'label':DISPLAY_NAME.get(ln,ln)+suffix,
-                          'layer':ln,'type':ROOM_TYPE_MAP.get(ln,'other'),
-                          'area_sqm':round(poly_area(poly),2),
-                          'centroid':list(poly_centroid(poly)),
-                          'privacy':PRIVACY.get(ROOM_TYPE_MAP.get(ln,'other'),0),
-                          'vertices':poly})
+        for idx, poly in enumerate(layers[ln]):
+            if len(poly) < 3: continue
+            nid    = f'{ln}_{idx}'
+            suffix = f' #{idx+1}' if len(layers[ln]) > 1 else ''
+            label  = DISPLAY_NAME.get(ln, ln) + suffix
+            rtype  = ROOM_TYPE_MAP.get(ln, 'other')
+            cent   = list(poly_centroid(poly))
+            area   = round(poly_area(poly), 2)
+            w, h   = min_bounding_rect(poly)
+            width  = round(min(w, h), 2)
+            depth  = round(max(w, h), 2)
 
-    edges=[]; existing_pairs=set()
+            # Windows attached to this room
+            rk = ln.replace('APT_ROOM_', '')
+            room_windows = []
+            for wk, wsegs in windows.items():
+                if wk == rk or wk == ln:
+                    for seg in wsegs:
+                        wlen = round(seg_len(seg[0], seg[1]), 2)
+                        room_windows.append({'key': wk, 'width_m': wlen})
+
+            # Doors attached to this room
+            room_doors = []
+            for dk, dsegs in doors.items():
+                # Match door key to room (e.g. MAINBED door -> MAINBED room)
+                dk_upper = dk.upper()
+                if dk_upper == rk or dk_upper in ln:
+                    for d in dsegs:
+                        room_doors.append({'key': dk, 'width_m': round(d['width'], 2)})
+
+            # Storage within 2m of room centroid
+            nearby_storage = []
+            for slk in ['APT_STORAGE_DESIGNATED', 'APT_STORAGE_SERVICE']:
+                if slk not in layers: continue
+                for spoly in layers[slk]:
+                    sc2 = poly_centroid(spoly)
+                    if seg_len(cent, list(sc2)) < 2.0:
+                        nearby_storage.append({
+                            'layer': slk,
+                            'area_sqm': round(poly_area(spoly), 2),
+                            'label': 'Wardrobe/storage' if slk == 'APT_STORAGE_DESIGNATED' else 'Service storage'
+                        })
+
+            # Furniture within room
+            room_furniture = []
+            if 'APT_FURNITURE' in layers:
+                for fpoly in layers['APT_FURNITURE']:
+                    fc = poly_centroid(fpoly)
+                    if point_in_polygon(fc[0], fc[1], poly):
+                        room_furniture.append({'area_sqm': round(poly_area(fpoly), 2)})
+
+            # Kitchen fixtures within room (if living/kitchen zone)
+            room_fixtures = []
+            for flk in ['APT_KITCHEN_BENCH', 'APT_KITCHEN_APPLIANCE', 'APT_BATHROOM_FIXTURE']:
+                if flk not in layers: continue
+                for fpoly in layers[flk]:
+                    fc = poly_centroid(fpoly)
+                    if point_in_polygon(fc[0], fc[1], poly):
+                        room_fixtures.append({
+                            'layer': flk,
+                            'area_sqm': round(poly_area(fpoly), 2),
+                            'label': flk.replace('APT_', '').replace('_', ' ').title()
+                        })
+
+            # Aspect ratio check
+            aspect_ratio = round(depth / width, 2) if width > 0 else None
+            aspect_ok = aspect_ratio is None or aspect_ratio <= 2.5
+
+            nodes.append({
+                'id': nid, 'label': label, 'layer': ln,
+                'type': rtype,
+                'area_sqm': area,
+                'width_m': width, 'depth_m': depth,
+                'aspect_ratio': aspect_ratio, 'aspect_ok': aspect_ok,
+                'centroid': cent,
+                'privacy': PRIVACY.get(rtype, 0),
+                'vertices': poly,
+                'windows': room_windows,
+                'doors': room_doors,
+                'nearby_storage': nearby_storage,
+                'furniture': room_furniture,
+                'fixtures': room_fixtures,
+                'has_window': len(room_windows) > 0,
+                'total_glazing_m': round(sum(w['width_m'] for w in room_windows), 2),
+            })
+
+    # ── Build edges ──────────────────────────────────────────────────────────
+    edges = []; existing_pairs = set()
     for i in range(len(nodes)):
-        for j in range(i+1,len(nodes)):
-            a,b=nodes[i],nodes[j]
-            sb=shared_boundary(a['vertices'],b['vertices'])
-            if sb>0.1:
-                pair=frozenset([a['layer'],b['layer']])
+        for j in range(i+1, len(nodes)):
+            a, b = nodes[i], nodes[j]
+            sb = shared_boundary(a['vertices'], b['vertices'])
+            if sb > 0.1:
+                pair = frozenset([a['layer'], b['layer']])
                 existing_pairs.add(pair)
-                edges.append({'a':a['id'],'b':b['id'],
-                              'a_label':a['label'],'b_label':b['label'],
-                              'a_layer':a['layer'],'b_layer':b['layer'],
-                              'shared_m':round(sb,2),
-                              'is_ideal':pair in IDEAL_ADJ,
-                              'is_bad':pair in BAD_ADJ,
-                              'privacy_jump':abs(a['privacy']-b['privacy']),
-                              'a_centroid':a['centroid'],'b_centroid':b['centroid']})
+                priv_jump = abs(a['privacy'] - b['privacy'])
+                edges.append({
+                    'a': a['id'], 'b': b['id'],
+                    'a_label': a['label'], 'b_label': b['label'],
+                    'a_layer': a['layer'], 'b_layer': b['layer'],
+                    'shared_m': round(sb, 2),
+                    'is_ideal': pair in IDEAL_ADJ,
+                    'is_bad':   pair in BAD_ADJ,
+                    'privacy_jump': priv_jump,
+                    'a_centroid': a['centroid'], 'b_centroid': b['centroid'],
+                })
 
-    present=set(layers.keys())
-    ideal_missing=[{'a':DISPLAY_NAME.get(list(p)[0],list(p)[0]),
-                    'b':DISPLAY_NAME.get(list(p)[1],list(p)[1])}
-                   for p in IDEAL_ADJ
-                   if list(p)[0] in present and list(p)[1] in present and p not in existing_pairs]
+    # ── Missing ideal adjacencies ────────────────────────────────────────────
+    present = set(layers.keys())
+    ideal_missing = [
+        {'a': DISPLAY_NAME.get(list(p)[0], list(p)[0]),
+         'b': DISPLAY_NAME.get(list(p)[1], list(p)[1])}
+        for p in IDEAL_ADJ
+        if list(p)[0] in present and list(p)[1] in present and p not in existing_pairs
+    ]
 
-    # ── Circulation path checks ──────────────────────────────────────────
-    circ_issues = []
-    circ_ok = []
-
-    # Helper: is layer A adjacent to layer B?
+    # ── Adjacency helper ─────────────────────────────────────────────────────
     def adjacent(la, lb):
         return any(
             (e['a_layer']==la and e['b_layer']==lb) or
@@ -1197,61 +1289,173 @@ def build_adjacency(layers):
             for e in edges
         )
 
-    # 1. Entry should be adjacent to living area
+    def get_edge(la, lb):
+        for e in edges:
+            if (e['a_layer']==la and e['b_layer']==lb) or (e['a_layer']==lb and e['b_layer']==la):
+                return e
+        return None
+
+    def neighbors(layer):
+        return [
+            e['b_layer'] if e['a_layer']==layer else e['a_layer']
+            for e in edges
+            if e['a_layer']==layer or e['b_layer']==layer
+        ]
+
+    def reachable_from(start, avoid=None):
+        """BFS from start layer, optionally avoiding a set of layers."""
+        avoid = avoid or set()
+        visited = set(); queue = [start]
+        while queue:
+            cur = queue.pop(0)
+            if cur in visited: continue
+            visited.add(cur)
+            for nb in neighbors(cur):
+                if nb not in avoid and nb not in visited:
+                    queue.append(nb)
+        return visited
+
+    # ── Circulation and topology checks ──────────────────────────────────────
+    circ_issues = []
+    circ_ok     = []
+    topo_checks = []   # fine-grain topology feedback
+
+    # 1. Entry → Living adjacency
     if 'APT_ROOM_ENTRY' in present and 'APT_ROOM_LIVING' in present:
-        if adjacent('APT_ROOM_ENTRY','APT_ROOM_LIVING'):
-            circ_ok.append('Entry is adjacent to living area')
+        if adjacent('APT_ROOM_ENTRY', 'APT_ROOM_LIVING'):
+            circ_ok.append({'check': 'Entry → Living', 'detail': 'Entry connects directly to living area'})
         else:
-            circ_issues.append({'severity':'error','title':'Entry not adjacent to living area',
-                'detail':'The entry should connect directly to the living area. To reach living you currently pass through other rooms.'})
+            circ_issues.append({'severity':'error',
+                'title': 'Entry not adjacent to living area',
+                'detail': 'The entry should open directly into the living area. Currently entry and living share no boundary — check polygon edges align.'})
 
-    # 2. Bedroom should not require walking through bathroom
-    for bed in ['APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2','APT_ROOM_BED3']:
-        if bed not in present: continue
-        for bath in ['APT_ROOM_BATHROOM','APT_ROOM_ENSUITE']:
-            if bath not in present: continue
-            # Bad if: bathroom is adjacent to living AND bedroom is only adjacent to bathroom (not living)
-            bath_adj_living  = adjacent(bath,'APT_ROOM_LIVING')
-            bed_adj_bath     = adjacent(bed, bath)
-            bed_adj_living   = adjacent(bed,'APT_ROOM_LIVING')
-            bed_adj_entry    = adjacent(bed,'APT_ROOM_ENTRY')
-            bed_label = DISPLAY_NAME.get(bed, bed)
-            bath_label = DISPLAY_NAME.get(bath, bath)
-            if bed_adj_bath and bath_adj_living and not bed_adj_living and not bed_adj_entry:
-                circ_issues.append({'severity':'error',
-                    'title':f'{bed_label} only reachable via {bath_label}',
-                    'detail':f'To reach {bed_label} you must pass through {bath_label}. Redraw the plan so the bedroom connects to entry or living directly.'})
+    # 2. Each bedroom reachable from entry without passing through bathroom
+    bed_layers = [l for l in present if l.startswith('APT_ROOM_BED') or l=='APT_ROOM_MAINBED']
+    wet_layers = {'APT_ROOM_BATHROOM','APT_ROOM_ENSUITE'}
+    for bed in bed_layers:
+        bed_label = DISPLAY_NAME.get(bed, bed)
+        # Can we reach bedroom from entry WITHOUT going through wet rooms?
+        reachable_no_wet = reachable_from('APT_ROOM_ENTRY', avoid=wet_layers) if 'APT_ROOM_ENTRY' in present else set()
+        reachable_from_living = reachable_from('APT_ROOM_LIVING', avoid=wet_layers) if 'APT_ROOM_LIVING' in present else set()
+        if bed in reachable_no_wet or bed in reachable_from_living:
+            circ_ok.append({'check': f'{bed_label} accessible', 'detail': f'{bed_label} reachable without passing through bathroom'})
+        else:
+            circ_issues.append({'severity':'error',
+                'title': f'{bed_label} only accessible via bathroom',
+                'detail': f'The path from entry to {bed_label} requires passing through a bathroom or ensuite. Rearrange so the bedroom opens to a corridor, entry, or living area.'})
 
-    # 3. Wet rooms (bathroom, laundry) should not be between living and bedroom
-    for wet in ['APT_ROOM_BATHROOM','APT_ROOM_LAUNDRY']:
-        if wet not in present: continue
-        wet_adj_living = adjacent(wet,'APT_ROOM_LIVING')
-        for bed in ['APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2']:
-            if bed not in present: continue
-            wet_adj_bed = adjacent(wet,bed)
-            if wet_adj_living and wet_adj_bed:
-                wet_label = DISPLAY_NAME.get(wet,wet)
-                bed_label = DISPLAY_NAME.get(bed,bed)
-                circ_issues.append({'severity':'warning',
-                    'title':f'{wet_label} between living and {bed_label}',
-                    'detail':f'{wet_label} sits between the living area and {bed_label}. This creates a poor privacy gradient and awkward circulation.'})
+    # 3. Main bedroom → ensuite direct connection
+    if 'APT_ROOM_MAINBED' in present and 'APT_ROOM_ENSUITE' in present:
+        if adjacent('APT_ROOM_MAINBED', 'APT_ROOM_ENSUITE'):
+            e = get_edge('APT_ROOM_MAINBED','APT_ROOM_ENSUITE')
+            circ_ok.append({'check': 'Main Bedroom → Ensuite', 'detail': f'Direct connection, {e["shared_m"]}m shared boundary'})
+        else:
+            topo_checks.append({'severity':'info',
+                'title': 'Main bedroom and ensuite not directly connected',
+                'detail': 'Best practice is a direct connection between main bedroom and ensuite. Currently they share no boundary.'})
 
-    # 4. Disconnected rooms (rooms with no edges at all = plan error)
+    # 4. Bathroom accessible from living/entry (for guests)
+    if 'APT_ROOM_BATHROOM' in present:
+        bath_accessible = (
+            adjacent('APT_ROOM_BATHROOM','APT_ROOM_LIVING') or
+            adjacent('APT_ROOM_BATHROOM','APT_ROOM_ENTRY')
+        )
+        if bath_accessible:
+            circ_ok.append({'check': 'Bathroom guest access', 'detail': 'Bathroom accessible from living area or entry'})
+        else:
+            topo_checks.append({'severity':'warning',
+                'title': 'Bathroom not accessible from living/entry',
+                'detail': 'Guests should be able to reach the bathroom without passing through a bedroom. Consider connecting bathroom to the entry or living area.'})
+
+    # 5. Living → balcony direct connection
+    pos_layers = [l for l in present if l.startswith('APT_POS')]
+    if pos_layers and 'APT_ROOM_LIVING' in present:
+        living_to_pos = any(adjacent('APT_ROOM_LIVING', pl) for pl in pos_layers)
+        if living_to_pos:
+            circ_ok.append({'check': 'Living → Balcony', 'detail': 'Living area connects directly to outdoor space'})
+        else:
+            topo_checks.append({'severity':'warning',
+                'title': 'Balcony not connected to living area',
+                'detail': 'The balcony/POS should open directly from the living area. Currently no shared boundary detected.'})
+
+    # 6. Disconnected rooms
     connected_ids = set()
     for e in edges:
         connected_ids.add(e['a']); connected_ids.add(e['b'])
-    disconnected = [n for n in nodes if n['id'] not in connected_ids and n['layer'].startswith('APT_ROOM_')]
-    for n in disconnected:
-        circ_issues.append({'severity':'error',
-            'title':f'{n["label"]} is disconnected',
-            'detail':f'{n["label"]} has no shared boundary with any other room. Check that polygons share edges correctly in the DXF. The plan may need to be redrawn.'})
+    for n in nodes:
+        if n['id'] not in connected_ids and n['layer'].startswith('APT_ROOM_'):
+            circ_issues.append({'severity':'error',
+                'title': f'{n["label"]} is disconnected',
+                'detail': f'{n["label"]} shares no boundary with any other room. Check that polygon edges meet correctly — no gaps or overlaps at room junctions.'})
 
-    return {'nodes':nodes,'edges':edges,
-            'ideal_missing':ideal_missing,
-            'bad_present':[e for e in edges if e['is_bad']],
-            'circ_issues':circ_issues,
-            'circ_ok':circ_ok,
-            'has_circ_errors':any(i['severity']=='error' for i in circ_issues)}
+    # 7. Privacy gradient checks
+    for e in edges:
+        if e['privacy_jump'] >= 3 and not e['is_bad']:
+            # High privacy jump without being flagged as bad adjacency
+            topo_checks.append({'severity':'info',
+                'title': f'Privacy jump: {e["a_label"]} ↔ {e["b_label"]}',
+                'detail': f'These spaces have a large privacy difference ({e["privacy_jump"]} levels) and share {e["shared_m"]}m of boundary. Consider whether this adjacency is intentional.'})
+
+    # 8. Room aspect ratio
+    for n in nodes:
+        if not n['aspect_ok'] and n['type'] in ('bedroom','living'):
+            topo_checks.append({'severity':'info',
+                'title': f'{n["label"]} is very elongated',
+                'detail': f'Aspect ratio {n["aspect_ratio"]}:1 (depth {n["depth_m"]}m vs width {n["width_m"]}m). Rooms with aspect ratio over 2.5 are difficult to furnish and may have poor daylight distribution.'})
+
+    # 9. Bedroom count vs bathroom count
+    bed_count  = len(bed_layers)
+    bath_count = len([l for l in present if l in ('APT_ROOM_BATHROOM','APT_ROOM_ENSUITE')])
+    if bed_count > 0 and bath_count == 0:
+        topo_checks.append({'severity':'warning',
+            'title': 'No bathroom or ensuite drawn',
+            'detail': 'No APT_ROOM_BATHROOM or APT_ROOM_ENSUITE polygon found. Add wet room polygons for accurate adjacency and circulation analysis.'})
+    elif bed_count >= 3 and bath_count < 2:
+        topo_checks.append({'severity':'info',
+            'title': f'{bed_count} bedrooms with only {bath_count} bathroom',
+            'detail': f'3+ bedroom apartments typically benefit from 2 bathrooms. Consider whether a second bathroom is feasible.'})
+
+    # 10. Entry presence
+    if 'APT_ROOM_ENTRY' not in present:
+        topo_checks.append({'severity':'info',
+            'title': 'No entry drawn',
+            'detail': 'No APT_ROOM_ENTRY polygon found. Draw the entry/vestibule area for accurate circulation analysis. Without it, entry→living and entry→bedroom path checks cannot run.'})
+
+    # 11. Laundry placement
+    if 'APT_ROOM_LAUNDRY' in present:
+        laundry_nbs = neighbors('APT_ROOM_LAUNDRY')
+        ideal_laundry = {'APT_ROOM_BATHROOM','APT_ROOM_ENSUITE','APT_ROOM_ENTRY'}
+        bad_laundry = {'APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2','APT_ROOM_LIVING'}
+        if any(nb in ideal_laundry for nb in laundry_nbs):
+            circ_ok.append({'check': 'Laundry placement', 'detail': 'Laundry is adjacent to bathroom or entry — good service zone grouping'})
+        if any(nb in bad_laundry for nb in laundry_nbs):
+            bad_nb = next(nb for nb in laundry_nbs if nb in bad_laundry)
+            topo_checks.append({'severity':'warning',
+                'title': f'Laundry adjacent to {DISPLAY_NAME.get(bad_nb, bad_nb)}',
+                'detail': 'Laundry should be grouped with bathrooms or near entry, not adjacent to main living areas or bedrooms. Noise and odour transfer is a liveability issue.'})
+
+    # 12. Storage distribution
+    storage_area = sum(poly_area(p) for p in layers.get('APT_STORAGE_DESIGNATED',[]))
+    bed_area     = sum(poly_area(p) for ln in bed_layers for p in layers.get(ln,[]))
+    if bed_area > 0 and storage_area > 0:
+        storage_per_bed = storage_area / max(len(bed_layers), 1)
+        if storage_per_bed < 1.0:
+            topo_checks.append({'severity':'info',
+                'title': 'Storage distribution may be uneven',
+                'detail': f'Average {round(storage_per_bed,1)}m² of designated storage per bedroom. Ensure each bedroom has direct wardrobe access.'})
+
+    all_checks = circ_issues + topo_checks
+    return {
+        'nodes':         nodes,
+        'edges':         edges,
+        'ideal_missing': ideal_missing,
+        'bad_present':   [e for e in edges if e['is_bad']],
+        'circ_issues':   circ_issues,
+        'circ_ok':       circ_ok,
+        'topo_checks':   topo_checks,
+        'all_checks':    all_checks,
+        'has_circ_errors': any(i['severity']=='error' for i in circ_issues),
+    }
 
 
 # ── 14b. Kitchen analysis ───────────────────────────────────────────────────────
@@ -1635,7 +1839,7 @@ def run_compliance(dxf_text: str, ceiling_h: float = 2.7, jurisdiction: str = 'V
         'daylight':      check_daylight(layers, windows, north, ceiling_h),
         'energy':        check_energy(layers, windows, north, ceiling_h),
         'noise':         check_noise(layers),
-        'adjacency':     build_adjacency(layers),
+        'adjacency':     build_adjacency(layers, windows, doors),
         'diagnostics':   compute_diagnostics(layers, windows, doors, north, ceiling_h, beds),
         'kitchen':       check_kitchen(layers, windows, ceiling_h),
         'building_geometry': [
