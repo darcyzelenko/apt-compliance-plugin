@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apt. — Building Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f0f0f;
+    --surface:   #161616;
+    --border:    #252525;
+    --text:      #e8e8e8;
+    --muted:     #6b6b6b;
+    --pass:      #3ecf8e;
+    --pass-dim:  #1a4a36;
+    --fail:      #e8533d;
+    --fail-dim:  #4a1f1a;
+    --warn:      #f0a841;
+    --warn-dim:  #4a3210;
+    --accent:    #4f8ef7;
+    --mono:      'DM Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .header-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    margin-left: auto;
+  }
+  .standard-select {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  /* ── Upload zone ── */
+  #upload-zone {
+    margin: 40px auto;
+    max-width: 540px;
+    width: 100%;
+    padding: 0 24px;
+  }
+  .drop-area {
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .drop-area:hover, .drop-area.over {
+    border-color: var(--accent);
+    background: rgba(79,142,247,0.04);
+  }
+  .drop-area input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon {
+    font-size: 28px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+  .drop-label {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .drop-label strong { color: var(--text); font-weight: 500; }
+  .upload-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+  .btn {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 20px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; }
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--text); color: var(--text); }
+
+  /* validation preview */
+  .validation-strip {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    display: none;
+    gap: 12px;
+    align-items: center;
+  }
+  .validation-strip.visible { display: flex; }
+  .v-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pass); flex-shrink: 0; }
+  .v-dot.warn { background: var(--warn); }
+  .v-dot.fail { background: var(--fail); }
+
+  /* ── Main layout ── */
+  #results { display: none; flex-direction: column; flex: 1; }
+  #results.visible { display: flex; }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: auto 1fr;
+    gap: 1px;
+    background: var(--border);
+    flex: 1;
+  }
+
+  /* ── Summary bar (full width) ── */
+  .summary-bar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    padding: 20px 28px;
+    display: flex;
+    gap: 32px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-block { display: flex; flex-direction: column; gap: 4px; }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .stat-value.pass { color: var(--pass); }
+  .stat-value.fail { color: var(--fail); }
+  .stat-value.warn { color: var(--warn); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .divider { width: 1px; background: var(--border); align-self: stretch; }
+
+  .building-checks { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .bcheck {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid transparent;
+  }
+  .bcheck.pass { background: var(--pass-dim); border-color: #2a6b52; color: var(--pass); }
+  .bcheck.fail { background: var(--fail-dim); border-color: #6b2a22; color: var(--fail); }
+  .bcheck.info { background: #1a2030; border-color: #2a3a5a; color: var(--accent); }
+  .bcheck-icon { font-size: 12px; }
+
+  /* ── Floor plate canvas ── */
+  .canvas-panel {
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    min-height: 480px;
+  }
+  #floor-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  .canvas-controls {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .canvas-btn {
+    width: 30px;
+    height: 30px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .canvas-btn:hover { color: var(--text); border-color: var(--text); }
+  .canvas-legend {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    display: flex;
+    gap: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: rgba(15,15,15,0.85);
+    padding: 8px 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* tooltip */
+  #canvas-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 13px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    min-width: 160px;
+    display: none;
+    z-index: 10;
+    line-height: 1.8;
+  }
+  #canvas-tooltip.visible { display: block; }
+  .tt-unit { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .tt-pass { color: var(--pass); }
+  .tt-fail { color: var(--fail); }
+
+  /* ── Sidebar — apartment list ── */
+  .sidebar {
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .sidebar-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .filter-row {
+    display: flex;
+    gap: 4px;
+  }
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn.active { background: var(--border); color: var(--text); }
+
+  .apt-list {
+    overflow-y: auto;
+    flex: 1;
+  }
+  .apt-list::-webkit-scrollbar { width: 4px; }
+  .apt-list::-webkit-scrollbar-track { background: transparent; }
+  .apt-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .apt-item {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.1s;
+  }
+  .apt-item:hover { background: rgba(255,255,255,0.03); }
+  .apt-item.selected { background: rgba(79,142,247,0.08); }
+  .apt-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .apt-status-dot.pass { background: var(--pass); }
+  .apt-status-dot.fail { background: var(--fail); }
+  .apt-info { flex: 1; min-width: 0; }
+  .apt-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .apt-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .apt-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 5px;
+    border-radius: 2px;
+    border: 1px solid transparent;
+  }
+  .badge.cv { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.3); color: var(--accent); }
+  .badge.adapt { background: rgba(240,168,65,0.1); border-color: rgba(240,168,65,0.3); color: var(--warn); }
+  .badge.north { background: rgba(62,207,142,0.1); border-color: rgba(62,207,142,0.3); color: var(--pass); }
+
+  /* ── Detail panel (below canvas) ── */
+  .detail-panel {
+    display: none;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 20px 24px;
+    grid-column: 1 / 2;
+  }
+  .detail-panel.visible { display: block; }
+  .detail-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .detail-unit-id {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 500;
+  }
+  .detail-type {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .detail-pill {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    margin-left: auto;
+  }
+  .detail-pill.pass { background: var(--pass-dim); color: var(--pass); }
+  .detail-pill.fail { background: var(--fail-dim); color: var(--fail); }
+
+  .checks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+  }
+  .check-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+  }
+  .check-card.pass { border-left: 3px solid var(--pass); }
+  .check-card.fail { border-left: 3px solid var(--fail); }
+  .check-card.na { border-left: 3px solid var(--muted); opacity: 0.5; }
+  .check-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .check-result {
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .check-result.pass { color: var(--pass); }
+  .check-result.fail { color: var(--fail); }
+
+  /* ── Progress bar ── */
+  .progress-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .progress-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+  .progress-fill.pass { background: var(--pass); }
+  .progress-fill.fail { background: var(--fail); }
+  .progress-fill.warn { background: var(--warn); }
+
+  /* ── Loading ── */
+  .loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,15,15,0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .loading-overlay.visible { display: flex; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  /* ── Mix chart ── */
+  .mix-bars {
+    display: flex;
+    gap: 6px;
+    align-items: flex-end;
+    height: 36px;
+    margin-top: 6px;
+  }
+  .mix-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .mix-bar {
+    width: 28px;
+    background: var(--accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.7;
+    transition: height 0.5s ease;
+  }
+  .mix-bar-label { font-family: var(--mono); font-size: 9px; color: var(--muted); }
+
+  /* ── Error state ── */
+  .error-banner {
+    display: none;
+    margin: 24px auto;
+    max-width: 540px;
+    padding: 14px 18px;
+    background: var(--fail-dim);
+    border: 1px solid #6b2a22;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--fail);
+    line-height: 1.7;
+  }
+  .error-banner.visible { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <span class="header-logo">APT.</span>
+  <span class="header-title">Building Overview</span>
+  <select class="standard-select" id="standard-select">
+    <option value="VIC">VIC ADG 2017</option>
+    <option value="NSW">NSW ADG 2015</option>
+    <option value="BEST_PRACTICE">Best Practice</option>
+  </select>
+  <span class="header-badge" id="session-badge">NO SESSION</span>
+</div>
+
+<!-- ── Loading overlay ── -->
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Analysing building…</div>
+</div>
+
+<!-- ── Upload zone ── -->
+<div id="upload-zone">
+  <div class="drop-area" id="drop-area">
+    <input type="file" id="file-input" accept=".dxf">
+    <div class="drop-icon">⬡</div>
+    <div class="drop-label">
+      <strong>Drop a building DXF here</strong><br>
+      or click to browse<br><br>
+      Layers must use unit prefixes:<br>
+      <code style="color:#4f8ef7;font-size:11px">APT_01_ROOM_MAINBED, APT_02_ROOM_LIVING…</code>
+    </div>
+  </div>
+  <div class="validation-strip" id="validation-strip">
+    <div class="v-dot" id="v-dot"></div>
+    <span id="validation-msg">–</span>
+  </div>
+  <div class="upload-actions">
+    <button class="btn btn-ghost" id="demo-btn">Load demo data</button>
+    <button class="btn btn-primary" id="run-btn" disabled>Run building check</button>
+  </div>
+</div>
+
+<!-- ── Error ── -->
+<div class="error-banner" id="error-banner"></div>
+
+<!-- ── Results ── -->
+<div id="results">
+  <!-- Summary bar -->
+  <div class="summary-bar">
+    <div class="stat-block">
+      <div class="stat-label">Total units</div>
+      <div class="stat-value" id="stat-total">–</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-block">
+      <div class="stat-label">Passing</div>
+      <div class="stat-value pass" id="stat-passing">–</div>
+      <div class="stat-sub" id="stat-pass-rate">–</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-block">
+      <div class="stat-label">Cross ventilation</div>
+      <div class="stat-value" id="stat-cv">–</div>
+      <div class="stat-sub" id="stat-cv-req">–</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-block">
+      <div class="stat-label">Adaptable dwellings</div>
+      <div class="stat-value" id="stat-adapt">–</div>
+      <div class="stat-sub" id="stat-adapt-req">–</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-block">
+      <div class="stat-label">Apartment mix</div>
+      <div class="mix-bars" id="mix-bars"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat-block">
+      <div class="stat-label">Building checks</div>
+      <div class="building-checks" id="building-checks"></div>
+    </div>
+  </div>
+
+  <!-- Grid: canvas + sidebar -->
+  <div class="results-grid">
+    <!-- Floor plate canvas -->
+    <div class="canvas-panel">
+      <canvas id="floor-canvas"></canvas>
+      <div class="canvas-controls">
+        <button class="canvas-btn" id="zoom-in" title="Zoom in">+</button>
+        <button class="canvas-btn" id="zoom-out" title="Zoom out">−</button>
+        <button class="canvas-btn" id="zoom-fit" title="Fit to view">⊡</button>
+      </div>
+      <div class="canvas-legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#3ecf8e"></div>Pass
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#e8533d"></div>Fail
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background:#4f8ef7"></div>Selected
+        </div>
+      </div>
+      <div id="canvas-tooltip">
+        <div class="tt-unit" id="tt-unit">–</div>
+        <div id="tt-type">–</div>
+        <div id="tt-status">–</div>
+        <div id="tt-failures">–</div>
+      </div>
+    </div>
+
+    <!-- Apartment sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Apartments</div>
+        <div class="filter-row">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="fail">Fail</button>
+          <button class="filter-btn" data-filter="pass">Pass</button>
+        </div>
+      </div>
+      <div class="apt-list" id="apt-list"></div>
+    </div>
+
+    <!-- Detail panel (spans full width below canvas) -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-header">
+        <div class="detail-unit-id" id="detail-unit-id">Unit –</div>
+        <div class="detail-type" id="detail-type">–</div>
+        <div class="detail-pill" id="detail-pill">–</div>
+      </div>
+      <div class="checks-grid" id="checks-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────
+let state = {
+  apartments: [],
+  summary: null,
+  selectedUnit: null,
+  filter: 'all',
+  dxfFile: null,
+  validationOk: false,
+  // canvas
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  isPanning: false,
+  panStart: { x: 0, y: 0 },
+  unitBoxes: [], // { unitId, x, y, w, h } in canvas coords
+};
+
+// API base — change this to match your Railway URL
+const API_BASE = window.APT_API_BASE || '';
+
+// ─────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────
+const dropArea = document.getElementById('drop-area');
+const fileInput = document.getElementById('file-input');
+const validationStrip = document.getElementById('validation-strip');
+const validationMsg = document.getElementById('validation-msg');
+const vDot = document.getElementById('v-dot');
+const runBtn = document.getElementById('run-btn');
+const demoBtn = document.getElementById('demo-btn');
+const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loading-text');
+const results = document.getElementById('results');
+const errorBanner = document.getElementById('error-banner');
+const uploadZone = document.getElementById('upload-zone');
+const canvas = document.getElementById('floor-canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('canvas-tooltip');
+const aptList = document.getElementById('apt-list');
+const detailPanel = document.getElementById('detail-panel');
+const sessionBadge = document.getElementById('session-badge');
+
+// ─────────────────────────────────────────────────────
+// Demo data — mirrors BuildingResult JSON shape
+// ─────────────────────────────────────────────────────
+const DEMO = {
+  session_id: 'demo-session',
+  apartments: [
+    { unit_id:'01', pass:true,  apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:true,  is_adaptable:true,  has_north_living:true,  summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:true,ventilation_pass:true,accessibility_pass:true,all_pass:true} },
+    { unit_id:'02', pass:false, apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:false, is_adaptable:false, has_north_living:false, summary:{bedrooms_pass:true,living_pass:false,storage_pass:true,pos_pass:false,ventilation_pass:false,accessibility_pass:false,all_pass:false} },
+    { unit_id:'03', pass:true,  apartment_type:'3bed+',bedroom_count:3, has_cross_ventilation:true,  is_adaptable:true,  has_north_living:true,  summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:true,ventilation_pass:true,accessibility_pass:true,all_pass:true} },
+    { unit_id:'04', pass:false, apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:true,  is_adaptable:false, has_north_living:false, summary:{bedrooms_pass:false,living_pass:true,storage_pass:false,pos_pass:true,ventilation_pass:true,accessibility_pass:false,all_pass:false} },
+    { unit_id:'05', pass:true,  apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:true,  is_adaptable:true,  has_north_living:false, summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:true,ventilation_pass:true,accessibility_pass:true,all_pass:true} },
+    { unit_id:'06', pass:true,  apartment_type:'studio',bedroom_count:0,has_cross_ventilation:false, is_adaptable:false, has_north_living:true,  summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:true,ventilation_pass:false,accessibility_pass:true,all_pass:true} },
+    { unit_id:'07', pass:false, apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:false, is_adaptable:true,  has_north_living:false, summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:false,ventilation_pass:false,accessibility_pass:true,all_pass:false} },
+    { unit_id:'08', pass:true,  apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:true,  is_adaptable:true,  has_north_living:true,  summary:{bedrooms_pass:true,living_pass:true,storage_pass:true,pos_pass:true,ventilation_pass:true,accessibility_pass:true,all_pass:true} },
+  ],
+  summary: {
+    jurisdiction:'VIC', total_units:8, passing_units:5, pass_rate:0.625,
+    pass_rate_pct:'63%', cross_ventilation_pct:0.625, adaptable_dwellings_pct:0.625,
+    north_living_pct:0.5, worst_unit:'02',
+    apartment_mix:{ studio:1, '1bed':3, '2bed':3, '3bed+':1 },
+    building_checks:[
+      { check_name:'cross_ventilation',   pass:true,  value:0.625, required:0.40, value_pct:'63%', required_pct:'40%', description:'5 of 8 apartments achieve cross ventilation (63%) — VIC requires 40%' },
+      { check_name:'adaptable_dwellings', pass:true,  value:0.625, required:0.50, value_pct:'63%', required_pct:'50%', description:'5 of 8 apartments meet adaptability checks (63%) — BCA D3.3 requires 50%' },
+      { check_name:'north_facing_living', pass:true,  value:0.5,   required:0,    value_pct:'50%', required_pct:'0%',  description:'4 of 8 apartments have a north-facing living-area window (50%)' },
+    ],
+    errors:[],
+  },
+};
+
+// ─────────────────────────────────────────────────────
+// File handling
+// ─────────────────────────────────────────────────────
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('over'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('over'));
+dropArea.addEventListener('drop', e => {
+  e.preventDefault();
+  dropArea.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+
+async function handleFile(file) {
+  if (!file) return;
+  state.dxfFile = file;
+  state.validationOk = false;
+  runBtn.disabled = true;
+  validationStrip.classList.remove('visible');
+
+  // Quick validation against the API
+  const fd = new FormData();
+  fd.append('dxf_file', file);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/validate-building-dxf`, { method:'POST', body:fd });
+    const data = await res.json();
+    validationStrip.classList.add('visible');
+
+    if (data.is_multi_apartment && data.unit_count > 0) {
+      vDot.className = 'v-dot';
+      validationMsg.textContent = data.message;
+      state.validationOk = true;
+      runBtn.disabled = false;
+    } else {
+      vDot.className = 'v-dot fail';
+      validationMsg.textContent = data.message || 'No unit prefixes found.';
+    }
+  } catch {
+    // API not reachable — allow running anyway (will fail at check time)
+    validationStrip.classList.add('visible');
+    vDot.className = 'v-dot warn';
+    validationMsg.textContent = `${file.name} — validation skipped (API offline)`;
+    state.validationOk = true;
+    runBtn.disabled = false;
+  }
+}
+
+runBtn.addEventListener('click', () => runBuildingCheck());
+demoBtn.addEventListener('click', () => renderResults(DEMO));
+
+// ─────────────────────────────────────────────────────
+// API call
+// ─────────────────────────────────────────────────────
+async function runBuildingCheck() {
+  if (!state.dxfFile) return;
+  showLoading('Analysing building…');
+  hideError();
+
+  const fd = new FormData();
+  fd.append('dxf_file', state.dxfFile);
+  fd.append('jurisdiction', document.getElementById('standard-select').value);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/check-building`, { method:'POST', body:fd });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    hideLoading();
+    renderResults(data);
+  } catch (err) {
+    hideLoading();
+    showError(`Building check failed: ${err.message}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// Render results
+// ─────────────────────────────────────────────────────
+function renderResults(data) {
+  state.apartments = data.apartments;
+  state.summary = data.summary;
+  state.selectedUnit = null;
+
+  sessionBadge.textContent = data.session_id
+    ? data.session_id.slice(0, 8).toUpperCase()
+    : 'DEMO';
+
+  uploadZone.style.display = 'none';
+  results.classList.add('visible');
+
+  renderSummaryBar(data.summary);
+  renderAptList();
+  renderCanvas();
+  detailPanel.classList.remove('visible');
+}
+
+function renderSummaryBar(s) {
+  document.getElementById('stat-total').textContent = s.total_units;
+
+  const passingEl = document.getElementById('stat-passing');
+  passingEl.textContent = s.passing_units;
+  passingEl.className = 'stat-value ' + (s.pass_rate >= 0.5 ? 'pass' : 'fail');
+  document.getElementById('stat-pass-rate').textContent = `${s.pass_rate_pct} pass rate`;
+
+  // Cross ventilation
+  const cvPct = Math.round(s.cross_ventilation_pct * 100);
+  const cvEl = document.getElementById('stat-cv');
+  cvEl.textContent = `${cvPct}%`;
+  const cvCheck = s.building_checks.find(c => c.check_name === 'cross_ventilation');
+  cvEl.className = 'stat-value ' + (cvCheck?.pass ? 'pass' : 'fail');
+  document.getElementById('stat-cv-req').textContent = cvCheck
+    ? `req. ${cvCheck.required_pct}`
+    : '';
+
+  // Adaptable dwellings
+  const adaptPct = Math.round(s.adaptable_dwellings_pct * 100);
+  const adaptEl = document.getElementById('stat-adapt');
+  adaptEl.textContent = `${adaptPct}%`;
+  const adaptCheck = s.building_checks.find(c => c.check_name === 'adaptable_dwellings');
+  adaptEl.className = 'stat-value ' + (adaptCheck?.pass ? 'pass' : 'fail');
+  document.getElementById('stat-adapt-req').textContent = adaptCheck
+    ? `req. ${adaptCheck.required_pct}`
+    : '';
+
+  // North-facing living (informational — no hard threshold)
+  const northPct = Math.round(s.north_living_pct * 100);
+
+  // Mix bar chart
+  const mixBars = document.getElementById('mix-bars');
+  mixBars.innerHTML = '';
+  const mix = s.apartment_mix;
+  const maxMix = Math.max(...Object.values(mix), 1);
+  for (const [label, count] of Object.entries(mix)) {
+    const h = Math.max(4, Math.round((count / maxMix) * 36));
+    mixBars.innerHTML += `
+      <div class="mix-bar-wrap">
+        <div class="mix-bar" style="height:${h}px" title="${count} ${label}"></div>
+        <div class="mix-bar-label">${label}</div>
+      </div>`;
+  }
+
+  // Building checks
+  const checksEl = document.getElementById('building-checks');
+  checksEl.innerHTML = '';
+  for (const c of s.building_checks) {
+    const cls = c.check_name === 'north_facing_pos' ? 'info' : (c.pass ? 'pass' : 'fail');
+    const icon = c.pass ? '✓' : '✗';
+    checksEl.innerHTML += `
+      <div class="bcheck ${cls}" title="${c.description}">
+        <span class="bcheck-icon">${icon}</span>
+        ${formatCheckName(c.check_name)} ${c.value_pct}
+      </div>`;
+  }
+}
+
+// ─────────────────────────────────────────────────────
+// Apartment list
+// ─────────────────────────────────────────────────────
+function renderAptList() {
+  const filtered = state.apartments.filter(a => {
+    if (state.filter === 'all') return true;
+    return state.filter === 'pass' ? a.pass : !a.pass;
+  });
+
+  aptList.innerHTML = '';
+  for (const apt of filtered) {
+    const cls = apt.pass ? 'pass' : 'fail';
+    const failures = apt.summary ? Object.entries(apt.summary).filter(([k,v]) => k.endsWith("_pass") && v===false).length : 0;
+    const badges = [
+      apt.has_cross_ventilation ? '<span class="badge cv">CV</span>' : '',
+      apt.is_adaptable ? '<span class="badge adapt">ADP</span>' : '',
+      apt.has_north_living ? '<span class="badge north">N↑</span>' : '',
+    ].join('');
+
+    const item = document.createElement('div');
+    item.className = 'apt-item' + (state.selectedUnit === apt.unit_id ? ' selected' : '');
+    item.dataset.unit = apt.unit_id;
+    item.innerHTML = `
+      <div class="apt-status-dot ${cls}"></div>
+      <div class="apt-info">
+        <div class="apt-name">Unit ${apt.unit_id}</div>
+        <div class="apt-meta">${apt.apartment_type} · ${failures > 0 ? failures + ' fail' + (failures>1?'s':'') : 'all checks pass'}</div>
+        <div class="apt-badges" style="margin-top:4px">${badges}</div>
+      </div>`;
+    item.addEventListener('click', () => selectUnit(apt.unit_id));
+    aptList.appendChild(item);
+  }
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filter = btn.dataset.filter;
+    renderAptList();
+  });
+});
+
+// ─────────────────────────────────────────────────────
+// Unit selection
+// ─────────────────────────────────────────────────────
+function selectUnit(unitId) {
+  state.selectedUnit = unitId;
+  renderAptList();
+  renderCanvas();
+  renderDetail(unitId);
+}
+
+function renderDetail(unitId) {
+  const apt = state.apartments.find(a => a.unit_id === unitId);
+  if (!apt) return;
+
+  detailPanel.classList.add('visible');
+  document.getElementById('detail-unit-id').textContent = `Unit ${apt.unit_id}`;
+  document.getElementById('detail-type').textContent = apt.apartment_type;
+
+  const pill = document.getElementById('detail-pill');
+  pill.textContent = apt.pass ? 'PASS' : 'FAIL';
+  pill.className = 'detail-pill ' + (apt.pass ? 'pass' : 'fail');
+
+  const grid = document.getElementById('checks-grid');
+  grid.innerHTML = '';
+  // apt.summary contains the flat pass flags from results['summary']
+  const summaryChecks = {
+    'Bedrooms':       apt.summary?.bedrooms_pass,
+    'Living area':    apt.summary?.living_pass,
+    'Room depth':     apt.summary?.room_depth_pass,
+    'Windows':        apt.summary?.windows_pass,
+    'Storage':        apt.summary?.storage_pass,
+    'POS':            apt.summary?.pos_pass,
+    'Ventilation':    apt.summary?.ventilation_pass,
+    'Doors':          apt.summary?.doors_pass,
+    'Accessibility':  apt.summary?.accessibility_pass,
+    'Daylight':       apt.summary?.daylight_pass,
+    'Energy':         apt.summary?.energy_pass,
+    'Noise':          apt.summary?.noise_pass,
+    'Apartment area': apt.summary?.apt_area_pass,
+    'Glass area':     apt.summary?.glass_area_pass,
+    'Ceiling height': apt.summary?.ceiling_pass,
+  };
+  for (const [name, val] of Object.entries(summaryChecks)) {
+    if (val === undefined || val === null) continue; // not assessed
+    const cls = val === true ? 'pass' : 'fail';
+    const label = val === true ? '✓ Pass' : '✗ Fail';
+    grid.innerHTML += `
+      <div class="check-card ${cls}">
+        <div class="check-name">${name}</div>
+        <div class="check-result ${cls}">${label}</div>
+      </div>`;
+  }
+  // Show cross-ventilation and adaptable badges explicitly
+  const cvBadge = apt.has_cross_ventilation ? '✓' : '✗';
+  const cvCls   = apt.has_cross_ventilation ? 'pass' : 'fail';
+  grid.innerHTML += `<div class="check-card ${cvCls}"><div class="check-name">Cross Ventilation</div><div class="check-result ${cvCls}">${cvBadge} ${apt.has_cross_ventilation ? 'Achieved' : 'Not achieved'}</div></div>`;
+  const adaptBadge = apt.is_adaptable ? '✓' : '✗';
+  const adaptCls   = apt.is_adaptable ? 'pass' : 'fail';
+  grid.innerHTML += `<div class="check-card ${adaptCls}"><div class="check-name">Adaptable</div><div class="check-result ${adaptCls}">${adaptBadge} ${apt.is_adaptable ? 'Meets BCA D3.3' : 'Does not meet'}</div></div>`;
+}
+
+// ─────────────────────────────────────────────────────
+// Canvas floor plate
+// ─────────────────────────────────────────────────────
+const COLS = 4; // apartments per row in the abstract layout
+
+function resizeCanvas() {
+  const panel = canvas.parentElement;
+  canvas.width = panel.clientWidth;
+  canvas.height = panel.clientHeight;
+}
+
+function renderCanvas() {
+  resizeCanvas();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const apts = state.apartments;
+  if (!apts.length) return;
+
+  const cols = Math.min(COLS, apts.length);
+  const rows = Math.ceil(apts.length / cols);
+
+  const padding = 40;
+  const gap = 12;
+  const cellW = (canvas.width - padding * 2 - gap * (cols - 1)) / cols;
+  const cellH = Math.min(cellW * 0.7, (canvas.height - padding * 2 - gap * (rows - 1)) / rows);
+
+  state.unitBoxes = [];
+
+  apts.forEach((apt, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = padding + col * (cellW + gap);
+    const y = padding + row * (cellH + gap);
+
+    const isSelected = apt.unit_id === state.selectedUnit;
+    const isWorst = apt.unit_id === state.summary?.worst_unit;
+
+    state.unitBoxes.push({ unitId: apt.unit_id, x, y, w: cellW, h: cellH });
+
+    // Background
+    const fillColor = isSelected
+      ? 'rgba(79,142,247,0.18)'
+      : apt.pass
+        ? 'rgba(62,207,142,0.08)'
+        : 'rgba(232,83,61,0.08)';
+
+    ctx.fillStyle = fillColor;
+    roundRect(ctx, x, y, cellW, cellH, 4);
+    ctx.fill();
+
+    // Border
+    const strokeColor = isSelected
+      ? '#4f8ef7'
+      : apt.pass ? '#3ecf8e' : '#e8533d';
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = isSelected ? 2 : 1;
+    roundRect(ctx, x, y, cellW, cellH, 4);
+    ctx.stroke();
+
+    // Worst unit indicator
+    if (isWorst && !apt.pass) {
+      ctx.strokeStyle = '#f0a841';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      roundRect(ctx, x - 3, y - 3, cellW + 6, cellH + 6, 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Unit label
+    ctx.fillStyle = isSelected ? '#fff' : '#e8e8e8';
+    ctx.font = `500 ${Math.max(10, cellW * 0.12)}px DM Mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`Unit ${apt.unit_id}`, x + cellW / 2, y + cellH * 0.38);
+
+    // Apartment type
+    ctx.fillStyle = '#6b6b6b';
+    ctx.font = `${Math.max(9, cellW * 0.09)}px DM Mono, monospace`;
+    ctx.fillText(apt.apartment_type, x + cellW / 2, y + cellH * 0.54);
+
+    // Status indicator
+    const statusR = Math.max(4, cellW * 0.06);
+    ctx.fillStyle = apt.pass ? '#3ecf8e' : '#e8533d';
+    ctx.beginPath();
+    ctx.arc(x + cellW / 2, y + cellH * 0.74, statusR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Feature badges inside cell
+    const badgeY = y + cellH - 14;
+    let badgeX = x + 8;
+    const badgeH = 10;
+    if (apt.has_cross_ventilation) {
+      drawBadge(ctx, badgeX, badgeY, 'CV', '#4f8ef7'); badgeX += 28;
+    }
+    if (apt.is_adaptable) {
+      drawBadge(ctx, badgeX, badgeY, 'ADP', '#f0a841'); badgeX += 34;
+    }
+  });
+}
+
+function drawBadge(ctx, x, y, label, color) {
+  ctx.font = '8px DM Mono, monospace';
+  const w = ctx.measureText(label).width + 6;
+  ctx.fillStyle = color + '28';
+  roundRect(ctx, x, y - 9, w, 11, 2);
+  ctx.fill();
+  ctx.strokeStyle = color + '80';
+  ctx.lineWidth = 0.5;
+  roundRect(ctx, x, y - 9, w, 11, 2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = 'left';
+  ctx.fillText(label, x + 3, y);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// Canvas mouse events
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const hit = state.unitBoxes.find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
+
+  if (hit) {
+    canvas.style.cursor = 'pointer';
+    const apt = state.apartments.find(a => a.unit_id === hit.unitId);
+    if (apt) {
+      const failures = apt.summary ? Object.entries(apt.summary).filter(([k,v]) => k.endsWith("_pass") && v===false).length : 0;
+      document.getElementById('tt-unit').textContent = `Unit ${apt.unit_id}`;
+      document.getElementById('tt-type').textContent = apt.apartment_type;
+      document.getElementById('tt-status').textContent = apt.pass ? '✓ Pass' : '✗ Fail';
+      document.getElementById('tt-status').className = apt.pass ? 'tt-pass' : 'tt-fail';
+      document.getElementById('tt-failures').textContent = failures > 0 ? `${failures} check failure${failures > 1 ? 's' : ''}` : 'All checks pass';
+      tooltip.style.left = (mx + 14) + 'px';
+      tooltip.style.top = (my - 10) + 'px';
+      tooltip.classList.add('visible');
+    }
+  } else {
+    canvas.style.cursor = 'default';
+    tooltip.classList.remove('visible');
+  }
+});
+
+canvas.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const hit = state.unitBoxes.find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
+  if (hit) selectUnit(hit.unitId);
+});
+
+window.addEventListener('resize', () => { if (results.classList.contains('visible')) renderCanvas(); });
+
+// Zoom controls (visual only — re-layout in grid)
+document.getElementById('zoom-in').addEventListener('click', () => {});
+document.getElementById('zoom-out').addEventListener('click', () => {});
+document.getElementById('zoom-fit').addEventListener('click', () => renderCanvas());
+
+// ─────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────
+function formatCheckName(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function showLoading(msg) {
+  loadingText.textContent = msg || 'Loading…';
+  loading.classList.add('visible');
+}
+function hideLoading() { loading.classList.remove('visible'); }
+function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
+function hideError() { errorBanner.classList.remove('visible'); }
+</script>
+</body>
+</html>

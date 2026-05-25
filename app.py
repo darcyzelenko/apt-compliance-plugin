@@ -4,6 +4,7 @@ Flask web application
 """
 from flask import Flask, request, jsonify, render_template
 import os, sys, json, urllib.request, urllib.parse, urllib.error
+from app_building_routes import register_building_routes
 
 sys.path.insert(0, os.path.dirname(__file__))
 from compliance_engine import run_compliance
@@ -624,6 +625,7 @@ RULES:
         return jsonify({'error': 'Analysis failed: ' + str(e)}), 500
 
 
+register_building_routes(app)
 
 if __name__ == '__main__':
     import os
