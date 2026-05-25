@@ -400,9 +400,12 @@ def store_results():
     POST multipart: dxf_file, ceiling_height, jurisdiction
     Returns: { token: "abc123", url: "https://.../report/abc123" }
     """
+    import traceback, logging
     try:
+        logging.warning('store_results: parsing request')
         if 'dxf_file' not in request.files:
-            return jsonify({'error': 'No DXF file'}), 400
+            logging.warning('store_results: no dxf_file in request.files, keys: ' + str(list(request.files.keys())) + ' form: ' + str(list(request.form.keys())))
+            return jsonify({'error': 'No DXF file', 'files': list(request.files.keys()), 'form': list(request.form.keys())}), 400
 
         f = request.files['dxf_file']
         text = f.read().decode('utf-8', errors='replace')
@@ -410,21 +413,26 @@ def store_results():
         jurisdiction = request.form.get('jurisdiction', 'VIC').upper()
         if jurisdiction not in ('VIC', 'NSW', 'BEST_PRACTICE'):
             jurisdiction = 'VIC'
+        logging.warning(f'store_results: parsed ok, dxf len={len(text)}, ceiling={ceiling_h}, jur={jurisdiction}')
     except Exception as e:
-        import traceback
+        logging.error('store_results parse error: ' + traceback.format_exc())
         return jsonify({'error': 'Request parsing failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
 
     try:
+        logging.warning('store_results: running compliance')
         results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
+        logging.warning('store_results: compliance done')
     except Exception as e:
-        import traceback
+        logging.error('store_results compliance error: ' + traceback.format_exc())
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
     try:
+        logging.warning('store_results: storing session')
         token = uuid.uuid4().hex[:12]
         _set_session(token, results)
+        logging.warning('store_results: session stored, token=' + token)
     except Exception as e:
-        import traceback
+        logging.error('store_results session error: ' + traceback.format_exc())
         return jsonify({'error': 'Session storage failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
 
     base_url = request.host_url.rstrip('/')
