@@ -1254,6 +1254,124 @@ def build_adjacency(layers):
             'has_circ_errors':any(i['severity']=='error' for i in circ_issues)}
 
 
+# ── 14b. Kitchen analysis ───────────────────────────────────────────────────────
+def check_kitchen(layers, windows, ceiling_h):
+    """
+    Analyse kitchen geometry from APT_KITCHEN_BENCH and APT_KITCHEN_APPLIANCE layers.
+    Returns a dict with: found, bench_run, clearance, work_triangle, natural_light.
+    """
+    bench_polys  = layers.get('APT_KITCHEN_BENCH', [])
+    appli_polys  = layers.get('APT_KITCHEN_APPLIANCE', [])
+
+    if not bench_polys and not appli_polys:
+        return {'found': False}
+
+    result = {'found': True}
+
+    # ── Bench run ──────────────────────────────────────────────────────────────
+    # Find the longest continuous run along any bench polygon edge
+    if bench_polys:
+        all_segments = []
+        for poly in bench_polys:
+            n = len(poly)
+            segs = []
+            for i in range(n):
+                p1 = poly[i]; p2 = poly[(i+1)%n]
+                segs.append({'p1':p1,'p2':p2,'length':seg_len(p1,p2)})
+            all_segments.extend(segs)
+
+        # Longest single continuous run
+        max_run = max((s['length'] for s in all_segments), default=0.0)
+        total_bench = sum(poly_area(p)**0.5 * 4 for p in bench_polys)  # perimeter approx
+        # Better: use actual perimeter
+        total_perim = 0.0
+        for poly in bench_polys:
+            n=len(poly)
+            for i in range(n): total_perim += seg_len(poly[i],poly[(i+1)%n])
+        # Longest edge as proxy for bench run
+        longest_edge = max((seg_len(poly[i],poly[(i+1)%len(poly)]) for poly in bench_polys for i in range(len(poly))), default=0.0)
+
+        result['bench_run'] = {
+            'total_length_m': round(total_perim/2, 2),  # rough bench length = half perimeter
+            'longest_run_m':  round(longest_edge, 2),
+            'segments': [{'length_m': round(s['length'],2)} for s in sorted(all_segments,key=lambda x:-x['length'])[:3]],
+            'pass': longest_edge >= 1.5,
+            'req_m': 1.5,
+        }
+
+    # ── Clearance ──────────────────────────────────────────────────────────────
+    # Estimate clearance by looking at kitchen bounding box vs bench polygons
+    if bench_polys:
+        all_pts = [pt for poly in bench_polys for pt in poly]
+        xs = [p[0] for p in all_pts]; ys = [p[1] for p in all_pts]
+        bbox_w = max(xs)-min(xs); bbox_h = max(ys)-min(ys)
+        # Clearance is the smaller dimension if kitchen is galley, or gap if L/U shaped
+        bench_total_area = sum(poly_area(p) for p in bench_polys)
+        bbox_area = bbox_w * bbox_h
+        # Heuristic: if bench fills <50% of bbox, clearance gap is estimated
+        if bbox_area > 0:
+            fill_ratio = bench_total_area / bbox_area
+            if fill_ratio < 0.5:
+                # L or U shape -- estimate clearance from smaller bbox dimension
+                clearance = min(bbox_w, bbox_h) - 0.6  # subtract typical bench depth
+                clearance = max(clearance, 0.0)
+            else:
+                # Galley -- bbox smaller dimension is clearance
+                clearance = min(bbox_w, bbox_h)
+        else:
+            clearance = 0.0
+        result['clearance'] = {
+            'min_clearance_m': round(clearance, 2),
+            'required_m': 1.0,
+            'context': 'single access',
+            'pass': clearance >= 1.0,
+        }
+
+    # ── Work triangle ───────────────────────────────────────────────────────────
+    # Appliance centroids: by convention order = fridge, cooktop, sink
+    # Or by largest to smallest area: fridge (tallest/largest), cooktop, sink
+    if len(appli_polys) >= 3:
+        sorted_appli = sorted(appli_polys, key=lambda p: -poly_area(p))
+        centroids = [poly_centroid(p) for p in sorted_appli[:3]]
+        fridge, cooktop, sink = centroids[0], centroids[1], centroids[2]
+        s_c = seg_len(sink, cooktop)
+        c_f = seg_len(cooktop, fridge)
+        f_s = seg_len(fridge, sink)
+        perim = s_c + c_f + f_s
+        note = None
+        if perim < 4.0:   note = 'Work triangle too compact — perimeter under 4m'
+        elif perim > 7.0: note = 'Work triangle too large — perimeter over 7m'
+        result['work_triangle'] = {
+            'sink_to_cooktop_m':   round(s_c, 2),
+            'cooktop_to_fridge_m': round(c_f, 2),
+            'fridge_to_sink_m':    round(f_s, 2),
+            'perimeter_m':         round(perim, 2),
+            'pass':   4.0 <= perim <= 7.0,
+            'note':   note,
+        }
+    elif len(appli_polys) > 0:
+        result['work_triangle'] = {
+            'perimeter_m': None,
+            'pass': None,
+            'note': f'Only {len(appli_polys)} appliance(s) found — need 3 (fridge, cooktop, sink) for work triangle',
+        }
+
+    # ── Natural light proximity ────────────────────────────────────────────────
+    # Check if kitchen bench is within 3m of a living area window
+    if bench_polys:
+        bench_centroid = poly_centroid(bench_polys[0])
+        living_windows = windows.get('LIVING', [])
+        has_light = False
+        for win in living_windows:
+            wp1, wp2 = win[0], win[1]
+            wm = midpoint(wp1, wp2)
+            if seg_len(bench_centroid, wm) < 3.0:
+                has_light = True; break
+        result['natural_light'] = has_light
+
+    return result
+
+
 # ── 14. Diagnostics ────────────────────────────────────────────────────────────
 def compute_diagnostics(layers, windows, doors, north, ceiling_h, bedroom_count):
     diag=[]
@@ -1519,6 +1637,17 @@ def run_compliance(dxf_text: str, ceiling_h: float = 2.7, jurisdiction: str = 'V
         'noise':         check_noise(layers),
         'adjacency':     build_adjacency(layers),
         'diagnostics':   compute_diagnostics(layers, windows, doors, north, ceiling_h, beds),
+        'kitchen':       check_kitchen(layers, windows, ceiling_h),
+        'building_geometry': [
+            {'layer': lk, 'vertices': poly, 'label': lk.replace('APT_','').replace('_',' ').title()}
+            for lk in layers if lk.startswith('APT_WALL_') or lk in ('APT_COLUMN','APT_OVERHANG','APT_SHAFT')
+            for poly in layers[lk]
+        ],
+        'fixtures': [
+            {'layer': lk, 'vertices': poly, 'label': lk.replace('APT_','').replace('_',' ').title()}
+            for lk in layers if lk.startswith('APT_KITCHEN_') or lk.startswith('APT_BATHROOM_') or lk=='APT_FURNITURE'
+            for poly in layers[lk]
+        ],
     }
 
     s = results['summary'] = {}

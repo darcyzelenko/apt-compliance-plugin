@@ -445,6 +445,7 @@ canvas{display:block;width:100%}
     </div>
     <div class="tab" data-tab="daylight">Daylight</div>
     <div class="tab" data-tab="energy">Energy &amp; Noise</div>
+    <div class="tab" data-tab="kitchen">Kitchen</div>
     <div class="tab" data-tab="diagnostics">Diagnostics</div>
     <div class="tab" data-tab="standards">Standards DB</div>
   </div>
@@ -531,6 +532,12 @@ canvas{display:block;width:100%}
     </div>
 
     <!-- ── Diagnostics panel ── -->
+    <!-- ── Kitchen panel ── -->
+    <div class="panel" id="panel-kitchen">
+      <div class="slabel" style="margin-bottom:.5rem">Kitchen Analysis</div>
+      <div id="kitchenContent"><p style="font-size:11px;color:var(--dim)">Draw kitchen geometry on APT_KITCHEN_BENCH and APT_KITCHEN_APPLIANCE layers, then run the check to see kitchen analysis.</p></div>
+    </div>
+
     <div class="panel" id="panel-diagnostics">
       <div class="slabel" style="margin-bottom:.5rem">Quality Diagnostics</div>
       <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Flags beyond strict compliance — issues that are technically legal but indicate reduced design quality or liveability.</p>
@@ -696,6 +703,7 @@ function renderAll(data){
   printBtn.style.display='';
   renderChecks(data);
   renderEnergy(data);
+  renderKitchen(data);
   renderDiagnostics(data);
   renderGlossary();
   // Update tab dots
@@ -1088,10 +1096,25 @@ const RCFG={
   APT_POS:                {fill:'rgba(20,184,166,.15)', stroke:'#14b8a6',label:'Balcony/POS'},
   APT_POS_GROUND:         {fill:'rgba(16,185,129,.15)', stroke:'#10b981',label:'Ground POS'},
   APT_POS_ROOFTOP:        {fill:'rgba(5,150,105,.15)',  stroke:'#059669',label:'Rooftop POS'},
+  // Building geometry
+  APT_WALL_EXTERNAL:      {fill:'rgba(26,25,22,.85)',   stroke:'#0f0e0c', label:'External Wall', building:true},
+  APT_WALL_PARTY:         {fill:'rgba(64,64,64,.7)',    stroke:'#404040', label:'Party Wall',    building:true},
+  APT_WALL_INTERNAL:      {fill:'rgba(120,120,120,.5)', stroke:'#787878', label:'Internal Wall', building:true},
+  APT_COLUMN:             {fill:'rgba(40,40,40,.9)',    stroke:'#282828', label:'Column',        building:true},
+  APT_OVERHANG:           {fill:'rgba(180,180,180,.25)',stroke:'#aaa',    label:'Overhang',      building:true, dashed:true},
+  APT_SHAFT:              {fill:'rgba(90,90,90,.6)',    stroke:'#5a5a5a', label:'Shaft/Core',    building:true},
+  // Fixtures
+  APT_KITCHEN_BENCH:      {fill:'rgba(251,146,60,.25)', stroke:'#f97316', label:'Kitchen Bench', fixture:true},
+  APT_KITCHEN_APPLIANCE:  {fill:'rgba(249,115,22,.3)',  stroke:'#ea6c0a', label:'Appliance',     fixture:true},
+  APT_BATHROOM_FIXTURE:   {fill:'rgba(125,211,252,.25)',stroke:'#38bdf8', label:'Bathroom Fixture',fixture:true},
+  APT_FURNITURE:          {fill:'rgba(212,212,212,.2)', stroke:'#aaa',    label:'Furniture',     fixture:true},
 };
 
 function gatherShapes(data){
   const shapes=[];
+  // Building geometry -- draw first (behind rooms)
+  for(const p of(data.building_geometry||[])) if(p.vertices) shapes.push({pts:p.vertices,layer:p.layer,pass:true,label:p.label,building:true});
+  // Rooms
   for(const r of(data.bedrooms||[])) if(r.vertices) shapes.push({pts:r.vertices,layer:r.layer,pass:r.overall_pass,label:r.room,area:r.area_sqm,centroid:r.centroid,key:'bedrooms'});
   for(const r of(data.living||[]))   if(r.vertices) shapes.push({pts:r.vertices,layer:r.layer,pass:r.overall_pass,label:r.room,area:r.area_sqm,centroid:r.centroid,key:'living'});
   for(const r of(data.pos||[]))      if(r.vertices) shapes.push({pts:r.vertices,layer:r.layer||'APT_POS',pass:r.overall_pass,label:r.space,area:r.area_sqm,centroid:r.centroid,key:'pos'});
@@ -1102,6 +1125,8 @@ function gatherShapes(data){
     if(known.includes(nd.layer)&&nd.vertices&&!shapes.find(s=>s.centroid&&nd.centroid&&Math.abs(s.centroid[0]-nd.centroid[0])<0.01))
       shapes.push({pts:nd.vertices,layer:nd.layer,pass:true,label:nd.label,centroid:nd.centroid});
   }
+  // Fixtures -- draw last (on top)
+  for(const p of(data.fixtures||[])) if(p.vertices) shapes.push({pts:p.vertices,layer:p.layer,pass:true,label:p.label,fixture:true});
   return shapes;
 }
 
@@ -1122,6 +1147,19 @@ function drawRooms(ctx,shapes,xf,failHighlight=false){
     ctx.beginPath();ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
     for(let i=1;i<s.pts.length;i++)ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
     ctx.closePath();
+    // Building geometry renders differently
+    if(s.building){
+      ctx.fillStyle=cfg.fill; ctx.fill();
+      if(cfg.dashed){ctx.setLineDash([4,3]);ctx.strokeStyle=cfg.stroke;ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);}
+      else{ctx.strokeStyle=cfg.stroke;ctx.lineWidth=s.layer==='APT_WALL_EXTERNAL'?2.5:s.layer==='APT_WALL_PARTY'?2:1.5;ctx.stroke();}
+      continue;
+    }
+    // Fixtures render thin
+    if(s.fixture){
+      ctx.fillStyle=cfg.fill; ctx.fill();
+      ctx.strokeStyle=cfg.stroke;ctx.lineWidth=0.8;ctx.setLineDash([2,2]);ctx.stroke();ctx.setLineDash([]);
+      continue;
+    }
     ctx.fillStyle=failHighlight&&s.pass===false?'rgba(192,57,43,.12)':cfg.fill;
     ctx.fill();
     if(failHighlight&&s.pass===false){
@@ -1611,6 +1649,122 @@ async function lookupAddress(){
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Diagnostics
+// ═══════════════════════════════════════════════════════════════════════════════
+// Kitchen analysis
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderKitchen(data){
+  const k = data.kitchen || {};
+  const el = document.getElementById('kitchenContent');
+  if(!el) return;
+
+  if(!k.found){
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--dim);margin-bottom:1rem">
+        No kitchen geometry found. Draw closed curves on
+        <code style="background:var(--surf2);padding:.1rem .3rem;border-radius:3px">APT_KITCHEN_BENCH</code> and
+        <code style="background:var(--surf2);padding:.1rem .3rem;border-radius:3px">APT_KITCHEN_APPLIANCE</code> layers.
+      </div>
+      <div class="std-card" style="padding:1rem;background:var(--surf2);border-radius:4px;font-size:11px;color:var(--dim)">
+        <div style="font-weight:600;margin-bottom:.5rem;color:var(--tx)">What to draw</div>
+        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_BENCH</strong> — Closed polygon tracing the bench/island footprint</div>
+        <div style="margin-bottom:.35rem"><strong>APT_KITCHEN_APPLIANCE</strong> — Separate polygon for each appliance: fridge, oven/cooktop, dishwasher</div>
+        <div>Label appliances by naming the object in Rhino, or place them in sequence: first = fridge, second = cooktop, third = sink</div>
+      </div>`;
+    return;
+  }
+
+  let h = '';
+
+  // Pass/fail summary strip
+  const checks = [
+    ['Bench Run',      k.bench_run],
+    ['Clearance',      k.clearance],
+    ['Work Triangle',  k.work_triangle],
+    ['Storage',        k.storage],
+  ].filter(([,v])=>v);
+
+  if(checks.length){
+    h += '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem">';
+    for(const [label, check] of checks){
+      const pass = check.pass !== false;
+      h += `<div style="padding:.25rem .6rem;border-radius:3px;font-size:10px;font-weight:600;background:${pass?'var(--passbg)':'var(--failbg)'};color:${pass?'var(--pass)':'var(--fail)'}">
+        ${pass?'✓':'✗'} ${label}</div>`;
+    }
+    h += '</div>';
+  }
+
+  // Bench run
+  if(k.bench_run){
+    const b = k.bench_run;
+    const pass = b.pass !== false;
+    h += `<div class="row-item ${pass?'':'fail'}">
+      <div class="ri-head">
+        <span class="dot ${pass?'pass':'fail'}"></span>
+        <span>Bench run length</span>
+        <span class="ri-val">${b.total_length_m?.toFixed(1)||'?'}m</span>
+      </div>
+      <div class="ri-body">
+        ${b.segments?.length ? b.segments.map(s=>`<div class="ri-row"><span>Segment</span><span>${s.length_m?.toFixed(2)||'?'}m</span></div>`).join('') : ''}
+        <div class="ri-row"><span>Required (min)</span><span>1.5m continuous</span></div>
+        ${!pass?`<div class="ri-row fail-note">Bench run too short — minimum 1.5m continuous length</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  // Clearance
+  if(k.clearance){
+    const c = k.clearance;
+    const pass = c.pass !== false;
+    h += `<div class="row-item ${pass?'':'fail'}">
+      <div class="ri-head">
+        <span class="dot ${pass?'pass':'fail'}"></span>
+        <span>Clearance width</span>
+        <span class="ri-val">${c.min_clearance_m?.toFixed(2)||'?'}m</span>
+      </div>
+      <div class="ri-body">
+        <div class="ri-row"><span>Measured</span><span>${c.min_clearance_m?.toFixed(2)||'?'}m</span></div>
+        <div class="ri-row"><span>Required</span><span>${c.required_m||1.0}m (${c.context||'single access'})</span></div>
+        ${!pass?`<div class="ri-row fail-note">Insufficient clearance — need ${c.required_m||1.0}m minimum</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  // Work triangle
+  if(k.work_triangle){
+    const t = k.work_triangle;
+    const pass = t.pass !== false;
+    h += `<div class="row-item ${pass?'':'fail'}">
+      <div class="ri-head">
+        <span class="dot ${pass?'pass':'fail'}"></span>
+        <span>Work triangle</span>
+        <span class="ri-val">${t.perimeter_m?.toFixed(1)||'?'}m perimeter</span>
+      </div>
+      <div class="ri-body">
+        <div class="ri-row"><span>Sink ↔ Cooktop</span><span>${t.sink_to_cooktop_m?.toFixed(2)||'?'}m</span></div>
+        <div class="ri-row"><span>Cooktop ↔ Fridge</span><span>${t.cooktop_to_fridge_m?.toFixed(2)||'?'}m</span></div>
+        <div class="ri-row"><span>Fridge ↔ Sink</span><span>${t.fridge_to_sink_m?.toFixed(2)||'?'}m</span></div>
+        <div class="ri-row"><span>Perimeter</span><span>${t.perimeter_m?.toFixed(1)||'?'}m (target 4–7m)</span></div>
+        ${!pass?`<div class="ri-row fail-note">${t.note||'Work triangle outside recommended range'}</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  // Natural light
+  if(k.natural_light !== undefined){
+    const pass = k.natural_light;
+    h += `<div class="row-item ${pass?'':'fail'}">
+      <div class="ri-head">
+        <span class="dot ${pass?'pass':'fail'}"></span>
+        <span>Natural light / ventilation to kitchen</span>
+        <span class="ri-val">${pass?'Adjacent window':'No adjacent window'}</span>
+      </div>
+    </div>`;
+  }
+
+  if(!h) h = '<div style="font-size:11px;color:var(--dim)">Kitchen geometry found but no checks could be run. Check layer names.</div>';
+  el.innerHTML = h;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderDiagnostics(data){
   const diag=data.diagnostics||[];
