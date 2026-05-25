@@ -533,24 +533,21 @@ canvas{display:block;width:100%}
 
     <!-- ── Adjacency panel ── -->
     <div class="panel" id="panel-adjacency">
-      <div class="slabel" style="margin-bottom:.3rem">Room Adjacency &amp; Circulation</div>
-      <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Edge weight = shared boundary (m) · <span style="color:var(--pass);font-weight:600">green</span> = ideal · <span style="color:var(--fail);font-weight:600">red dashed</span> = problematic</p>
-      <!-- Circulation issues / ok -->
-      <div id="circIssues" style="margin-bottom:.75rem"></div>
-      <!-- Topology checks -->
-      <div id="topoChecks" style="margin-bottom:.75rem"></div>
-      <!-- Plan-based adjacency diagram -->
-      <div class="slabel" style="margin-bottom:.3rem">Adjacency Diagram</div>
-      <p style="font-size:11px;color:var(--dim);margin-bottom:.5rem">Rooms drawn at actual geometry. Click any room to see its detail card. Edge thickness = shared wall length. <span style="color:var(--pass);font-weight:600">Green</span> = ideal adjacency · <span style="color:var(--fail);font-weight:600">Red dashed</span> = problematic.</p>
-      <div class="canvaswrap" style="position:relative">
+      <div class="slabel" style="margin-bottom:.3rem">Room Adjacency Diagram</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:.5rem">Rooms drawn at actual geometry. Click any room for details. Edge thickness = shared wall length. <span style="color:var(--pass);font-weight:600">Green</span> = ideal · <span style="color:var(--fail);font-weight:600">Red dashed</span> = problematic.</p>
+      <!-- Plan-based adjacency diagram FIRST -->
+      <div class="canvaswrap" style="position:relative;margin-bottom:.75rem">
         <canvas id="adjCanvas" height="420"></canvas>
-        <!-- Room popup card -->
         <div id="adjPopup" style="display:none;position:absolute;background:#fff;border:1.5px solid var(--rule);border-radius:6px;padding:.75rem;min-width:200px;max-width:280px;box-shadow:0 4px 24px rgba(15,14,12,.12);font-size:11px;z-index:10;pointer-events:none"></div>
       </div>
-      <div id="adjMissing" style="margin-top:.6rem"></div>
+      <div id="adjMissing" style="margin-bottom:.6rem"></div>
+      <!-- Circulation issues -->
+      <div id="circIssues" style="margin-bottom:.5rem"></div>
+      <!-- Topology checks -->
+      <div id="topoChecks" style="margin-bottom:.75rem"></div>
       <!-- Room detail cards -->
-      <div class="slabel" style="margin-top:1.25rem;margin-bottom:.5rem">Room Detail Cards</div>
-      <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Windows, doors, storage, and fixtures attached to each room.</p>
+      <div class="slabel" style="margin-bottom:.5rem">Room Detail Cards</div>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:.75rem">Windows, doors, storage, and fixtures for each room.</p>
       <div id="roomCards"></div>
     </div>
 
@@ -666,7 +663,7 @@ function onTabSwitch(tab){
   if(tab==='plan'){redrawPlan('plan-clean');redrawPlan('plan-depth');redrawPlan('plan-vent');}
   if(tab==='adjacency')drawAdjacency();
   if(tab==='kitchen' && DATA) renderKitchen(DATA);
-  if(tab==='daylight')drawDaylightFull();
+  if(tab==='daylight') setTimeout(drawDaylightFull, 50);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -912,28 +909,20 @@ function renderChecks(data){
     }
   }
 
-  // Tooltip + plan highlight on section header hover
+  // Tooltip only on FAIL dots, with tailored advice from actual result data
   document.querySelectorAll('.sc[data-ttkey]').forEach(el=>{
     el.addEventListener('mousemove',e=>showStripTooltip(e,el.dataset.ttkey));
     el.addEventListener('mouseleave',hideTooltip);
   });
-  document.querySelectorAll('.sec-hdr[data-key]').forEach(hdr=>{
-    hdr.addEventListener('mouseenter',e=>{
-      const key=hdr.dataset.key;
-      const tt=TT_MAP[key+'_pass']||TT_MAP[key];
-      if(tt) showStripTooltip(e,key+'_pass');
-      // Highlight relevant rooms on inline plan
+  document.querySelectorAll('.sdot.fail[data-key]').forEach(dot=>{
+    dot.style.cursor='help';
+    dot.addEventListener('mouseenter',e=>{
+      const key=dot.dataset.key;
+      showTailoredTooltip(e,key,DATA);
       highlightCheckOnPlan(key);
     });
-    hdr.addEventListener('mousemove',e=>{
-      const key=hdr.dataset.key;
-      const tt=TT_MAP[key+'_pass']||TT_MAP[key];
-      if(tt) showStripTooltip(e,key+'_pass');
-    });
-    hdr.addEventListener('mouseleave',()=>{
-      hideTooltip();
-      clearPlanHighlight();
-    });
+    dot.addEventListener('mousemove',e=>showTailoredTooltip(e,dot.dataset.key,DATA));
+    dot.addEventListener('mouseleave',()=>{ hideTooltip(); clearPlanHighlight(); });
   });
 }
 
@@ -942,11 +931,11 @@ function renderSec(key,data,isPass){
   const inner=renderSecInner(key,data);
   const hasTT=!!(TT_MAP[key+'_pass']||TT_MAP[key]);
   return `<div class="sec ${isPass?'pass-sec':'fail-sec'}">
-    <div class="sec-hdr" data-key="${key}" id="sec-${key}" style="${hasTT&&!isPass?'cursor:help':''}">
-      <div class="sdot ${isPass?'pass':'fail'}"></div>
+    <div class="sec-hdr" id="sec-${key}">
+      <div class="sdot ${isPass?'pass':'fail'}" data-key="${key}" title="${!isPass?'Hover for fix guidance':''}"></div>
       <h3>${info.title}</h3>
       <span class="clref">${info.clause}</span>
-      ${!isPass&&hasTT?'<span style="font-size:9px;color:var(--dim);margin-left:auto;margin-right:.25rem">hover for fix ℹ</span>':''}
+      ${!isPass&&hasTT?'<span style="font-size:9px;color:var(--dim);margin-left:auto;margin-right:.25rem;font-style:italic">hover dot for fix ℹ</span>':''}
       <span class="tog" style="margin-left:.4rem">${isPass?'▸':'▾'}</span>
     </div>
     <div class="sec-body ${isPass?'col':''}" style="max-height:3000px">${inner}</div>
@@ -1227,6 +1216,76 @@ function clearPlanHighlight(){
   drawScaleBar(ctx,xf,W,cv.height);
 }
 
+function showTailoredTooltip(e, key, data){
+  const base=TT_MAP[key+'_pass'];
+  if(!base) return;
+  const el=document.getElementById('tooltip');
+  document.getElementById('tt-title').textContent=base.title+' — FAILING';
+  document.getElementById('tt-ref').textContent=base.ref;
+  // Build tailored detail from actual failing items
+  let detail=base.body;
+  let fix=base.fix||'';
+  const s=data?.summary||{};
+  const meta=data?.meta||{};
+  if(key==='bedrooms'&&data?.bedrooms){
+    const fails=data.bedrooms.filter(b=>!b.overall_pass);
+    if(fails.length){
+      const lines=fails.map(b=>{
+        const issues=[];
+        if(!b.width_pass) issues.push(`width ${b.width_m}m → need ${b.req_width_m}m (+${(b.req_width_m-b.width_m).toFixed(2)}m)`);
+        if(b.req_depth_m&&!b.depth_pass) issues.push(`depth ${b.depth_m}m → need ${b.req_depth_m}m (+${(b.req_depth_m-b.depth_m).toFixed(2)}m)`);
+        if(b.req_area_sqm&&!b.area_pass) issues.push(`area ${b.area_sqm}m² → need ${b.req_area_sqm}m²`);
+        return b.room+': '+issues.join(', ');
+      });
+      fix='Fix: '+lines.join(' · ');
+    }
+  } else if(key==='living'&&data?.living){
+    const fails=data.living.filter(l=>!l.overall_pass);
+    if(fails.length){
+      const l=fails[0];
+      const issues=[];
+      if(!l.width_pass) issues.push(`width ${l.width_m}m → need ${l.req_width}m (+${(l.req_width-l.width_m).toFixed(2)}m)`);
+      if(l.req_area&&!l.area_pass) issues.push(`area ${l.area_sqm}m² → need ${l.req_area}m²`);
+      fix='Fix: Living room '+issues.join(', ')+'. Extend the APT_ROOM_LIVING polygon.';
+    }
+  } else if(key==='storage'&&data?.storage){
+    const st=data.storage;
+    const issues=[];
+    if(!st.total_pass) issues.push(`total ${st.total_vol}m³ → need ${st.req_total}m³ (add ${(st.req_total-st.total_vol).toFixed(1)}m³)`);
+    if(st.req_internal&&!st.internal_pass) issues.push(`internal ${st.designated_vol}m³ → need ${st.req_internal}m³`);
+    if(issues.length) fix='Fix: '+issues.join(' · ')+'. Add APT_STORAGE_DESIGNATED polygons for wardrobes/linen.';
+  } else if(key==='pos'&&data?.pos){
+    const fails=(data.pos||[]).filter(p=>!p.overall_pass);
+    if(fails.length){
+      const lines=fails.map(p=>{
+        const issues=[];
+        if(!p.area_pass) issues.push(`area ${p.area_sqm}m² → need ${p.req_area_sqm}m²`);
+        if(!p.dim_pass) issues.push(`min dim ${p.min_dim_m}m → need ${p.req_dim_m}m`);
+        return p.space+': '+issues.join(', ');
+      });
+      fix='Fix: '+lines.join(' · ')+'. Enlarge the APT_POS polygon.';
+    }
+  } else if(key==='room_depth'&&data?.room_depth){
+    const fails=data.room_depth.filter(r=>!r.overall_pass);
+    if(fails.length){
+      const lines=fails.map(r=>`${r.room}: ${r.depth_used_m}m deep (max ${r.limit_m}m — over by ${(r.depth_used_m-r.limit_m).toFixed(2)}m)`);
+      fix='Fix: '+lines.join(' · ')+'. Move the rear wall toward the window wall.';
+    }
+  } else if(key==='doors'&&data?.doors){
+    const fails=data.doors.filter(d=>!d.pass);
+    if(fails.length){
+      const lines=fails.map(d=>`${d.label}: ${Math.round(d.width_m*1000)}mm → need 850mm`);
+      fix='Fix: '+lines.join(' · ')+'. Draw a longer line on the APT_DOOR_* layer.';
+    }
+  }
+  document.getElementById('tt-body').textContent=detail;
+  document.getElementById('tt-threshold').textContent=base.threshold?'→ '+base.threshold:'';
+  const fixEl=document.getElementById('tt-fix');
+  if(fixEl) fixEl.textContent=fix;
+  positionTooltip(e,el);
+}
+
+
 function showStripTooltip(e,key){
   const tt=TT_MAP[key]; if(!tt)return;
   const el=document.getElementById('tooltip');
@@ -1406,7 +1465,7 @@ function drawScaleBar(ctx,xf,W,H){
   ctx.fillText(`${bm}m`,bx+bpx/2,by-8);
 
   // North arrow
-  const north=DATA?.meta?.north_vec||[0,1];
+  const north=(typeof DATA!=='undefined'&&DATA?.meta?.north_vec)||[0,1];
   const nx=north[0], ny=north[1];
   const nl=Math.hypot(nx,ny)||1;
   const ax=nx/nl, ay=ny/nl;  // unit north vector in world space
@@ -1448,23 +1507,42 @@ function drawInlinePlan(data){
   drawLabels(ctx,shapes,xf);
   drawScaleBar(ctx,xf,W,cv.height);
 
-  // Hover tooltip on inline plan
+  // Hover on inline plan -- room info popup
   cv.onmousemove=e=>{
     const rect=cv.getBoundingClientRect();
     const mx=(e.clientX-rect.left)*(cv.width/rect.width);
     const my=(e.clientY-rect.top)*(cv.height/rect.height);
+    // Check fail highlight + show tooltip
     for(const s of shapes){
-      if(!s.key||s.pass===false||s.pass===true){}
-      if(s.pass===false&&s.key&&pointInPoly(mx,my,s.pts,xf)){
-        const tt=TT_MAP[s.key+'_pass'];
-        if(tt){
-          document.getElementById('tt-title').textContent=tt.title+' — FAILING';
-          document.getElementById('tt-ref').textContent=tt.ref;
-          document.getElementById('tt-body').textContent=tt.body;
-          document.getElementById('tt-threshold').textContent='→ '+tt.threshold;
-          positionTooltip(e,document.getElementById('tooltip'));
-          return;
+      if(s.pts&&pointInPoly(mx,my,s.pts,xf)){
+        // Build rich room tooltip
+        const cfg=RCFG[s.layer];
+        const label=s.label||(cfg?.label)||s.layer;
+        const adj=DATA?.adjacency;
+        const node=adj?.nodes?.find(n=>n.layer===s.layer);
+        let lines=[`<strong>${label}</strong>`];
+        if(s.area) lines.push(`${s.area}m² · ${s.pass===false?'<span style="color:var(--fail)">FAILING</span>':'<span style="color:var(--pass)">PASS</span>'}`);
+        if(node){
+          if(node.windows?.length) lines.push(`Windows: ${node.windows.map(w=>`${w.key} ${w.width_m}m`).join(', ')}`);
+          if(node.doors?.length) lines.push(`Doors: ${node.doors.map(d=>`${d.key} ${d.width_m}m`).join(', ')}`);
+          if(node.nearby_storage?.length) lines.push(`Storage: ${node.nearby_storage.map(st=>st.label+' '+st.area_sqm+'m²').join(', ')}`);
+          const adjEdges=adj.edges?.filter(ed=>ed.a===node.id||ed.b===node.id)||[];
+          if(adjEdges.length) lines.push(`Adjacent: ${adjEdges.map(ed=>`${ed.a===node.id?ed.b_label:ed.a_label} (${ed.shared_m}m)`).join(', ')}`);
         }
+        // Failing detail
+        if(s.pass===false&&s.key){
+          const tt=TT_MAP[s.key+'_pass'];
+          if(tt) lines.push(`<span style="color:var(--acc)">→ ${tt.threshold||''}</span>`);
+        }
+        const el=document.getElementById('tooltip');
+        document.getElementById('tt-title').textContent='';
+        document.getElementById('tt-ref').textContent='';
+        document.getElementById('tt-body').innerHTML=lines.join('<br>');
+        document.getElementById('tt-threshold').textContent='';
+        const fixEl=document.getElementById('tt-fix');
+        if(fixEl) fixEl.textContent='';
+        positionTooltip(e,el);
+        return;
       }
     }
     hideTooltip();
@@ -1950,13 +2028,10 @@ function drawAdjacency(){
     return h;
   }
 
-  // Remove old listener and add new one
-  const newCv=cv.cloneNode(true);
-  cv.parentNode.replaceChild(newCv,cv);
+  // Click handler -- attach directly (no clone which wipes canvas)
   const popup=document.getElementById('adjPopup');
   let selectedId=null;
-
-  newCv.addEventListener('click',function(e){
+  cv.onclick=function(e){
     const rect=newCv.getBoundingClientRect();
     const mx=e.clientX-rect.left, my=e.clientY-rect.top;
     let hit=null;
@@ -1986,7 +2061,7 @@ function drawAdjacency(){
       selectedId=null;
       popup.style.display='none';
     }
-  });
+  };
 
   // ── Missing ideal adjacencies ─────────────────────────────────────────────
   const mis=document.getElementById('adjMissing');
@@ -2311,16 +2386,58 @@ function renderKitchen(data){
     ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);
   }
 
-  // Appliance legend dots
+  // Appliance legend dots top-left
   applCentroids.forEach((a,i)=>{
     const lx=12, ly=12+i*16;
     ctx.beginPath();ctx.arc(lx,ly,5,0,2*Math.PI);ctx.fillStyle=a.col;ctx.fill();
-    ctx.fillStyle='rgba(26,25,22,.7)';ctx.font='9px Inter,sans-serif';
+    ctx.fillStyle='rgba(26,25,22,.7)';ctx.font='bold 9px Inter,sans-serif';
     ctx.textAlign='left';ctx.textBaseline='middle';
     ctx.fillText(a.name,lx+9,ly);
   });
 
-  // Work triangle legend
+  // Stats panel bottom-right on canvas
+  const stats=[];
+  if(k.work_triangle?.perimeter_m!=null){
+    stats.push({label:'Work triangle',value:k.work_triangle.perimeter_m.toFixed(1)+'m perimeter',pass:k.work_triangle.pass});
+    if(k.work_triangle.cooktop_to_fridge_m) stats.push({label:'  Fridge→Cooktop',value:k.work_triangle.cooktop_to_fridge_m.toFixed(2)+'m',pass:null});
+    if(k.work_triangle.sink_to_cooktop_m) stats.push({label:'  Cooktop→Sink',value:k.work_triangle.sink_to_cooktop_m.toFixed(2)+'m',pass:null});
+    if(k.work_triangle.fridge_to_sink_m) stats.push({label:'  Sink→Fridge',value:k.work_triangle.fridge_to_sink_m.toFixed(2)+'m',pass:null});
+    stats.push({label:'  Target',value:'4–7m',pass:null});
+  }
+  if(k.bench_run){
+    stats.push({label:'Bench run',value:k.bench_run.longest_run_m?.toFixed(2)+'m longest',pass:k.bench_run.pass});
+    stats.push({label:'  Total bench',value:'~'+k.bench_run.total_length_m?.toFixed(1)+'m',pass:null});
+  }
+  if(k.clearance){
+    stats.push({label:'Clearance',value:k.clearance.min_clearance_m?.toFixed(2)+'m',pass:k.clearance.pass});
+    stats.push({label:'  Required',value:k.clearance.required_m+'m min',pass:null});
+  }
+  if(k.natural_light!==undefined){
+    stats.push({label:'Natural light',value:k.natural_light?'Window nearby':'No window',pass:k.natural_light});
+  }
+
+  if(stats.length){
+    const panW=155, panPad=6, lineH=13;
+    const panH=stats.length*lineH+panPad*2;
+    const panX=W-panW-6, panY=6;
+    ctx.fillStyle='rgba(245,242,236,.92)';
+    ctx.strokeStyle='rgba(212,207,196,.8)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(panX,panY,panW,panH,4):ctx.rect(panX,panY,panW,panH);
+    ctx.fill();ctx.stroke();
+    stats.forEach((s,i)=>{
+      const y=panY+panPad+i*lineH+lineH/2;
+      const passCol=s.pass===true?'#1a7a4a':s.pass===false?'#c0392b':'rgba(107,104,96,.7)';
+      ctx.fillStyle=s.pass!=null?passCol:'rgba(107,104,96,.65)';
+      ctx.font=s.pass!=null?'bold 8px Inter,sans-serif':'8px Inter,sans-serif';
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText(s.label,panX+panPad,y);
+      ctx.textAlign='right';
+      ctx.fillText(s.value,panX+panW-panPad,y);
+    });
+  }
+
+  // Work triangle legend bottom-left
   const legY=H-10;
   ctx.strokeStyle='rgba(232,93,37,.7)';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
   ctx.beginPath();ctx.moveTo(12,legY);ctx.lineTo(32,legY);ctx.stroke();ctx.setLineDash([]);
