@@ -9,8 +9,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 from compliance_engine import run_compliance
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
-from flask_cors import CORS
-CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
 
@@ -433,6 +431,18 @@ def report(token):
     return render_template('index.html')
 
 
+@app.route('/api/test')
+def api_test():
+    """Quick health check -- returns engine version info."""
+    try:
+        from compliance_engine import build_adjacency
+        import inspect
+        sig = str(inspect.signature(build_adjacency))
+        return jsonify({'ok': True, 'build_adjacency_sig': sig, 'version': '2.0'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
 @app.route('/about')
 @app.route('/about/')
 def about():
@@ -538,7 +548,7 @@ RULES:
                 'content-type': 'application/json',
             },
             json={
-                'model': 'claude-sonnet-4-5-20251022',
+                'model': 'claude-opus-4-5',
                 'max_tokens': 2000,
                 'messages': [{
                     'role': 'user',
