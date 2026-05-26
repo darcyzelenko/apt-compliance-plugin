@@ -360,8 +360,8 @@ def check_building(
                 jurisdiction=jurisdiction,
             )
         except Exception as exc:
-            # Don't let one bad apartment abort the whole building check.
-            # Represent it as a fully-failing unit.
+            import sys, traceback
+            print('APT DEBUG unit %s EXCEPTION: %s' % (unit_id, traceback.format_exc()), file=sys.stderr, flush=True)
             apt_results.append(UnitResult(
                 unit_id=unit_id,
                 jurisdiction=jurisdiction,
@@ -375,6 +375,9 @@ def check_building(
                 checks={'error': str(exc)},
             ))
             continue
+
+        import sys
+        print('APT DEBUG unit %s: raw keys=%s error=%s' % (unit_id, list(raw.keys()) if isinstance(raw, dict) else type(raw), raw.get('error') if isinstance(raw, dict) else 'n/a'), file=sys.stderr, flush=True)
 
         if 'error' in raw:
             apt_results.append(UnitResult(
