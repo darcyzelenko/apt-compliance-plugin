@@ -367,6 +367,9 @@ def check_building(
 
     for unit_id in unit_ids:
         unit_dxf = extract_unit_dxf(dxf_text, unit_id)
+        import sys as _sys
+        apt_lines = [l.strip() for l in unit_dxf.splitlines() if l.strip().startswith('APT_') and 'SKIP' not in l]
+        print('APT DEBUG unit %s extracted: %d APT_ lines, sample=%s' % (unit_id, len(apt_lines), apt_lines[:5]), file=_sys.stderr, flush=True)
         try:
             raw = compliance_engine_fn(
                 unit_dxf,
@@ -500,5 +503,3 @@ def building_result_to_dict(result: 'BuildingResult') -> dict:
             'errors': s.errors,
         },
     }
-
-    
