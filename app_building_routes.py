@@ -83,6 +83,13 @@ def register_building_routes(app):
         except Exception as e:
             return jsonify({'error': f'Could not read file: {e}'}), 400
 
+        # Debug: log what the server actually received
+        unit_ids_received = detect_unit_ids(dxf_text)
+        logging.info(
+            'check-building received: %d chars, units detected: %s',
+            len(dxf_text), unit_ids_received
+        )
+
         # Pre-flight: confirm this is actually a multi-apartment file
         if not is_multi_apartment(dxf_text):
             return jsonify({
@@ -126,25 +133,6 @@ def register_building_routes(app):
         })
 
     # ── GET /api/results-building/<token> ─────────────────────────────────────
-
-
-    @app.route('/api/debug-building-dxf', methods=['POST'])
-    def api_debug_building_dxf():
-        f = request.files.get('dxf_file')
-        if not f:
-            return jsonify({'error': 'no file'}), 400
-        text = f.read().decode('utf-8', errors='replace')
-        from building_compliance import detect_unit_ids
-        unit_ids = detect_unit_ids(text)
-        # Find all lines matching APT_XX_ pattern
-        import re
-        tagged = list(set(re.findall(r'APT_[A-Za-z0-9]+_(?:ROOM|STORAGE|POS|WINDOW|DOOR|NORTH|NOISE|WALL|COLUMN|OVERHANG|SHAFT|KITCHEN|BATHROOM|FURNITURE)\w*', text)))
-        return jsonify({
-            'unit_ids_detected': unit_ids,
-            'tagged_layers_found': sorted(tagged)[:40],
-            'total_lines': len(text.splitlines()),
-        })
-
 
     @app.route('/api/results-building/<token>')
     def api_building_results(token):
