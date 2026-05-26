@@ -369,7 +369,8 @@ def check_building(
         unit_dxf = extract_unit_dxf(dxf_text, unit_id)
         import sys as _sys
         apt_lines = [l.strip() for l in unit_dxf.splitlines() if l.strip().startswith('APT_') and 'SKIP' not in l]
-        print('APT DEBUG unit %s extracted: %d APT_ lines, sample=%s' % (unit_id, len(apt_lines), apt_lines[:5]), file=_sys.stderr, flush=True)
+        room_lines = [l for l in apt_lines if 'ROOM' in l or 'STORAGE' in l or 'POS' in l]
+        print('APT DEBUG unit %s extracted: %d APT_ lines, rooms=%s' % (unit_id, len(apt_lines), room_lines), file=_sys.stderr, flush=True)
         try:
             raw = compliance_engine_fn(
                 unit_dxf,
