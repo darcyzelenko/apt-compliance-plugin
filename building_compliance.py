@@ -379,7 +379,7 @@ def check_building(
         import sys
         print('APT DEBUG unit %s: raw keys=%s error=%s' % (unit_id, list(raw.keys()) if isinstance(raw, dict) else type(raw), raw.get('error') if isinstance(raw, dict) else 'n/a'), file=sys.stderr, flush=True)
 
-        if 'error' in raw:
+        if 'error' in raw and raw['error']:
             apt_results.append(UnitResult(
                 unit_id=unit_id,
                 jurisdiction=jurisdiction,
