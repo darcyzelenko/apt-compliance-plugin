@@ -45,16 +45,53 @@ from typing import Dict, List, Optional, Any
 
 BUILDING_THRESHOLDS = {
     'VIC': {
-        'cross_ventilation_pct': 0.40,   # ADG Vic 2017 s.55
-        'adaptable_dwellings_pct': 0.50, # BCA D3.3
+        # ADG Vic 2017 Standards D27/B50
+        'cross_ventilation_pct': 0.40,
+        # BCA D3.3 / Standard D17
+        'adaptable_dwellings_pct': 0.50,
+        # Standard B36/D7: 40+ dwellings -> 2.5m2/dwelling or 250m2, lesser
+        'communal_open_space_m2_per_dwelling': 2.5,
+        'communal_open_space_min_m2': 250.0,
+        'communal_open_space_threshold_dwellings': 40,
+        # NSW only (not VIC hard rule)
+        'max_apts_per_core': None,
+        'max_apts_per_lift': None,
+        'solar_access_pct': None,
+        'solar_hours_min': None,
     },
     'NSW': {
-        'cross_ventilation_pct': 0.60,   # NSW ADG 2015 p.88
+        # NSW ADG 2015 4B p.84
+        'cross_ventilation_pct': 0.60,
         'adaptable_dwellings_pct': 0.50,
+        # NSW ADG 4F p.98: max 8 apartments off circulation core per level
+        'max_apts_per_core': 8,
+        # NSW ADG 4F: 10+ storeys max 40 apartments per lift
+        'max_apts_per_lift': 40,
+        # NSW ADG 4A p.80: >=70% receive >=2h direct sun (Sydney/Newcastle/Wollongong)
+        # elsewhere NSW >=3h. Using 2h as default.
+        'solar_access_pct': 0.70,
+        'solar_hours_min': 2,
+        'max_no_sun_pct': 0.15,
+        # NSW ADG 4G: studio 4m3, 1bed 6m3, 2bed 8m3, 3bed+ 10m3
+        'storage_m3': {'studio': 4, '1bed': 6, '2bed': 8, '3bed+': 10},
+        'storage_internal_pct': 0.50,
+        'communal_open_space_m2_per_dwelling': None,
+        'communal_open_space_min_m2': None,
+        'communal_open_space_threshold_dwellings': None,
     },
     'BEST_PRACTICE': {
         'cross_ventilation_pct': 0.60,
         'adaptable_dwellings_pct': 0.50,
+        'max_apts_per_core': 8,
+        'max_apts_per_lift': 40,
+        'solar_access_pct': 0.70,
+        'solar_hours_min': 2,
+        'max_no_sun_pct': 0.15,
+        'storage_m3': {'studio': 4, '1bed': 6, '2bed': 8, '3bed+': 10},
+        'storage_internal_pct': 0.50,
+        'communal_open_space_m2_per_dwelling': 2.5,
+        'communal_open_space_min_m2': 250.0,
+        'communal_open_space_threshold_dwellings': 40,
     },
 }
 
@@ -105,11 +142,12 @@ class BuildingSummary:
     passing_units: int
     pass_rate: float
     building_checks: List[BuildingCheckResult]
-    apartment_mix: Dict[str, int]   # {'studio': 1, '1bed': 3, '2bed': 4, '3bed+': 2}
+    apartment_mix: Dict[str, int]
     cross_ventilation_pct: float
     adaptable_dwellings_pct: float
     north_living_pct: float
-    worst_unit: Optional[str]       # unit_id with most summary failures
+    solar_access_pct: float          # pct apartments with >= solar_hours_min sun
+    worst_unit: Optional[str]
     errors: List[str] = field(default_factory=list)
 
 
@@ -255,16 +293,12 @@ def _summary_failures(unit: UnitResult) -> int:
 # Building-level aggregation
 # ---------------------------------------------------------------------------
 
-def aggregate_building(
-    apt_results: List[UnitResult],
-    jurisdiction: str = 'VIC',
-) -> BuildingSummary:
-    thresholds = BUILDING_THRESHOLDS.get(
-        jurisdiction.upper(),
-        BUILDING_THRESHOLDS['VIC']
-    )
+def aggregate_building(apt_results, jurisdiction='VIC'):
+    """Aggregate building-level compliance across all apartment results."""
+    jur = jurisdiction.upper()
+    thresholds = BUILDING_THRESHOLDS.get(jur, BUILDING_THRESHOLDS['VIC'])
     n = len(apt_results)
-    errors: List[str] = []
+    errors = []
 
     if n == 0:
         errors.append('No apartment results to aggregate.')
@@ -272,64 +306,148 @@ def aggregate_building(
             jurisdiction=jurisdiction, total_units=0, passing_units=0,
             pass_rate=0.0, building_checks=[], apartment_mix={},
             cross_ventilation_pct=0.0, adaptable_dwellings_pct=0.0,
-            north_living_pct=0.0, worst_unit=None, errors=errors,
+            north_living_pct=0.0, solar_access_pct=0.0,
+            worst_unit=None, errors=errors,
         )
 
-    passing_units    = sum(1 for r in apt_results if r.pass_overall)
-    cv_units         = sum(1 for r in apt_results if r.has_cross_ventilation)
-    adaptable_units  = sum(1 for r in apt_results if r.is_adaptable)
-    north_liv_units  = sum(1 for r in apt_results if r.has_north_living)
+    passing_units   = sum(1 for r in apt_results if r.pass_overall)
+    cv_units        = sum(1 for r in apt_results if r.has_cross_ventilation)
+    adaptable_units = sum(1 for r in apt_results if r.is_adaptable)
+    north_units     = sum(1 for r in apt_results if r.has_north_living)
+
+    # Solar access: derive from each unit's daylight data if available
+    solar_hours_req = thresholds.get('solar_hours_min', 2)
+    solar_units = 0
+    for r in apt_results:
+        daylight = r.checks.get('daylight', {}) if isinstance(r.checks, dict) else {}
+        rooms = daylight.get('rooms', [])
+        pos   = daylight.get('pos', [])
+        # Check if living room or POS meets solar hours
+        living_sun = any(
+            rm.get('sun_hours') is not None and rm.get('sun_hours', 0) >= solar_hours_req
+            for rm in rooms
+            if rm.get('room_key', '').upper() in ('LIVING', 'MAINBED')
+        )
+        pos_sun = any(
+            p.get('sun_hours') is not None and p.get('sun_hours', 0) >= solar_hours_req
+            for p in pos
+        )
+        if living_sun or pos_sun:
+            solar_units += 1
 
     cv_pct       = cv_units / n
     adaptable_pct = adaptable_units / n
-    north_pct    = north_liv_units / n
+    north_pct    = north_units / n
+    solar_pct    = solar_units / n
     pass_rate    = passing_units / n
 
-    # Apartment mix
-    mix: Dict[str, int] = {'studio': 0, '1bed': 0, '2bed': 0, '3bed+': 0}
+    mix = {'studio': 0, '1bed': 0, '2bed': 0, '3bed+': 0}
     for r in apt_results:
         mix[r.apartment_type] += 1
 
-    # Building-level checks
-    building_checks: List[BuildingCheckResult] = []
+    building_checks = []
 
+    # 1. Cross ventilation
     cv_req = thresholds['cross_ventilation_pct']
     building_checks.append(BuildingCheckResult(
         check_name='cross_ventilation',
-        pass_=cv_pct >= cv_req,
+        pass_=(cv_pct >= cv_req),
         value=cv_pct,
         required=cv_req,
-        description=(
-            f'{cv_units} of {n} apartments achieve cross ventilation '
-            f'({cv_pct:.0%}) — {jurisdiction} requires {cv_req:.0%}'
+        description='%d of %d apartments cross ventilated (%d%%) -- %s requires %d%%' % (
+            cv_units, n, int(cv_pct*100), jur, int(cv_req*100)
         ),
     ))
 
+    # 2. Adaptable dwellings
     ad_req = thresholds['adaptable_dwellings_pct']
     building_checks.append(BuildingCheckResult(
         check_name='adaptable_dwellings',
-        pass_=adaptable_pct >= ad_req,
+        pass_=(adaptable_pct >= ad_req),
         value=adaptable_pct,
         required=ad_req,
-        description=(
-            f'{adaptable_units} of {n} apartments meet adaptability checks '
-            f'({adaptable_pct:.0%}) — BCA D3.3 requires {ad_req:.0%}'
+        description='%d of %d apartments meet adaptability checks (%d%%) -- BCA D3.3 requires %d%%' % (
+            adaptable_units, n, int(adaptable_pct*100), int(ad_req*100)
         ),
     ))
 
-    # North-facing living (informational — no hard building-level threshold)
+    # 3. North-facing living (informational for VIC, no hard threshold)
     building_checks.append(BuildingCheckResult(
         check_name='north_facing_living',
-        pass_=True,   # informational only
+        pass_=True,
         value=north_pct,
         required=0.0,
-        description=(
-            f'{north_liv_units} of {n} apartments have a north-facing '
-            f'living-area window ({north_pct:.0%})'
+        description='%d of %d apartments have north-facing living (%d%%)' % (
+            north_units, n, int(north_pct*100)
         ),
     ))
 
-    # Worst unit
+    # 4. Solar access (NSW/BEST_PRACTICE: >=70% of apartments get >=2h sun)
+    solar_req = thresholds.get('solar_access_pct')
+    if solar_req is not None:
+        no_sun_pct = 1.0 - solar_pct
+        max_no_sun = thresholds.get('max_no_sun_pct', 0.15)
+        building_checks.append(BuildingCheckResult(
+            check_name='solar_access',
+            pass_=(solar_pct >= solar_req and no_sun_pct <= max_no_sun),
+            value=solar_pct,
+            required=solar_req,
+            description='%d of %d apartments receive >=%dh winter sun (%d%%) -- %s requires %d%%' % (
+                solar_units, n, solar_hours_req, int(solar_pct*100), jur, int(solar_req*100)
+            ),
+        ))
+
+    # 5. NSW: apartments per core (informational -- requires core geometry)
+    max_per_core = thresholds.get('max_apts_per_core')
+    if max_per_core is not None:
+        building_checks.append(BuildingCheckResult(
+            check_name='apartments_per_core',
+            pass_=True,   # informational -- cannot compute without core geometry
+            value=0.0,
+            required=float(max_per_core),
+            description='NSW ADG 4F: max %d apartments per circulation core per level -- verify on plan' % max_per_core,
+        ))
+
+    # 6. NSW storage aggregate (>=50% of storage must be within apartment)
+    storage_m3 = thresholds.get('storage_m3')
+    if storage_m3 is not None:
+        storage_internal_req = thresholds.get('storage_internal_pct', 0.50)
+        # Check each apartment against NSW storage minimums
+        storage_pass_count = 0
+        for r in apt_results:
+            st = r.checks.get('storage', {}) if isinstance(r.checks, dict) else {}
+            req = storage_m3.get(r.apartment_type, 6)
+            provided = st.get('total_vol', 0) or 0
+            if provided >= req:
+                storage_pass_count += 1
+        storage_apt_pct = storage_pass_count / n
+        building_checks.append(BuildingCheckResult(
+            check_name='storage_nsw',
+            pass_=(storage_apt_pct >= 1.0),
+            value=storage_apt_pct,
+            required=1.0,
+            description='NSW 4G: %d of %d apartments meet NSW storage minimums (%d%%)' % (
+                storage_pass_count, n, int(storage_apt_pct*100)
+            ),
+        ))
+
+    # 7. VIC communal open space (40+ dwellings)
+    cos_threshold = thresholds.get('communal_open_space_threshold_dwellings')
+    if cos_threshold is not None and n >= cos_threshold:
+        cos_per_dwell = thresholds.get('communal_open_space_m2_per_dwelling', 2.5)
+        cos_min = thresholds.get('communal_open_space_min_m2', 250.0)
+        cos_req = min(cos_per_dwell * n, cos_min)
+        building_checks.append(BuildingCheckResult(
+            check_name='communal_open_space',
+            pass_=True,   # informational -- requires site geometry
+            value=0.0,
+            required=cos_req,
+            description='VIC D7: %d+ dwellings require %.0fm2 communal open space -- verify on site plan' % (
+                cos_threshold, cos_req
+            ),
+        ))
+
+    # Find worst unit
     worst_unit = None
     if apt_results:
         worst = max(apt_results, key=_summary_failures)
@@ -346,23 +464,19 @@ def aggregate_building(
         cross_ventilation_pct=cv_pct,
         adaptable_dwellings_pct=adaptable_pct,
         north_living_pct=north_pct,
+        solar_access_pct=solar_pct,
         worst_unit=worst_unit,
         errors=errors,
     )
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
-# Heavy result fields that contain geometry grids — strip these from the
-# per-unit 'checks' payload to keep session storage lean.
-_STRIP_KEYS = {'diagnostics', 'building_geometry', 'fixtures'}
-_STRIP_DF_GRID = True   # also strip df_grid arrays from daylight rooms
-
-
 def _slim_results(results: dict) -> dict:
-    """Remove heavy geometry/grid fields before storing in session."""
+    """Remove heavy geometry/grid fields before storing in session.
+    building_geometry is KEPT so wall/column geometry renders in the browser.
+    """
+    # Strip only diagnostics (verbose) and fixtures (heavy vertex data)
+    _STRIP_KEYS = {'diagnostics'}
+    _STRIP_DF_GRID = True
     slim = {k: v for k, v in results.items() if k not in _STRIP_KEYS}
     if _STRIP_DF_GRID and 'daylight' in slim:
         dl = dict(slim['daylight'])
@@ -411,10 +525,7 @@ def check_building(
 
     for unit_id in unit_ids:
         unit_dxf = extract_unit_dxf(dxf_text, unit_id)
-        import sys as _sys
         apt_lines = [l.strip() for l in unit_dxf.splitlines() if l.strip().startswith('APT_') and 'SKIP' not in l]
-        room_lines = [l for l in apt_lines if 'ROOM' in l or 'STORAGE' in l or 'POS' in l]
-        print('APT DEBUG unit %s extracted: %d APT_ lines, rooms=%s' % (unit_id, len(apt_lines), room_lines), file=_sys.stderr, flush=True)
         try:
             raw = compliance_engine_fn(
                 unit_dxf,
@@ -422,8 +533,6 @@ def check_building(
                 jurisdiction=jurisdiction,
             )
         except Exception as exc:
-            import sys, traceback
-            print('APT DEBUG unit %s EXCEPTION: %s' % (unit_id, traceback.format_exc()), file=sys.stderr, flush=True)
             apt_results.append(UnitResult(
                 unit_id=unit_id,
                 jurisdiction=jurisdiction,
@@ -437,9 +546,6 @@ def check_building(
                 checks={'error': str(exc)},
             ))
             continue
-
-        import sys
-        print('APT DEBUG unit %s: raw keys=%s error=%s' % (unit_id, list(raw.keys()) if isinstance(raw, dict) else type(raw), raw.get('error') if isinstance(raw, dict) else 'n/a'), file=sys.stderr, flush=True)
 
         if 'error' in raw and raw['error']:
             apt_results.append(UnitResult(
@@ -525,8 +631,8 @@ def building_result_to_dict(result: 'BuildingResult') -> dict:
             'pass': c.pass_,
             'value': round(c.value, 4),
             'required': round(c.required, 4),
-            'value_pct': f'{c.value:.0%}',
-            'required_pct': f'{c.required:.0%}',
+            'value_pct': '%d%%' % int(c.value * 100),
+            'required_pct': '%d%%' % int(c.required * 100),
             'description': c.description,
         }
 
@@ -538,10 +644,11 @@ def building_result_to_dict(result: 'BuildingResult') -> dict:
             'total_units': s.total_units,
             'passing_units': s.passing_units,
             'pass_rate': round(s.pass_rate, 4),
-            'pass_rate_pct': f'{s.pass_rate:.0%}',
+            'pass_rate_pct': '%d%%' % int(s.pass_rate * 100),
             'cross_ventilation_pct': round(s.cross_ventilation_pct, 4),
             'adaptable_dwellings_pct': round(s.adaptable_dwellings_pct, 4),
             'north_living_pct': round(s.north_living_pct, 4),
+            'solar_access_pct': round(s.solar_access_pct, 4),
             'apartment_mix': s.apartment_mix,
             'worst_unit': s.worst_unit,
             'building_checks': [bcheck_to_dict(c) for c in s.building_checks],

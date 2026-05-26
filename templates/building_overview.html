@@ -533,10 +533,13 @@ function renderBuilding(data) {
   }).join('');
 
   // Building checks
+  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space']);
   document.getElementById('building-checks').innerHTML = s.building_checks.map(c => {
-    const cls = c.check_name === 'north_facing_living' ? 'info' : (c.pass ? 'pass' : 'fail');
-    const icon = c.pass ? '✓' : '✗';
-    return `<div class="bcheck ${cls}" title="${c.description}">${icon} ${fmtCheckName(c.check_name)} ${c.value_pct}</div>`;
+    const isInfo = INFO_CHECKS.has(c.check_name);
+    const cls = isInfo ? 'info' : (c.pass ? 'pass' : 'fail');
+    const icon = isInfo ? 'i' : (c.pass ? '✓' : '✗');
+    const val = c.value_pct && c.value_pct !== '0%' ? ' ' + c.value_pct : '';
+    return `<div class="bcheck ${cls}" title="${c.description}">${icon} ${fmtCheckName(c.check_name)}${val}</div>`;
   }).join('');
 
   // Unit cards

@@ -83,11 +83,6 @@ def register_building_routes(app):
         except Exception as e:
             return jsonify({'error': f'Could not read file: {e}'}), 400
 
-        # Debug: log what the server actually received
-        unit_ids_received = detect_unit_ids(dxf_text)
-        import sys
-        print('APT DEBUG check-building: %d chars, units: %s' % (len(dxf_text), unit_ids_received), file=sys.stderr, flush=True)
-
         # Pre-flight: confirm this is actually a multi-apartment file
         if not is_multi_apartment(dxf_text):
             return jsonify({
@@ -119,12 +114,6 @@ def register_building_routes(app):
 
         result_dict = building_result_to_dict(result)
 
-        import sys
-        print('APT DEBUG result: %d apartments in dict, unit_ids=%s' % (
-            len(result_dict.get('apartments', [])),
-            [a.get('unit_id') for a in result_dict.get('apartments', [])]
-        ), file=sys.stderr, flush=True)
-
         # Store using the same session mechanism as /api/store
         token = uuid.uuid4().hex[:12]
         _set_session(token, result_dict)   # stored under results key, with ts
@@ -137,6 +126,49 @@ def register_building_routes(app):
         })
 
     # ── GET /api/results-building/<token> ─────────────────────────────────────
+
+    @app.route('/api/update-building/<token>', methods=['POST'])
+    def api_update_building(token):
+        """
+        POST /api/update-building/<token>
+        Re-run the building check and update the stored session.
+        Same parameters as /api/check-building.
+        """
+        if 'dxf_file' not in request.files:
+            return jsonify({'error': 'No DXF file uploaded'}), 400
+        f = request.files['dxf_file']
+        jurisdiction = request.form.get('jurisdiction', 'VIC').strip().upper()
+        if jurisdiction not in VALID_JURISDICTIONS:
+            jurisdiction = 'VIC'
+        try:
+            ceiling_h = float(request.form.get('ceiling_height', 2.7))
+            ceiling_h = max(2.1, min(5.0, ceiling_h))
+        except (ValueError, TypeError):
+            ceiling_h = 2.7
+        try:
+            dxf_text = f.read().decode('utf-8', errors='replace')
+        except Exception as e:
+            return jsonify({'error': 'Could not read file: %s' % e}), 400
+        try:
+            result = check_building(
+                dxf_text=dxf_text,
+                jurisdiction=jurisdiction,
+                ceiling_h=ceiling_h,
+                compliance_engine_fn=run_compliance,
+            )
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        result_dict = building_result_to_dict(result)
+        # Update existing session if token is valid, otherwise create new
+        existing = _get_session(token)
+        use_token = token if existing else str(uuid.uuid4()).hex[:12]
+        _set_session(use_token, result_dict)
+        base_url = request.host_url.rstrip('/')
+        return jsonify({
+            'token': use_token,
+            'url': '%s/building/%s' % (base_url, use_token),
+            **result_dict,
+        })
 
     @app.route('/api/results-building/<token>')
     def api_building_results(token):
