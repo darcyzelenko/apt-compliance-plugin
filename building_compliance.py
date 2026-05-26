@@ -145,26 +145,40 @@ def extract_unit_dxf(dxf_text: str, unit_id: str) -> str:
     """
     Return a version of the DXF with layer names normalised for one unit.
 
-    APT_01_ROOM_MAINBED  ->  APT_ROOM_MAINBED
-    APT_01_WINDOW_LIVING ->  APT_WINDOW_LIVING
+    APT_01_ROOM_MAINBED  ->  APT_ROOM_MAINBED      (this unit: normalised)
+    APT_02_ROOM_MAINBED  ->  APT_OTHER_UNIT_SKIP   (other units: ignored)
 
     All other lines are passed through unchanged so the DXF structure
     (HEADER, ENTITIES sections etc.) remains valid.
     """
-    # Build a targeted regex for this specific unit
+    layer_types = (
+        r'(?:ROOM|STORAGE|POS|WINDOW|DOOR|NORTH|NOISE|'
+        r'WALL|COLUMN|OVERHANG|SHAFT|KITCHEN|BATHROOM|FURNITURE)'
+    )
+    # Matches this unit's layers: APT_01_ROOM_MAINBED
     unit_re = re.compile(
-        r'^(APT_)' + re.escape(unit_id) + r'_((?:ROOM|STORAGE|POS|WINDOW|DOOR|NORTH|NOISE|'
-        r'WALL|COLUMN|OVERHANG|SHAFT|KITCHEN|BATHROOM|FURNITURE).*)$'
+        r'^APT_' + re.escape(unit_id) + r'_(' + layer_types + r'.*)$'
+    )
+    # Matches any other unit's tagged layers: APT_XX_ROOM_* where XX != unit_id
+    other_re = re.compile(
+        r'^APT_([A-Za-z0-9]+)_' + layer_types
     )
     out = []
     for line in dxf_text.splitlines():
-        m = unit_re.match(line.strip())
+        stripped = line.strip()
+        m = unit_re.match(stripped)
         if m:
-            # Normalise: APT_01_ROOM_MAINBED -> APT_ROOM_MAINBED
-            out.append(f"APT_{m.group(2)}")
-        else:
-            out.append(line)
-    return "\n".join(out)
+            # This unit: normalise APT_01_ROOM_MAINBED -> APT_ROOM_MAINBED
+            out.append('APT_' + m.group(1))
+            continue
+        other = other_re.match(stripped)
+        if other and other.group(1) != unit_id:
+            # Another unit's layer — replace with a harmless dummy so the
+            # engine ignores this entity but the DXF stays structurally valid
+            out.append('APT_OTHER_UNIT_SKIP')
+            continue
+        out.append(line)
+    return '\n'.join(out)
 
 
 # ---------------------------------------------------------------------------
