@@ -534,12 +534,12 @@ function renderBuilding(data) {
 
   // Building checks
   const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space']);
-  document.getElementById('building-checks').innerHTML = s.building_checks.map(c => {
+  document.getElementById('building-checks').innerHTML = s.building_checks.map((c,i) => {
     const isInfo = INFO_CHECKS.has(c.check_name);
     const cls = isInfo ? 'info' : (c.pass ? 'pass' : 'fail');
     const icon = isInfo ? 'i' : (c.pass ? '✓' : '✗');
     const val = c.value_pct && c.value_pct !== '0%' ? ' ' + c.value_pct : '';
-    return `<div class="bcheck ${cls}" title="${c.description}">${icon} ${fmtCheckName(c.check_name)}${val}</div>`;
+    return `<div class="bcheck ${cls}" title="${c.description}" style="cursor:pointer" onclick="showBuildingCheckDetail(${i})">${icon} ${fmtCheckName(c.check_name)}${val}</div>`;
   }).join('');
 
   // Unit cards
@@ -1057,18 +1057,85 @@ function redrawPlan(variant) {
       leg.innerHTML = [...used].filter(l => RCFG[l]).map(l => `<div class="li"><div class="ls" style="background:${RCFG[l].fill};border:1px solid ${RCFG[l].stroke}"></div>${RCFG[l].label}</div>`).join('');
     }
   }
-  if (variant === 'plan-depth' || variant === 'plan-vent') {
-    // Simple fallback — just draw the clean plan
-    const cvId = variant === 'plan-depth' ? 'depthCanvas' : 'ventCanvas';
-    const cv = document.getElementById(cvId);
+  if (variant === 'plan-depth') {
+    const cv = document.getElementById('depthCanvas');
     const W = cv.offsetWidth || 720; cv.width = W;
     const ctx = cv.getContext('2d');
     const xf = planXF(shapes, W, cv.height, 28);
+    if (!xf) return;
     ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
-    drawShapes(ctx, shapes, xf, false);
-    drawWinDoor(ctx, APT_DATA, xf);
-    drawLabels(ctx, shapes, xf, false);
-    drawScaleBar(ctx, xf, W, cv.height, APT_DATA);
+    const depthByKey = {};
+    for (const d of (APT_DATA.room_depth||[])) depthByKey[d.room_key||d.room] = d;
+    for (const s of shapes) {
+      if (!s.pts||s.pts.length<3) continue;
+      const cfg = RCFG[s.layer]||{fill:'rgba(200,200,200,.2)',stroke:'#ccc'};
+      if (s.building||s.fixture) {
+        ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+        for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+        ctx.closePath(); ctx.fillStyle=cfg.fill; ctx.fill(); ctx.strokeStyle=cfg.stroke; ctx.lineWidth=1.5; ctx.stroke();
+        continue;
+      }
+      const lk = s.layer.replace('APT_ROOM_','');
+      const dep = depthByKey[lk]||depthByKey[s.label]||null;
+      let fill = cfg.fill, stroke = cfg.stroke;
+      if (dep) {
+        const r = Math.min(1, dep.depth_used_m/dep.limit_m);
+        fill = dep.overall_pass ? `rgba(26,${Math.round(100+r*55)},74,${0.1+r*0.25})` : `rgba(192,57,43,${0.15+r*0.2})`;
+        stroke = dep.overall_pass ? '#1a7a4a' : '#c0392b';
+      }
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=dep?1.8:1.2; ctx.stroke();
+      if (dep && s.centroid) {
+        const cx=xf.tx(s.centroid[0]),cy=xf.ty(s.centroid[1]);
+        ctx.font='bold 8px JetBrains Mono,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle=dep.overall_pass?'#1a7a4a':'#c0392b';
+        ctx.fillText(dep.depth_used_m+'/'+dep.limit_m+'m',cx,cy+14);
+      }
+    }
+    drawLabels(ctx,shapes,xf,false); drawScaleBar(ctx,xf,W,cv.height,APT_DATA);
+    const legEl=document.getElementById('depthMaxLabel');
+    if(legEl) legEl.textContent='depth / limit (m)';
+  }
+
+  if (variant === 'plan-vent') {
+    const cv = document.getElementById('ventCanvas');
+    const W = cv.offsetWidth || 720; cv.width = W;
+    const ctx = cv.getContext('2d');
+    const xf = planXF(shapes, W, cv.height, 28);
+    if (!xf) return;
+    ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+    const habWins = APT_DATA.ventilation?.habitable_windows || [];
+    const winByRoom = Object.fromEntries(habWins.map(w=>[w.room,w]));
+    for (const s of shapes) {
+      if (!s.pts||s.pts.length<3) continue;
+      const cfg = RCFG[s.layer]||{fill:'rgba(200,200,200,.2)',stroke:'#ccc'};
+      if (s.building||s.fixture) {
+        ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+        for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+        ctx.closePath(); ctx.fillStyle=cfg.fill; ctx.fill(); ctx.strokeStyle=cfg.stroke; ctx.lineWidth=1.5; ctx.stroke();
+        continue;
+      }
+      const wd = winByRoom[s.label];
+      const fill = wd ? (wd.has_window?'rgba(20,184,166,.18)':'rgba(192,57,43,.12)') : cfg.fill;
+      const stroke = wd ? (wd.has_window?'#14b8a6':'#c0392b') : cfg.stroke;
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=1.8; ctx.stroke();
+    }
+    drawWinDoor(ctx,APT_DATA,xf);
+    for (const p of (APT_DATA.ventilation?.cross_ventilation?.valid_paths||[])) {
+      if (!p.midpoint_a||!p.midpoint_b) continue;
+      const x1=xf.tx(p.midpoint_a[0]),y1=xf.ty(p.midpoint_a[1]),x2=xf.tx(p.midpoint_b[0]),y2=xf.ty(p.midpoint_b[1]);
+      ctx.setLineDash([8,4]); ctx.strokeStyle='rgba(20,184,166,.9)'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
+      const ang=Math.atan2(y2-y1,x2-x1);
+      ctx.fillStyle='rgba(20,184,166,.9)'; ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2-10*Math.cos(ang-0.35),y2-10*Math.sin(ang-0.35));
+      ctx.lineTo(x2-10*Math.cos(ang+0.35),y2-10*Math.sin(ang+0.35));
+      ctx.closePath(); ctx.fill();
+    }
+    drawLabels(ctx,shapes,xf,false); drawScaleBar(ctx,xf,W,cv.height,APT_DATA);
   }
 }
 
@@ -1257,15 +1324,74 @@ function renderAptKitchen(data) {
     return;
   }
   let h = '';
+  // Work triangle
   if (k.work_triangle) {
     const t = k.work_triangle;
-    h += `<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--radius);padding:.65rem .85rem;margin-bottom:.5rem">
-      <div style="font-weight:600;margin-bottom:.4rem;font-size:11px">Work Triangle ${chip(t.pass)}</div>
-      <div class="v n" style="font-size:10px">${t.perimeter_m.toFixed(1)}m perimeter · target 4–7m</div>
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Work Triangle ${chip(t.pass)}</div>
+      <table class="rt"><thead><tr><th>Leg</th><th>Distance</th></tr></thead><tbody>
+        ${t.cooktop_to_fridge_m!=null?`<tr class="rp"><td>Cooktop → Fridge</td><td class="v n">${t.cooktop_to_fridge_m}m</td></tr>`:''}
+        ${t.fridge_to_sink_m!=null?`<tr class="rp"><td>Fridge → Sink</td><td class="v n">${t.fridge_to_sink_m}m</td></tr>`:''}
+        ${t.sink_to_cooktop_m!=null?`<tr class="rp"><td>Sink → Cooktop</td><td class="v n">${t.sink_to_cooktop_m}m</td></tr>`:''}
+        <tr class="${t.pass?'rp':'rf'}"><td><strong>Perimeter</strong></td><td class="v ${t.pass?'p':'f'}">${t.perimeter_m!=null?t.perimeter_m.toFixed(1):'?'}m <span style="color:var(--dim);font-weight:400">target 4–7m</span></td></tr>
+      </tbody></table>
+      ${t.note?`<div style="font-size:10px;color:var(--dim);margin-top:.3rem">${esc(t.note)}</div>`:''}
     </div>`;
   }
+  // Bench run
+  if (k.bench_run) {
+    const b = k.bench_run;
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Bench Run ${chip(b.pass)}</div>
+      <table class="rt"><thead><tr><th>Metric</th><th>Value</th><th>Required</th></tr></thead><tbody>
+        <tr class="${b.pass?'rp':'rf'}"><td>Longest continuous run</td><td class="v ${b.pass?'p':'f'}">${b.longest_run_m}m</td><td class="v n">≥${b.req_m}m</td></tr>
+        <tr class="rp"><td>Total bench length</td><td class="v n">${b.total_length_m}m</td><td class="v n">—</td></tr>
+      </tbody></table>
+    </div>`;
+  }
+  // Clearance
+  if (k.clearance) {
+    const c = k.clearance;
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Clearance ${chip(c.pass)}</div>
+      <table class="rt"><thead><tr><th>Context</th><th>Clearance</th><th>Required</th></tr></thead><tbody>
+        <tr class="${c.pass?'rp':'rf'}"><td>${esc(c.context||'')}</td><td class="v ${c.pass?'p':'f'}">${c.min_clearance_m}m</td><td class="v n">≥${c.required_m}m</td></tr>
+      </tbody></table>
+    </div>`;
+  }
+  // Natural light
+  if (k.natural_light !== undefined) {
+    h += `<div style="font-size:11px;margin-bottom:.4rem">${k.natural_light?'<span style="color:var(--pass)">✓ Natural light to kitchen</span>':'<span style="color:var(--fail)">✗ No natural light to kitchen</span>'}</div>`;
+  }
   el.innerHTML = h || `<p style="font-size:11px;color:var(--dim)">Kitchen geometry found but no analysis data.</p>`;
-  if (wrap) wrap.style.display = 'none';
+  // Draw kitchen plan canvas
+  if (wrap) {
+    const shapes = gatherShapes(data);
+    const kitchenShapes = shapes.filter(s => s.layer && (s.layer.includes('KITCHEN') || s.layer.includes('LIVING') || s.layer.includes('ROOM')));
+    if (kitchenShapes.length > 0) {
+      wrap.style.display = '';
+      const cv = document.getElementById('kitchenCanvas');
+      if (cv) {
+        setTimeout(() => {
+          const W = cv.offsetWidth || 400; cv.width = W;
+          const ctx = cv.getContext('2d');
+          const xf = planXF(shapes, W, cv.height, 20);
+          if (xf) {
+            ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+            drawShapes(ctx, shapes, xf, false);
+            // Highlight work triangle if available
+            if (k.work_triangle && k.work_triangle.cooktop_to_fridge_m != null) {
+              // Draw triangle lines between fixture centroids if we have them
+            }
+            drawLabels(ctx, shapes, xf, false);
+            drawScaleBar(ctx, xf, W, cv.height, data);
+          }
+        }, 50);
+      }
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1273,22 +1399,158 @@ function renderAptKitchen(data) {
 // ═══════════════════════════════════════════════════════
 function renderAptDiagnostics(data) {
   const diag = data.diagnostics || [];
+  const warnings = diag.filter(d => d.severity !== 'info');
+  const infos = diag.filter(d => d.severity === 'info');
+  const s = data.summary || {};
   let h = '';
-  if (diag.length) {
-    for (const d of diag) h += `<div style="background:var(--wbg);border:1px solid var(--wbd);border-radius:var(--radius);padding:.5rem .75rem;margin-bottom:.4rem">
+
+  // Passing checks summary
+  const passingChecks = CHECKS_META.filter(c => s[c.k] === true || s[c.k] === undefined);
+  const failingChecks = CHECKS_META.filter(c => s[c.k] === false);
+
+  if (failingChecks.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fail);margin-bottom:.4rem">Failing (${failingChecks.length})</div>`;
+    for (const c of failingChecks) h += `<div style="background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--fail)">✗ ${c.l}</div>`;
+    h += '<div style="height:.6rem"></div>';
+  }
+
+  if (warnings.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);margin-bottom:.4rem">Warnings (${warnings.length})</div>`;
+    for (const d of warnings) h += `<div style="background:var(--wbg);border:1px solid var(--wbd);border-radius:var(--radius);padding:.5rem .75rem;margin-bottom:.35rem">
       <div style="font-size:11px;font-weight:600;color:var(--warn)">${esc(d.title)}</div>
       <div style="font-size:11px;color:var(--dim)">${esc(d.detail||'')}</div>
       ${d.suggestion?`<div style="font-size:11px;color:var(--acc);margin-top:.15rem">→ ${esc(d.suggestion)}</div>`:''}
     </div>`;
-  } else {
-    h = '<div style="font-size:11px;color:var(--pass)">✓ No diagnostic warnings.</div>';
+    h += '<div style="height:.6rem"></div>';
   }
+
+  if (infos.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.4rem">Notes</div>`;
+    for (const d of infos) h += `<div style="background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--dim)">ℹ ${esc(d.title)}${d.detail?' — '+esc(d.detail):''}</div>`;
+    h += '<div style="height:.6rem"></div>';
+  }
+
+  if (passingChecks.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--pass);margin-bottom:.4rem">Passing (${passingChecks.length})</div>`;
+    for (const c of passingChecks) h += `<div style="background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--pass)">✓ ${c.l}</div>`;
+  }
+
+  if (!h) h = '<div style="font-size:11px;color:var(--pass)">✓ No warnings.</div>';
   document.getElementById('diagContent').innerHTML = h;
 }
 
-// ═══════════════════════════════════════════════════════
+// ===============================================================
+// BUILDING CHECK DETAIL PANEL
+// ===============================================================
+const BCHECK_REFS = {
+  cross_ventilation:    'ADG Vic D27 / NSW ADG 4B -- Cross Ventilation',
+  adaptable_dwellings:  'BCA D3.3 / ADG D17 -- Accessibility',
+  north_facing_living:  'ADG D6 / NSW 4U -- Energy Efficiency',
+  solar_access:         'NSW ADG 4A -- Solar and Daylight Access',
+  apartments_per_core:  'NSW ADG 4F -- Common Circulation',
+  storage_nsw:          'NSW ADG 4G -- Storage',
+  communal_open_space:  'ADG Vic B36/D7 -- Communal Open Space',
+};
+const BCHECK_GUIDANCE = {
+  cross_ventilation:   'Achieved when a dwelling has openable windows on at least two different orientations with an unobstructed breeze path of 5-18m.',
+  adaptable_dwellings: 'Requires 850mm clear entry door, 1200mm circulation path to living and main bedroom, and accessible bathroom.',
+  north_facing_living: 'Informational -- encourage north-facing living rooms to reduce cooling load and improve winter solar gain.',
+  solar_access:        'NSW only: 70% of apartments must receive at least 2 hours of direct sunlight between 9am-3pm on 21 June.',
+  apartments_per_core: 'NSW only: informational -- max 8 apartments off one circulation core per level. Verify on plans.',
+  storage_nsw:         'NSW 4G minimums: Studio 4m3, 1-bed 6m3, 2-bed 8m3, 3-bed+ 10m3. At least 50% must be within the apartment.',
+  communal_open_space: 'VIC only: buildings with 40+ dwellings must provide 2.5m2 per dwelling or 250m2 communal open space, whichever is less.',
+};
+
+function showBuildingCheckDetail(idx) {
+  if (!BUILDING) return;
+  const checks = BUILDING.summary.building_checks || [];
+  if (idx >= checks.length) return;
+  const c = checks[idx];
+  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space']);
+  const isInfo = INFO_CHECKS.has(c.check_name);
+  const ref = BCHECK_REFS[c.check_name] || c.check_name;
+  const guidance = BCHECK_GUIDANCE[c.check_name] || '';
+  const colour = isInfo ? '#4f6fd1' : (c.pass ? 'var(--pass)' : 'var(--fail)');
+  const icon = isInfo ? 'i' : (c.pass ? '✓' : '✗');
+
+  // Find per-apartment breakdown for this check
+  let aptBreakdown = '';
+  if (c.check_name === 'cross_ventilation') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.has_cross_ventilation;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--fail)'}">${ok?'✓ Cross ventilated':'✗ Not cross ventilated'}</span>
+      </div>`;
+    }).join('');
+  } else if (c.check_name === 'adaptable_dwellings') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.is_adaptable;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--fail)'}">${ok?'✓ Adaptable':'✗ Not adaptable'}</span>
+      </div>`;
+    }).join('');
+  } else if (c.check_name === 'north_facing_living') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.has_north_living;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--dim)'}">${ok?'✓ North living':'— South/other'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const valBar = (c.value !== undefined && c.required > 0) ? `
+    <div style="margin:.6rem 0">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-bottom:.3rem">
+        <span>${c.value_pct || Math.round(c.value*100)+'%'} achieved</span>
+        <span>${c.required_pct || Math.round(c.required*100)+'%'} required</span>
+      </div>
+      <div style="height:6px;background:var(--bd);border-radius:3px;position:relative">
+        <div style="width:${Math.min(100,c.value/c.required*100)}%;height:100%;background:${c.pass?'var(--pass)':'var(--fail)'};border-radius:3px"></div>
+        <div style="position:absolute;top:-3px;left:100%;height:12px;width:2px;background:var(--ink);transform:translateX(-1px)"></div>
+      </div>
+    </div>` : '';
+
+  const html = `
+    <div style="padding:1rem">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem">
+        <div style="width:28px;height:28px;border-radius:50%;background:${colour};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${icon}</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">${fmtCheckName(c.check_name)}</div>
+          <div style="font-size:10px;color:var(--mut)">${esc(ref)}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:.6rem">${esc(c.description)}</div>
+      ${valBar}
+      ${guidance?`<div style="font-size:11px;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.45rem .65rem;margin-bottom:.6rem">${esc(guidance)}</div>`:''}
+      ${aptBreakdown?`<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.35rem">Per Apartment</div>${aptBreakdown}`:''}
+    </div>`;
+
+  // Show in a modal overlay
+  let overlay = document.getElementById('bcheck-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bcheck-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem';
+    overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div style="background:var(--surf);border-radius:8px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--bd)">
+        <div style="font-size:12px;font-weight:600">Building Check Detail</div>
+        <button onclick="document.getElementById('bcheck-overlay').remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--dim);padding:.2rem .4rem">✕</button>
+      </div>
+      ${html}
+    </div>`;
+  overlay.style.display = 'flex';
+}
+
+// ===============================================================
 // HELPERS
-// ═══════════════════════════════════════════════════════
+// ===============================================================
 function chip(p) { return p ? `<span class="chip p">✓ Pass</span>` : `<span class="chip f">✗ Fail</span>`; }
 function na(m) { return `<p style="font-size:11px;color:var(--mut);padding:.2rem 0">${esc(m)}</p>`; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
