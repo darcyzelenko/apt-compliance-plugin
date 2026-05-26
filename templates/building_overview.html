@@ -313,6 +313,11 @@ canvas { display: block; width: 100%; }
           <div class="stat-value" id="stat-adapt">–</div>
           <div class="stat-sub" id="stat-adapt-req">–</div>
         </div>
+        <div class="stat-block">
+          <div class="stat-label">Solar access</div>
+          <div class="stat-value" id="stat-solar">–</div>
+          <div class="stat-sub" id="stat-solar-req">–</div>
+        </div>
         <div class="stat-block" style="flex:1">
           <div class="stat-label">Apartment mix</div>
           <div class="mix-bars" id="mix-bars"></div>
@@ -524,16 +529,35 @@ function renderBuilding(data) {
   adaptEl.className = 'stat-value ' + (adaptCheck && adaptCheck.pass ? 'pass' : 'fail');
   document.getElementById('stat-adapt-req').textContent = adaptCheck ? 'req. ' + adaptCheck.required_pct : '';
 
+  // Solar access stat
+  const solarCheck = s.building_checks.find(c => c.check_name === 'solar_access');
+  const solarEl = document.getElementById('stat-solar');
+  if (solarCheck && solarEl) {
+    solarEl.textContent = solarCheck.value_pct || Math.round((s.solar_access_pct||0)*100) + '%';
+    solarEl.className = 'stat-value ' + (solarCheck.pass ? 'pass' : (solarCheck.required > 0 ? 'fail' : ''));
+    document.getElementById('stat-solar-req').textContent = solarCheck.required > 0 ? 'req. ' + solarCheck.required_pct : 'informational';
+  } else if (solarEl) {
+    solarEl.textContent = Math.round((s.solar_access_pct||0)*100) + '%';
+    solarEl.className = 'stat-value';
+    document.getElementById('stat-solar-req').textContent = 'solar access';
+  }
+
   // Mix bars
   const mix = s.apartment_mix;
   const maxMix = Math.max(...Object.values(mix), 1);
-  document.getElementById('mix-bars').innerHTML = Object.entries(mix).map(([label, count]) => {
-    const h = Math.max(4, Math.round((count / maxMix) * 28));
-    return `<div class="mix-bar-wrap"><div class="mix-bar" style="height:${h}px" title="${count} ${label}"></div><div class="mix-bar-label">${label}</div></div>`;
+  const mixColors = {studio:'#a855f7','1bed':'#6366f1','2bed':'#1a7a4a','3bed+':'#e85d25'};
+  document.getElementById('mix-bars').innerHTML = Object.entries(mix).filter(([,v])=>v>0).map(([label, count]) => {
+    const h = Math.max(8, Math.round((count / maxMix) * 42));
+    const col = mixColors[label] || '#a8a49e';
+    return `<div class="mix-bar-wrap" title="${count} ${label}">
+      <div style="font-size:10px;font-weight:600;text-align:center;color:${col};margin-bottom:1px">${count}</div>
+      <div class="mix-bar" style="height:${h}px;background:${col}"></div>
+      <div class="mix-bar-label" style="color:${col}">${label}</div>
+    </div>`;
   }).join('');
 
   // Building checks
-  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space']);
+  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space', 'apartments_per_lift', 'apartment_mix', 'facade_glazing', 'acoustic_separation']);
   document.getElementById('building-checks').innerHTML = s.building_checks.map((c,i) => {
     const isInfo = INFO_CHECKS.has(c.check_name);
     const cls = isInfo ? 'info' : (c.pass ? 'pass' : 'fail');
@@ -746,8 +770,16 @@ function openApartment(apt) {
   setTimeout(() => {
     drawInlinePlan(APT_DATA);
     redrawPlan('plan-clean');
+    // Pre-render hidden canvases using planCanvas width as reference
+    const refW = document.getElementById('planCanvas')?.offsetWidth || 720;
+    ['depthCanvas','ventCanvas','dlCanvas'].forEach(id => {
+      const cv = document.getElementById(id);
+      if (cv && !cv.width) cv.width = refW;
+    });
+    redrawPlan('plan-depth');
+    redrawPlan('plan-vent');
     drawDaylightFull();
-  }, 60);
+  }, 120);
 
   // Tab dots
   const s = APT_DATA.summary || {};
@@ -1029,7 +1061,56 @@ function drawInlinePlan(data) {
   drawWinDoor(ctx, data, xf);
   drawLabels(ctx, shapes, xf, false);
   drawScaleBar(ctx, xf, W, cv.height, data);
+
+  // Hover: show room details tooltip
+  cv.onmousemove = e => {
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+    const my = (e.clientY - rect.top) * (cv.height / rect.height);
+    for (const s of shapes) {
+      if (!s.pts || s.pts.length < 3) continue;
+      if (!ptInPolyCanvas(mx, my, s.pts, xf)) continue;
+      const cfg = RCFG[s.layer];
+      const label = s.label || (cfg && cfg.label) || s.layer.replace('APT_ROOM_','').replace('APT_','');
+      let lines = [`<strong>${label}</strong>`];
+      if (s.area) lines.push(s.area + 'm²');
+      if (s.pass === false) lines.push('<span style="color:var(--fail)">✗ FAILING</span>');
+      else if (s.pass === true) lines.push('<span style="color:var(--pass)">✓ Pass</span>');
+      // Window/door info from adjacency nodes
+      const node = (data.adjacency?.nodes||[]).find(n => n.layer === s.layer);
+      if (node) {
+        if (node.windows?.length) lines.push('Windows: ' + node.windows.map(w=>w.key+' '+w.width_m+'m').join(', '));
+        if (node.doors?.length) lines.push('Doors: ' + node.doors.map(d=>d.key+' '+d.width_m+'m').join(', '));
+        if (node.nearby_storage?.length) lines.push('Storage: ' + node.nearby_storage.map(st=>st.area_sqm+'m²').join(', '));
+      }
+      showTT(e, '<strong>'+label+'</strong>', lines.slice(1).join(' · '));
+      return;
+    }
+    hideTT();
+  };
+  cv.onmouseleave = hideTT;
 }
+
+function ptInPolyCanvas(px, py, pts, xf) {
+  let inside = false; const n = pts.length; let j = n-1;
+  for (let i=0;i<n;i++) {
+    const xi=xf.tx(pts[i][0]),yi=xf.ty(pts[i][1]),xj=xf.tx(pts[j][0]),yj=xf.ty(pts[j][1]);
+    if (((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+    j=i;
+  }
+  return inside;
+}
+
+function showTT(e, title, body) {
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = `<div style="font-weight:600;margin-bottom:.15rem">${title}</div><div>${body}</div>`;
+  tt.style.display = 'block';
+  const x = e.clientX+14, y = e.clientY-10;
+  const r = tt.getBoundingClientRect();
+  tt.style.left = Math.min(x, window.innerWidth-r.width-8) + 'px';
+  tt.style.top = Math.max(8, y) + 'px';
+}
+function hideTT() { document.getElementById('tooltip').style.display='none'; }
 
 function redrawPlan(variant) {
   if (!APT_DATA) return;
@@ -1059,7 +1140,8 @@ function redrawPlan(variant) {
   }
   if (variant === 'plan-depth') {
     const cv = document.getElementById('depthCanvas');
-    const W = cv.offsetWidth || 720; cv.width = W;
+    const W = cv.offsetWidth || cv.parentElement?.offsetWidth || document.getElementById('planCanvas')?.offsetWidth || 720;
+    cv.width = W;
     const ctx = cv.getContext('2d');
     const xf = planXF(shapes, W, cv.height, 28);
     if (!xf) return;
@@ -1100,7 +1182,8 @@ function redrawPlan(variant) {
 
   if (variant === 'plan-vent') {
     const cv = document.getElementById('ventCanvas');
-    const W = cv.offsetWidth || 720; cv.width = W;
+    const W = cv.offsetWidth || cv.parentElement?.offsetWidth || document.getElementById('planCanvas')?.offsetWidth || 720;
+    cv.width = W;
     const ctx = cv.getContext('2d');
     const xf = planXF(shapes, W, cv.height, 28);
     if (!xf) return;
@@ -1240,7 +1323,8 @@ function drawAdjacency() {
 function drawDaylightFull() {
   if (!APT_DATA) return;
   const cv = document.getElementById('dlCanvas'); if (!cv) return;
-  const W = cv.offsetWidth||720; cv.width=W;
+  const W = cv.offsetWidth || cv.parentElement?.offsetWidth || document.getElementById('planCanvas')?.offsetWidth || 720;
+  cv.width=W;
   const ctx = cv.getContext('2d');
   const shapes = gatherShapes(APT_DATA);
   const rooms = APT_DATA.daylight?.rooms || [];
@@ -1364,29 +1448,90 @@ function renderAptKitchen(data) {
     h += `<div style="font-size:11px;margin-bottom:.4rem">${k.natural_light?'<span style="color:var(--pass)">✓ Natural light to kitchen</span>':'<span style="color:var(--fail)">✗ No natural light to kitchen</span>'}</div>`;
   }
   el.innerHTML = h || `<p style="font-size:11px;color:var(--dim)">Kitchen geometry found but no analysis data.</p>`;
-  // Draw kitchen plan canvas
+  // Kitchen canvas with work triangle
   if (wrap) {
-    const shapes = gatherShapes(data);
-    const kitchenShapes = shapes.filter(s => s.layer && (s.layer.includes('KITCHEN') || s.layer.includes('LIVING') || s.layer.includes('ROOM')));
-    if (kitchenShapes.length > 0) {
+    const fixtures = data.fixtures || [];
+    const benches = fixtures.filter(f => f.layer === 'APT_KITCHEN_BENCH');
+    const appls   = fixtures.filter(f => f.layer === 'APT_KITCHEN_APPLIANCE');
+    if (benches.length || appls.length) {
       wrap.style.display = '';
       const cv = document.getElementById('kitchenCanvas');
       if (cv) {
         setTimeout(() => {
-          const W = cv.offsetWidth || 400; cv.width = W;
+          const shapes = gatherShapes(data);
+          const W = cv.offsetWidth || cv.parentElement?.offsetWidth || 560; cv.width = W;
           const ctx = cv.getContext('2d');
-          const xf = planXF(shapes, W, cv.height, 20);
-          if (xf) {
-            ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
-            drawShapes(ctx, shapes, xf, false);
-            // Highlight work triangle if available
-            if (k.work_triangle && k.work_triangle.cooktop_to_fridge_m != null) {
-              // Draw triangle lines between fixture centroids if we have them
-            }
-            drawLabels(ctx, shapes, xf, false);
-            drawScaleBar(ctx, xf, W, cv.height, data);
+          ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+          const xf = planXF(shapes, W, cv.height, 28);
+          if (!xf) return;
+          // Draw all shapes lightly
+          drawShapes(ctx, shapes, xf, false);
+          drawLabels(ctx, shapes, xf, false);
+          // Highlight bench polygons
+          for (const b of benches) {
+            if (!b.vertices || b.vertices.length < 3) continue;
+            ctx.beginPath(); ctx.moveTo(xf.tx(b.vertices[0][0]),xf.ty(b.vertices[0][1]));
+            for (let i=1;i<b.vertices.length;i++) ctx.lineTo(xf.tx(b.vertices[i][0]),xf.ty(b.vertices[i][1]));
+            ctx.closePath(); ctx.fillStyle='rgba(251,146,60,.35)'; ctx.fill();
+            ctx.strokeStyle='#f97316'; ctx.lineWidth=1.8; ctx.stroke();
           }
-        }, 50);
+          // Appliance polygons + centroids
+          const APPL_NAMES = ['Fridge','Cooktop','Sink'];
+          const APPL_COLS  = ['#3b82f6','#f59e0b','#6366f1'];
+          const sortedAppls = [...appls].sort((a,b) => {
+            const area = p => p.vertices ? Math.abs(p.vertices.reduce((s,_,i,arr)=>{const j=(i+1)%arr.length;return s+arr[i][0]*arr[j][1]-arr[j][0]*arr[i][1];},0)/2) : 0;
+            return area(b) - area(a);
+          });
+          const cents = [];
+          sortedAppls.slice(0,3).forEach((a, i) => {
+            if (!a.vertices || a.vertices.length < 3) return;
+            const cx = a.vertices.reduce((s,p)=>s+p[0],0)/a.vertices.length;
+            const cy = a.vertices.reduce((s,p)=>s+p[1],0)/a.vertices.length;
+            cents.push({x: xf.tx(cx), y: xf.ty(cy), col: APPL_COLS[i], name: APPL_NAMES[i]});
+            ctx.beginPath(); ctx.moveTo(xf.tx(a.vertices[0][0]),xf.ty(a.vertices[0][1]));
+            for (let j=1;j<a.vertices.length;j++) ctx.lineTo(xf.tx(a.vertices[j][0]),xf.ty(a.vertices[j][1]));
+            ctx.closePath(); ctx.fillStyle=APPL_COLS[i]+'44'; ctx.fill();
+            ctx.strokeStyle=APPL_COLS[i]; ctx.lineWidth=2; ctx.stroke();
+            ctx.fillStyle=APPL_COLS[i]; ctx.font='bold 9px Inter,sans-serif';
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(APPL_NAMES[i], xf.tx(cx), xf.ty(cy));
+          });
+          // Work triangle
+          if (cents.length === 3) {
+            const [f,c,s] = cents;
+            ctx.save();
+            ctx.strokeStyle='rgba(232,93,37,.8)'; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+            ctx.beginPath(); ctx.moveTo(f.x,f.y); ctx.lineTo(c.x,c.y); ctx.lineTo(s.x,s.y); ctx.closePath(); ctx.stroke();
+            ctx.fillStyle='rgba(232,93,37,.06)'; ctx.fill();
+            ctx.setLineDash([]);
+            // Dimension labels
+            const wt = k.work_triangle || {};
+            function dimLine(x1,y1,x2,y2,label) {
+              const mx=(x1+x2)/2, my=(y1+y2)/2;
+              ctx.fillStyle='rgba(232,93,37,.9)'; ctx.font='bold 8px JetBrains Mono,monospace';
+              ctx.textAlign='center'; ctx.textBaseline='middle';
+              ctx.fillText(label, mx, my-8);
+            }
+            if (wt.cooktop_to_fridge_m) dimLine(f.x,f.y,c.x,c.y,wt.cooktop_to_fridge_m+'m');
+            if (wt.sink_to_cooktop_m)   dimLine(c.x,c.y,s.x,s.y,wt.sink_to_cooktop_m+'m');
+            if (wt.fridge_to_sink_m)    dimLine(s.x,s.y,f.x,f.y,wt.fridge_to_sink_m+'m');
+            ctx.restore();
+            // Legend
+            cents.forEach((ap,i) => {
+              ctx.beginPath(); ctx.arc(12,12+i*16,5,0,2*Math.PI); ctx.fillStyle=ap.col; ctx.fill();
+              ctx.fillStyle='rgba(26,25,22,.7)'; ctx.font='bold 9px Inter,sans-serif';
+              ctx.textAlign='left'; ctx.textBaseline='middle';
+              ctx.fillText(ap.name, 21, 12+i*16);
+            });
+            // Orange triangle legend
+            ctx.strokeStyle='rgba(232,93,37,.8)'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+            ctx.beginPath(); ctx.moveTo(12,12+3*16); ctx.lineTo(32,12+3*16); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle='rgba(107,104,96,.7)'; ctx.font='9px Inter,sans-serif';
+            ctx.textAlign='left'; ctx.textBaseline='middle';
+            ctx.fillText('Work triangle', 36, 12+3*16);
+          }
+          drawScaleBar(ctx, xf, W, cv.height, data);
+        }, 80);
       }
     } else {
       wrap.style.display = 'none';
@@ -1399,43 +1544,85 @@ function renderAptKitchen(data) {
 // ═══════════════════════════════════════════════════════
 function renderAptDiagnostics(data) {
   const diag = data.diagnostics || [];
-  const warnings = diag.filter(d => d.severity !== 'info');
-  const infos = diag.filter(d => d.severity === 'info');
   const s = data.summary || {};
   let h = '';
 
-  // Passing checks summary
-  const passingChecks = CHECKS_META.filter(c => s[c.k] === true || s[c.k] === undefined);
-  const failingChecks = CHECKS_META.filter(c => s[c.k] === false);
-
-  if (failingChecks.length) {
-    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--fail);margin-bottom:.4rem">Failing (${failingChecks.length})</div>`;
-    for (const c of failingChecks) h += `<div style="background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--fail)">✗ ${c.l}</div>`;
-    h += '<div style="height:.6rem"></div>';
-  }
+  // Quality flags
+  const warnings = diag.filter(d => d.severity === 'warning' || d.severity === 'error');
+  const infos    = diag.filter(d => d.severity === 'info');
 
   if (warnings.length) {
-    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);margin-bottom:.4rem">Warnings (${warnings.length})</div>`;
-    for (const d of warnings) h += `<div style="background:var(--wbg);border:1px solid var(--wbd);border-radius:var(--radius);padding:.5rem .75rem;margin-bottom:.35rem">
-      <div style="font-size:11px;font-weight:600;color:var(--warn)">${esc(d.title)}</div>
-      <div style="font-size:11px;color:var(--dim)">${esc(d.detail||'')}</div>
-      ${d.suggestion?`<div style="font-size:11px;color:var(--acc);margin-top:.15rem">→ ${esc(d.suggestion)}</div>`:''}
-    </div>`;
-    h += '<div style="height:.6rem"></div>';
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Quality Flags</div>`;
+    for (const d of warnings) {
+      const sev = d.severity || 'warning';
+      const col = sev === 'error' ? 'var(--fail)' : 'var(--warn)';
+      const bg  = sev === 'error' ? 'var(--fbg)'  : 'var(--wbg)';
+      const bdc = sev === 'error' ? 'var(--fbd)'  : 'var(--wbd)';
+      const icon = sev === 'error' ? '⛔' : '⚠';
+      h += `<div style="background:${bg};border:1px solid ${bdc};border-radius:var(--radius);padding:.5rem .75rem;margin-bottom:.35rem;display:flex;gap:.6rem">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${col};flex-shrink:0;margin-top:.1rem">${icon} ${sev.toUpperCase()}</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:${col};margin-bottom:.1rem">${esc(d.title)}</div>
+          <div style="font-size:11px;color:var(--dim)">${esc(d.detail||'')}</div>
+          ${d.suggestion?`<div style="font-size:11px;color:var(--acc);margin-top:.2rem">→ ${esc(d.suggestion)}</div>`:''}
+        </div>
+      </div>`;
+    }
+    h += '<div style="height:.5rem"></div>';
+  } else {
+    h += '<div style="font-size:11px;color:var(--pass);margin-bottom:.75rem">✓ No diagnostic warnings raised.</div>';
   }
 
   if (infos.length) {
-    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.4rem">Notes</div>`;
-    for (const d of infos) h += `<div style="background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--dim)">ℹ ${esc(d.title)}${d.detail?' — '+esc(d.detail):''}</div>`;
-    h += '<div style="height:.6rem"></div>';
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Notes</div>`;
+    for (const d of infos) {
+      h += `<div style="background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.4rem .65rem;margin-bottom:.3rem;font-size:11px;display:flex;gap:.5rem">
+        <span style="color:var(--dim);flex-shrink:0">ℹ</span>
+        <div>
+          <div style="font-weight:600;color:var(--dim)">${esc(d.title)}</div>
+          ${d.detail?`<div style="color:var(--mut);font-size:10px">${esc(d.detail)}</div>`:''}
+        </div>
+      </div>`;
+    }
+    h += '<div style="height:.5rem"></div>';
   }
 
-  if (passingChecks.length) {
-    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--pass);margin-bottom:.4rem">Passing (${passingChecks.length})</div>`;
-    for (const c of passingChecks) h += `<div style="background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.25rem;font-size:11px;color:var(--pass)">✓ ${c.l}</div>`;
+  // Passing quality benchmarks from summary
+  const passingBenchmarks = [];
+  const adjOk = data.adjacency?.circ_ok || [];
+  if (s.daylight_pass)     passingBenchmarks.push({icon:'☀', text:'Daylight factors meet targets in all habitable rooms'});
+  if (s.ventilation_pass)  {
+    const paths = data.ventilation?.cross_ventilation?.valid_paths || [];
+    if (paths.length) passingBenchmarks.push({icon:'🌬', text:`Cross ventilation: ${paths.length} valid breeze path${paths.length>1?'s':''} found`});
+    else passingBenchmarks.push({icon:'✓', text:'Ventilation checks passed'});
+  }
+  if (s.storage_pass) {
+    const st = data.storage || {};
+    if (st.total_vol) passingBenchmarks.push({icon:'📦', text:`Storage: ${st.total_vol}m³ total — meets requirement`});
+  }
+  if (s.pos_pass) {
+    const pos = data.pos || [];
+    if (pos.length) passingBenchmarks.push({icon:'🌿', text:`POS: ${pos.map(p=>p.space+' '+p.area_sqm+'m²').join(', ')}`});
+  }
+  if (s.bedrooms_pass) {
+    const beds = data.bedrooms || [];
+    if (beds.length) passingBenchmarks.push({icon:'⬡', text:`All ${beds.length} bedroom${beds.length>1?'s':''} meet dimension requirements`});
+  }
+  if (s.energy_pass) {
+    const en = data.energy || {};
+    if (en.north_glazing_pct) passingBenchmarks.push({icon:'🔆', text:`Energy: ${en.north_glazing_pct}% north glazing · cooling risk: ${en.cooling_risk||'Low'}`});
+  }
+  for (const c of adjOk) passingBenchmarks.push({icon:'✓', text: c.detail || c.check});
+
+  if (passingBenchmarks.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Design Quality Achieved</div>`;
+    for (const p of passingBenchmarks) {
+      h += `<div style="display:flex;align-items:baseline;gap:.5rem;font-size:11px;color:var(--pass);padding:.3rem .6rem;background:var(--pbg);border:1px solid var(--pbd);border-radius:3px;margin-bottom:.25rem">
+        <span>${p.icon}</span><span>${esc(p.text)}</span>
+      </div>`;
+    }
   }
 
-  if (!h) h = '<div style="font-size:11px;color:var(--pass)">✓ No warnings.</div>';
   document.getElementById('diagContent').innerHTML = h;
 }
 

@@ -971,7 +971,18 @@ def check_doors(doors):
 
 
 # ── 9. Accessibility ───────────────────────────────────────────────────────────
-def check_accessibility(layers, doors, ceiling_h):
+def check_accessibility(layers, doors, ceiling_h, bedroom_count=None):
+    """
+    Accessibility check -- adapts to apartment type.
+    Studios (bedroom_count=0) do not require a separate bedroom door or
+    a bedroom adjacent to bathroom -- the single space is living+sleeping.
+    """
+    # Auto-detect if not provided
+    if bedroom_count is None:
+        bedroom_count = sum(1 for k in ['APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2',
+                                         'APT_ROOM_BED3','APT_ROOM_BED4'] if k in layers)
+    is_studio = (bedroom_count == 0)
+
     checks=[]
     def first(ln): return layers[ln][0] if ln in layers and layers[ln] else None
     def mw(poly): return round(poly_min_width(poly),2) if poly else None
@@ -996,38 +1007,49 @@ def check_accessibility(layers, doors, ceiling_h):
     checks.append({'item':'Apartment entry door ≥ 850mm','pass':entry_d is not None and entry_d>=DOOR_MIN,
                    'detail':f'{round(entry_d*1000)}mm' if entry_d else 'APT_DOOR_ENTRY not modelled'})
 
-    # Main bedroom door
-    mb_d=max((d['width'] for d in doors.get('MAINBED',[])),default=None)
-    checks.append({'item':'Main bedroom door ≥ 850mm','pass':mb_d is not None and mb_d>=DOOR_MIN,
-                   'detail':f'{round(mb_d*1000)}mm' if mb_d else 'APT_DOOR_MAINBED not modelled'})
+    # Main bedroom door (skip for studios -- open plan, no separate bedroom)
+    if not is_studio:
+        mb_d=max((d['width'] for d in doors.get('MAINBED',[])),default=None)
+        checks.append({'item':'Main bedroom door ≥ 850mm','pass':mb_d is not None and mb_d>=DOOR_MIN,
+                       'detail':f'{round(mb_d*1000)}mm' if mb_d else 'APT_DOOR_MAINBED not modelled'})
+    else:
+        mb_d=None  # Not applicable for studio
 
-    # Min widths of rooms (path proxy)
-    for label,poly,req in [('Living area',living,ACCESS_PATH),
-                            ('Main bedroom',mainbed,ACCESS_PATH),
-                            ('Bathroom',bathroom,ACCESS_PATH)]:
+    # Min widths of rooms (path proxy) -- for studio, main bedroom check replaced by living area
+    room_checks = [('Living area',living,ACCESS_PATH), ('Bathroom',bathroom,ACCESS_PATH)]
+    if not is_studio:
+        room_checks.insert(1, ('Main bedroom',mainbed,ACCESS_PATH))
+    for label,poly,req in room_checks:
         w=mw(poly)
         checks.append({'item':f'{label} width ≥ 1200mm','pass':w is not None and w>=req,
                        'detail':f'{w}m' if w else 'Room not found'})
 
-    # Connected path: entry → living → mainbed
+    # Connected path checks (adapted for studio)
     liv_entry_ok=False; liv_bed_ok=False; bed_bath_ok=False
     if living and entry:
         sb=shared_boundary(living,entry)
         if sb>=DOOR_MIN: liv_entry_ok=True
-    if living and mainbed:
-        sb=shared_boundary(living,mainbed)
-        if sb>=DOOR_MIN: liv_bed_ok=True
-        elif entry and mainbed:
-            sbe=shared_boundary(living,entry); sbm=shared_boundary(entry,mainbed)
-            if sbe>=DOOR_MIN and sbm>=DOOR_MIN: liv_bed_ok=True
-    if mainbed and bathroom:
-        sb=shared_boundary(mainbed,bathroom)
-        if sb>=DOOR_MIN: bed_bath_ok=True
-
-    checks.append({'item':'Clear path: Living → Main Bedroom (direct or via entry)',
-                   'pass':liv_bed_ok,'detail':'OK' if liv_bed_ok else 'Path not found ≥ 850mm'})
-    checks.append({'item':f'Main bedroom adjacent to adaptable {bath_label.lower()}',
-                   'pass':bed_bath_ok,'detail':'OK' if bed_bath_ok else f'No shared boundary ≥ 850mm found. Check {bath_label} is adjacent to main bedroom.'})
+    if not is_studio:
+        if living and mainbed:
+            sb=shared_boundary(living,mainbed)
+            if sb>=DOOR_MIN: liv_bed_ok=True
+            elif entry and mainbed:
+                sbe=shared_boundary(living,entry); sbm=shared_boundary(entry,mainbed)
+                if sbe>=DOOR_MIN and sbm>=DOOR_MIN: liv_bed_ok=True
+        if mainbed and bathroom:
+            sb=shared_boundary(mainbed,bathroom)
+            if sb>=DOOR_MIN: bed_bath_ok=True
+        checks.append({'item':'Clear path: Living → Main Bedroom (direct or via entry)',
+                       'pass':liv_bed_ok,'detail':'OK' if liv_bed_ok else 'Path not found ≥ 850mm'})
+        checks.append({'item':f'Main bedroom adjacent to adaptable {bath_label.lower()}',
+                       'pass':bed_bath_ok,'detail':'OK' if bed_bath_ok else f'No shared boundary ≥ 850mm found. Check {bath_label} is adjacent to main bedroom.'})
+    else:
+        # Studio: check bathroom is accessible from living area
+        if living and bathroom:
+            sb=shared_boundary(living,bathroom)
+            bed_bath_ok = sb>=DOOR_MIN
+        checks.append({'item':'Bathroom accessible from living/sleeping area',
+                       'pass':bed_bath_ok,'detail':'OK' if bed_bath_ok else 'Bathroom not directly adjacent to living/sleeping area'})
 
     # Bathroom adaptability proxy
     bath_w=mw(bathroom); bath_a=round(poly_area(bathroom),2) if bathroom else 0
@@ -1874,7 +1896,7 @@ def run_compliance(dxf_text: str, ceiling_h: float = 2.7, jurisdiction: str = 'V
         'pos':           check_pos(layers, doors, beds),
         'ventilation':   check_ventilation(layers, windows, north),
         'doors':         check_doors(doors),
-        'accessibility': check_accessibility(layers, doors, ceiling_h),
+        'accessibility': check_accessibility(layers, doors, ceiling_h, bedroom_count=beds),
         'daylight':      check_daylight(layers, windows, north, ceiling_h),
         'energy':        check_energy(layers, windows, north, ceiling_h),
         'noise':         check_noise(layers),
