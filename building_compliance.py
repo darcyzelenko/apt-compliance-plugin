@@ -500,3 +500,5 @@ def building_result_to_dict(result: 'BuildingResult') -> dict:
             'errors': s.errors,
         },
     }
+
+    
