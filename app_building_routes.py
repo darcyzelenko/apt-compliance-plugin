@@ -146,6 +146,11 @@ def register_building_routes(app):
         except (ValueError, TypeError):
             ceiling_h = 2.7
         try:
+            storey_count = int(request.form.get('storey_count', 0))
+            storey_count = max(0, min(100, storey_count))
+        except (ValueError, TypeError):
+            storey_count = 0
+        try:
             dxf_text = f.read().decode('utf-8', errors='replace')
         except Exception as e:
             return jsonify({'error': 'Could not read file: %s' % e}), 400
@@ -154,6 +159,7 @@ def register_building_routes(app):
                 dxf_text=dxf_text,
                 jurisdiction=jurisdiction,
                 ceiling_h=ceiling_h,
+                storey_count=storey_count,
                 compliance_engine_fn=run_compliance,
             )
         except Exception as e:

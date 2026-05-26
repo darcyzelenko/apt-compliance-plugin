@@ -56,8 +56,11 @@ BUILDING_THRESHOLDS = {
         # NSW only (not VIC hard rule)
         'max_apts_per_core': None,
         'max_apts_per_lift': None,
+        'min_storeys_for_lift_check': None,
         'solar_access_pct': None,
         'solar_hours_min': None,
+        'acoustic_separation_m': 3.0,
+        'facade_glazing_min_pct': None,
     },
     'NSW': {
         # NSW ADG 2015 4B p.84
@@ -78,6 +81,13 @@ BUILDING_THRESHOLDS = {
         'communal_open_space_m2_per_dwelling': None,
         'communal_open_space_min_m2': None,
         'communal_open_space_threshold_dwellings': None,
+        # Acoustic separation (NSW ADG 4H)
+        'acoustic_separation_m': 3.0,
+        # Facade glazing: minimum window-to-external-wall-area ratio
+        'facade_glazing_min_pct': None,
+        # Max apts per lift (NSW ADG 4F: 10+ storeys)
+        'max_apts_per_lift': 40,
+        'min_storeys_for_lift_check': 10,
     },
     'BEST_PRACTICE': {
         'cross_ventilation_pct': 0.60,
@@ -293,7 +303,7 @@ def _summary_failures(unit: UnitResult) -> int:
 # Building-level aggregation
 # ---------------------------------------------------------------------------
 
-def aggregate_building(apt_results, jurisdiction='VIC'):
+def aggregate_building(apt_results, jurisdiction='VIC', storey_count=0):
     """Aggregate building-level compliance across all apartment results."""
     jur = jurisdiction.upper()
     thresholds = BUILDING_THRESHOLDS.get(jur, BUILDING_THRESHOLDS['VIC'])
@@ -447,6 +457,139 @@ def aggregate_building(apt_results, jurisdiction='VIC'):
             ),
         ))
 
+    # 8. Acoustic separation (VIC + NSW ADG 4H: ≥3m from noise sources to bedrooms)
+    acoustic_m = thresholds.get('acoustic_separation_m', 3.0)
+    if acoustic_m is not None:
+        # Count apartments with noise sources in range
+        acoustic_fail_count = 0
+        for r in apt_results:
+            noise = r.checks.get('noise', {}) if isinstance(r.checks, dict) else {}
+            if noise.get('assessed') and noise.get('in_range'):
+                acoustic_fail_count += 1
+        acoustic_pass = acoustic_fail_count == 0
+        if any((r.checks.get('noise', {}) if isinstance(r.checks, dict) else {}).get('assessed')
+               for r in apt_results):
+            building_checks.append(BuildingCheckResult(
+                check_name='acoustic_separation',
+                pass_=acoustic_pass,
+                value=float(n - acoustic_fail_count) / n,
+                required=1.0,
+                description='%d of %d apartments outside noise influence zones (%s)' % (
+                    n - acoustic_fail_count, n,
+                    'ADG D16 / NSW 4H: >=3m from noise sources to bedrooms'
+                ),
+            ))
+        else:
+            building_checks.append(BuildingCheckResult(
+                check_name='acoustic_separation',
+                pass_=True,
+                value=0.0,
+                required=0.0,
+                description='Acoustic: no APT_NOISE_* layers -- add noise source lines to assess (ADG D16 / NSW 4H)',
+            ))
+
+    # 9. Facade glazing ratio (if APT_WALL_EXTERNAL geometry present)
+    facade_min_pct = thresholds.get('facade_glazing_min_pct')
+    total_wall_area = 0.0
+    total_win_area  = 0.0
+    for r in apt_results:
+        meta = r.checks.get('meta', {}) if isinstance(r.checks, dict) else {}
+        bg = r.checks.get('building_geometry', []) if isinstance(r.checks, dict) else []
+        if bg:
+            import math
+            for geom in bg:
+                if geom.get('layer') == 'APT_WALL_EXTERNAL':
+                    verts = geom.get('vertices', [])
+                    if len(verts) >= 2:
+                        for i in range(len(verts)):
+                            p1 = verts[i]
+                            p2 = verts[(i+1) % len(verts)]
+                            seg = math.hypot(p2[0]-p1[0], p2[1]-p1[1])
+                            total_wall_area += seg  # perimeter as proxy for area
+        # Window areas from energy data
+        en = r.checks.get('energy', {}) if isinstance(r.checks, dict) else {}
+        for win in en.get('window_list', []):
+            total_win_area += win.get('win_area_m2', 0)
+
+    if total_wall_area > 0:
+        glazing_ratio = total_win_area / total_wall_area if total_wall_area > 0 else 0
+        if facade_min_pct is not None:
+            building_checks.append(BuildingCheckResult(
+                check_name='facade_glazing',
+                pass_=(glazing_ratio >= facade_min_pct),
+                value=glazing_ratio,
+                required=facade_min_pct,
+                description='Facade glazing ratio: %.0f%% (window area vs external wall perimeter)' % (
+                    glazing_ratio * 100
+                ),
+            ))
+        else:
+            building_checks.append(BuildingCheckResult(
+                check_name='facade_glazing',
+                pass_=True,
+                value=glazing_ratio,
+                required=0.0,
+                description='Facade glazing: %.0f%% window-to-wall ratio (informational)' % (
+                    glazing_ratio * 100
+                ),
+            ))
+
+    # 10. Apartment mix diversity (informational)
+    studio_count = mix.get('studio', 0)
+    bed1_count   = mix.get('1bed', 0)
+    bed2_count   = mix.get('2bed', 0)
+    bed3_count   = mix.get('3bed+', 0)
+    family_pct   = (bed2_count + bed3_count) / n if n > 0 else 0
+    mix_types    = sum(1 for k, v in mix.items() if v > 0)
+    mix_dominant = max(mix, key=mix.get)
+    dominant_pct = mix[mix_dominant] / n if n > 0 else 0
+    building_checks.append(BuildingCheckResult(
+        check_name='apartment_mix',
+        pass_=True,   # informational -- no hard threshold in ADG
+        value=float(mix_types),
+        required=0.0,
+        description='Apartment mix: %s -- %d type(s), %d%% family (2bed+). %s' % (
+            ', '.join('%d%s' % (v, k) for k, v in mix.items() if v > 0),
+            mix_types,
+            int(family_pct * 100),
+            'Good diversity' if mix_types >= 3 else ('Single type -- consider diversity' if mix_types == 1 else 'Two types')
+        ),
+    ))
+
+    # 11. Apartments per lift (NSW ADG 4F: 10+ storeys, max 40 apts per lift)
+    max_per_lift = thresholds.get('max_apts_per_lift')
+    min_storeys  = thresholds.get('min_storeys_for_lift_check', 10)
+    if max_per_lift is not None:
+        if storey_count >= min_storeys:
+            # Hard check: we know it's a tall building
+            building_checks.append(BuildingCheckResult(
+                check_name='apartments_per_lift',
+                pass_=True,  # informational -- can't count lifts from floor plan
+                value=0.0,
+                required=float(max_per_lift),
+                description='NSW 4F: %d+ storey building -- max %d apartments per lift. Verify lift count on plans.' % (
+                    min_storeys, max_per_lift
+                ),
+            ))
+        elif storey_count > 0:
+            building_checks.append(BuildingCheckResult(
+                check_name='apartments_per_lift',
+                pass_=True,
+                value=0.0,
+                required=0.0,
+                description='Lift check: %d storeys -- below %d storey threshold for NSW 4F lift ratio' % (
+                    storey_count, min_storeys
+                ),
+            ))
+        else:
+            building_checks.append(BuildingCheckResult(
+                check_name='apartments_per_lift',
+                pass_=True,
+                value=0.0,
+                required=0.0,
+                description='NSW 4F: enter storey count in panel to check lift requirements',
+            ))
+
     # Find worst unit
     worst_unit = None
     if apt_results:
@@ -492,6 +635,7 @@ def check_building(
     dxf_text: str,
     jurisdiction: str = 'VIC',
     ceiling_h: float = 2.7,
+    storey_count: int = 0,
     compliance_engine_fn=None,
 ) -> 'BuildingResult':
     """
@@ -596,7 +740,7 @@ def check_building(
             checks=_slim_results(raw),
         ))
 
-    building_summary = aggregate_building(apt_results, jurisdiction)
+    building_summary = aggregate_building(apt_results, jurisdiction, storey_count=storey_count)
 
     return BuildingResult(
         apartments=apt_results,
