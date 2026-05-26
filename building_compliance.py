@@ -141,44 +141,88 @@ def detect_unit_ids(dxf_text: str) -> List[str]:
     return sorted(ids)
 
 
-def extract_unit_dxf(dxf_text: str, unit_id: str) -> str:
+def extract_unit_dxf(dxf_text, unit_id):
     """
-    Return a version of the DXF with layer names normalised for one unit.
+    Extract one unit's entities from a merged multi-apartment DXF.
 
-    APT_01_ROOM_MAINBED  ->  APT_ROOM_MAINBED      (this unit: normalised)
-    APT_02_ROOM_MAINBED  ->  APT_OTHER_UNIT_SKIP   (other units: ignored)
-
-    All other lines are passed through unchanged so the DXF structure
-    (HEADER, ENTITIES sections etc.) remains valid.
+    Walks entity blocks. For each entity, reads its layer name (group code 8).
+    - Layer belongs to this unit (APT_01_*) -> include, normalise name
+    - Layer belongs to another unit (APT_02_*) -> skip entire entity block
+    - Layer is untagged -> include unchanged
     """
     layer_types = (
-        r'(?:ROOM|STORAGE|POS|WINDOW|DOOR|NORTH|NOISE|'
-        r'WALL|COLUMN|OVERHANG|SHAFT|KITCHEN|BATHROOM|FURNITURE)'
+        'ROOM', 'STORAGE', 'POS', 'WINDOW', 'DOOR', 'NORTH', 'NOISE',
+        'WALL', 'COLUMN', 'OVERHANG', 'SHAFT', 'KITCHEN', 'BATHROOM', 'FURNITURE',
     )
-    # Matches this unit's layers: APT_01_ROOM_MAINBED
-    unit_re = re.compile(
-        r'^APT_' + re.escape(unit_id) + r'_(' + layer_types + r'.*)$'
-    )
-    # Matches any other unit's tagged layers: APT_XX_ROOM_* where XX != unit_id
-    other_re = re.compile(
-        r'^APT_([A-Za-z0-9]+)_' + layer_types
-    )
+    unit_prefix = 'APT_' + unit_id + '_'
+
+    def classify_layer(lname):
+        # Returns 'mine', 'other', or 'untagged'
+        if not lname.startswith('APT_'):
+            return 'untagged'
+        rest = lname[4:]
+        parts = rest.split('_', 1)
+        if len(parts) < 2:
+            return 'untagged'
+        cid, lrest = parts[0], parts[1]
+        if not any(lrest.startswith(lt) for lt in layer_types):
+            return 'untagged'
+        return 'mine' if cid == unit_id else 'other'
+
+    lines = dxf_text.splitlines()
+    n = len(lines)
     out = []
-    for line in dxf_text.splitlines():
-        stripped = line.strip()
-        m = unit_re.match(stripped)
-        if m:
-            # This unit: normalise APT_01_ROOM_MAINBED -> APT_ROOM_MAINBED
-            out.append('APT_' + m.group(1))
+    i = 0
+
+    while i < n:
+        stripped = lines[i].strip()
+
+        # Entity boundary
+        if stripped == '0' and i + 1 < n:
+            etype = lines[i + 1].strip()
+            if etype in ('ENDSEC', 'EOF', 'SECTION', 'HEADER',
+                         'CLASSES', 'TABLES', 'BLOCKS', 'OBJECTS', 'THUMBNAILIMAGE'):
+                out.append(lines[i])
+                i += 1
+                continue
+
+            # Collect full entity block until next group-code-0 line
+            block = []
+            j = i
+            while j < n:
+                block.append(lines[j])
+                j += 1
+                if j < n and lines[j].strip() == '0':
+                    break
+
+            # Find layer name in block (group code 8 followed by layer name)
+            layer_name = None
+            layer_idx = None
+            for k in range(len(block) - 1):
+                if block[k].strip() == '8':
+                    layer_name = block[k + 1].strip()
+                    layer_idx = k + 1
+                    break
+
+            if layer_name is not None:
+                cls = classify_layer(layer_name)
+                if cls == 'other':
+                    # Skip entire entity block
+                    i = j
+                    continue
+                if cls == 'mine':
+                    # Normalise: APT_01_ROOM_MAINBED -> APT_ROOM_MAINBED
+                    block[layer_idx] = 'APT_' + layer_name[len(unit_prefix):]
+
+            out.extend(block)
+            i = j
             continue
-        other = other_re.match(stripped)
-        if other and other.group(1) != unit_id:
-            # Another unit's layer — replace with a harmless dummy so the
-            # engine ignores this entity but the DXF stays structurally valid
-            out.append('APT_OTHER_UNIT_SKIP')
-            continue
-        out.append(line)
+
+        out.append(lines[i])
+        i += 1
+
     return '\n'.join(out)
+
 
 
 # ---------------------------------------------------------------------------
