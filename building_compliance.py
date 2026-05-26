@@ -324,12 +324,12 @@ def aggregate_building(apt_results, jurisdiction='VIC'):
         pos   = daylight.get('pos', [])
         # Check if living room or POS meets solar hours
         living_sun = any(
-            rm.get('sun_hours') is not None and rm.get('sun_hours', 0) >= solar_hours_req
+            (rm.get('sun_hours') or 0) >= solar_hours_req
             for rm in rooms
-            if rm.get('room_key', '').upper() in ('LIVING', 'MAINBED')
+            if rm.get('room_key', '').upper() in ('LIVING', 'MAINBED') and rm.get('sun_hours') is not None
         )
         pos_sun = any(
-            p.get('sun_hours') is not None and p.get('sun_hours', 0) >= solar_hours_req
+            (p.get('sun_hours') or 0) >= solar_hours_req
             for p in pos
         )
         if living_sun or pos_sun:
