@@ -822,8 +822,9 @@ function renderResults(data) {
   state.summary = data.summary;
   state.selectedUnit = null;
 
-  sessionBadge.textContent = data.session_id
-    ? data.session_id.slice(0, 8).toUpperCase()
+  const badgeToken = data.token || data.session_id || '';
+  sessionBadge.textContent = badgeToken
+    ? badgeToken.slice(0, 8).toUpperCase()
     : 'DEMO';
 
   uploadZone.style.display = 'none';
@@ -1186,6 +1187,44 @@ function showLoading(msg) {
 function hideLoading() { loading.classList.remove('visible'); }
 function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
 function hideError() { errorBanner.classList.remove('visible'); }
+
+// ─────────────────────────────────────────────────────
+// Token loading — auto-fetch result when URL contains a token
+// e.g. /building/64670ebc94e9
+// ─────────────────────────────────────────────────────
+async function loadFromToken(token) {
+  showLoading('Loading building results…');
+  hideError();
+  // Hide upload zone immediately — we are viewing a stored result
+  uploadZone.style.display = 'none';
+  try {
+    const res = await fetch(API_BASE + '/api/results-building/' + token);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+    // The session stores the full result dict under data.results
+    const result = data.results || data;
+    hideLoading();
+    // Inject the token so the badge shows it
+    result.token = token;
+    renderResults(result);
+  } catch (err) {
+    hideLoading();
+    uploadZone.style.display = '';
+    showError('Could not load result: ' + err.message);
+  }
+}
+
+// On page load: check URL for a token
+(function() {
+  // Matches /building/<token> or ?token=<token>
+  const pathMatch = window.location.pathname.match(/\/building\/([a-f0-9]{8,})/);
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = (pathMatch && pathMatch[1]) || urlParams.get('token');
+  if (token) {
+    loadFromToken(token);
+  }
+})();
+
 </script>
 </body>
 </html>
