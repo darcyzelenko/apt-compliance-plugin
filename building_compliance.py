@@ -315,25 +315,26 @@ def aggregate_building(apt_results, jurisdiction='VIC'):
     adaptable_units = sum(1 for r in apt_results if r.is_adaptable)
     north_units     = sum(1 for r in apt_results if r.has_north_living)
 
-    # Solar access: derive from each unit's daylight data if available
-    solar_hours_req = thresholds.get('solar_hours_min', 2)
+    # Solar access: only compute when jurisdiction has a solar threshold
+    solar_hours_req = thresholds.get('solar_hours_min') or 2
+    solar_req_pct   = thresholds.get('solar_access_pct')
     solar_units = 0
-    for r in apt_results:
-        daylight = r.checks.get('daylight', {}) if isinstance(r.checks, dict) else {}
-        rooms = daylight.get('rooms', [])
-        pos   = daylight.get('pos', [])
-        # Check if living room or POS meets solar hours
-        living_sun = any(
-            (rm.get('sun_hours') or 0) >= solar_hours_req
-            for rm in rooms
-            if rm.get('room_key', '').upper() in ('LIVING', 'MAINBED') and rm.get('sun_hours') is not None
-        )
-        pos_sun = any(
-            (p.get('sun_hours') or 0) >= solar_hours_req
-            for p in pos
-        )
-        if living_sun or pos_sun:
-            solar_units += 1
+    if solar_req_pct is not None:
+        for r in apt_results:
+            daylight = r.checks.get('daylight', {}) if isinstance(r.checks, dict) else {}
+            rooms = daylight.get('rooms', [])
+            pos   = daylight.get('pos', [])
+            living_sun = any(
+                isinstance(rm.get('sun_hours'), (int, float)) and rm['sun_hours'] >= solar_hours_req
+                for rm in rooms
+                if rm.get('room_key', '').upper() in ('LIVING', 'MAINBED')
+            )
+            pos_sun = any(
+                isinstance(p.get('sun_hours'), (int, float)) and p['sun_hours'] >= solar_hours_req
+                for p in pos
+            )
+            if living_sun or pos_sun:
+                solar_units += 1
 
     cv_pct       = cv_units / n
     adaptable_pct = adaptable_units / n
@@ -383,17 +384,16 @@ def aggregate_building(apt_results, jurisdiction='VIC'):
     ))
 
     # 4. Solar access (NSW/BEST_PRACTICE: >=70% of apartments get >=2h sun)
-    solar_req = thresholds.get('solar_access_pct')
-    if solar_req is not None:
+    if solar_req_pct is not None:
         no_sun_pct = 1.0 - solar_pct
         max_no_sun = thresholds.get('max_no_sun_pct', 0.15)
         building_checks.append(BuildingCheckResult(
             check_name='solar_access',
-            pass_=(solar_pct >= solar_req and no_sun_pct <= max_no_sun),
+            pass_=(solar_pct >= solar_req_pct and no_sun_pct <= max_no_sun),
             value=solar_pct,
-            required=solar_req,
+            required=solar_req_pct,
             description='%d of %d apartments receive >=%dh winter sun (%d%%) -- %s requires %d%%' % (
-                solar_units, n, solar_hours_req, int(solar_pct*100), jur, int(solar_req*100)
+                solar_units, n, solar_hours_req, int(solar_pct*100), jur, int(solar_req_pct*100)
             ),
         ))
 
