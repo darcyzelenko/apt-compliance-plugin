@@ -85,10 +85,8 @@ def register_building_routes(app):
 
         # Debug: log what the server actually received
         unit_ids_received = detect_unit_ids(dxf_text)
-        logging.info(
-            'check-building received: %d chars, units detected: %s',
-            len(dxf_text), unit_ids_received
-        )
+        import sys
+        print('APT DEBUG check-building: %d chars, units: %s' % (len(dxf_text), unit_ids_received), file=sys.stderr, flush=True)
 
         # Pre-flight: confirm this is actually a multi-apartment file
         if not is_multi_apartment(dxf_text):
