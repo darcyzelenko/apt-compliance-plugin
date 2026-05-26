@@ -119,6 +119,12 @@ def register_building_routes(app):
 
         result_dict = building_result_to_dict(result)
 
+        import sys
+        print('APT DEBUG result: %d apartments in dict, unit_ids=%s' % (
+            len(result_dict.get('apartments', [])),
+            [a.get('unit_id') for a in result_dict.get('apartments', [])]
+        ), file=sys.stderr, flush=True)
+
         # Store using the same session mechanism as /api/store
         token = uuid.uuid4().hex[:12]
         _set_session(token, result_dict)   # stored under results key, with ts
