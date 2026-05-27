@@ -1,3 +1,6 @@
+process.chdir('/app');
+
+
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   Header, Footer, AlignmentType, LevelFormat, HeadingLevel,
