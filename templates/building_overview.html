@@ -365,7 +365,7 @@ canvas { display: block; width: 100%; }
           <div class="vt" data-vtab="plan-depth">Depth Zones</div>
           <div class="vt" data-vtab="plan-vent">Ventilation</div>
         </div>
-        <div class="viz-pane active" id="plan-clean"><div class="canvaswrap"><canvas id="planCanvas" height="540"></canvas></div><div class="legend" id="planLegend"></div></div>
+        <div class="viz-pane active" id="plan-clean"><div class="canvaswrap"><canvas id="planCanvas" height="420"></canvas></div><div class="legend" id="planLegend"></div></div>
         <div class="viz-pane" id="plan-depth">
           <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;font-size:10px;color:var(--dim)">
             <span>Shallow</span>
@@ -373,11 +373,12 @@ canvas { display: block; width: 100%; }
             <span>Over limit</span>
             <span style="margin-left:.5rem;font-family:monospace;font-size:9px" id="depthMaxLabel"></span>
           </div>
-          <div class="canvaswrap"><canvas id="depthCanvas" height="500"></canvas></div>
+          <div class="canvaswrap"><canvas id="depthCanvas" height="420"></canvas></div>
         </div>
         <div class="viz-pane" id="plan-vent">
           <div class="legend" id="ventLegend" style="margin-bottom:.5rem"></div>
-          <div class="canvaswrap"><canvas id="ventCanvas" height="500"></canvas></div>
+          <div class="canvaswrap"><canvas id="ventCanvas" height="420"></canvas></div>
+          <div id="vent-summary" style="margin-top:.6rem"></div>
         </div>
       </div>
       <div class="panel" id="panel-adjacency">
@@ -393,7 +394,7 @@ canvas { display: block; width: 100%; }
       </div>
       <div class="panel" id="panel-daylight">
         <p style="font-size:11px;color:var(--dim);margin-bottom:.65rem">Approximate daylight factor (BRE simplified) for all spaces.</p>
-        <div class="canvaswrap" style="margin-bottom:.5rem"><canvas id="dlCanvas" height="460"></canvas></div>
+        <div class="canvaswrap" style="margin-bottom:.5rem"><canvas id="dlCanvas" height="420"></canvas></div>
         <div class="dl-scalebar">
           <span>0%</span>
           <div style="flex:1;height:8px;border-radius:3px;background:linear-gradient(to right,#1e3a5f,#2563eb,#1a7a4a,#b45309,#c0392b)"></div>
@@ -405,7 +406,7 @@ canvas { display: block; width: 100%; }
       <div class="panel" id="panel-kitchen">
         <div id="kitchenContent"></div>
         <div id="kitchenCanvasWrap" style="display:none;margin-top:.75rem">
-          <div class="canvaswrap"><canvas id="kitchenCanvas" height="340"></canvas></div>
+          <div class="canvaswrap"><canvas id="kitchenCanvas" height="300"></canvas></div>
         </div>
       </div>
       <div class="panel" id="panel-diagnostics"><div id="diagContent"></div></div>
@@ -1395,6 +1396,56 @@ function redrawPlan(variant) {
       ctx.closePath(); ctx.fill();
     }
     drawLabels(ctx,shapes,xf,false); drawScaleBar(ctx,xf,W,cv.height,APT_DATA);
+
+    // Ventilation summary list
+    const ventSummary = document.getElementById('vent-summary');
+    if (ventSummary && APT_DATA.ventilation) {
+      const v = APT_DATA.ventilation;
+      const paths = v.cross_ventilation?.valid_paths || [];
+      const habWins = v.habitable_windows || [];
+      let h = '';
+
+      // Cross-vent status banner
+      const cvPass = v.cross_ventilation?.pass;
+      h += `<div style="padding:.4rem .75rem;border-radius:4px;margin-bottom:.5rem;font-size:11px;font-weight:600;background:${cvPass?'var(--pbg)':'var(--fbg)'};border:1px solid ${cvPass?'var(--pbd)':'var(--fbd)'};color:${cvPass?'var(--pass)':'var(--fail)'}">
+        ${cvPass ? '✓ Cross ventilation achieved' : '✗ No cross ventilation detected'}
+        ${paths.length ? ' — ' + paths.length + ' valid path' + (paths.length>1?'s':'') + ' found' : ''}
+      </div>`;
+
+      // Per-room window table
+      if (habWins.length) {
+        h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.35rem">Habitable Room Windows</div>`;
+        h += `<table class="rt" style="margin-bottom:.6rem"><thead><tr>
+          <th>Room</th><th>Window</th><th>Aspects</th><th></th>
+        </tr></thead><tbody>`;
+        for (const w of habWins) {
+          h += `<tr class="${w.has_window?'rp':'rf'}">
+            <td>${esc(w.room)}</td>
+            <td class="v n">${w.has_window ? w.count + ' window' + (w.count!==1?'s':'') : 'No window layer'}</td>
+            <td class="v n">${(w.aspects||[]).join(', ')||'—'}</td>
+            <td>${chip(w.has_window)}</td>
+          </tr>`;
+        }
+        h += '</tbody></table>';
+      }
+
+      // Cross-vent paths detail
+      if (paths.length) {
+        h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.35rem">Cross-Ventilation Paths</div>`;
+        for (const p of paths) {
+          h += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem .65rem;background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;margin-bottom:.25rem;font-size:11px">
+            <span><strong>${esc(p.room_a)}</strong> ↔ <strong>${esc(p.room_b)}</strong></span>
+            <span class="v p">${p.path_length_m}m ✓</span>
+          </div>`;
+        }
+      } else {
+        h += `<div style="font-size:11px;color:var(--dim);padding:.35rem .65rem;background:var(--surf2);border-radius:4px">
+          No valid cross-ventilation paths found. Add APT_WINDOW_* layers on at least two different aspects with a 5–18m unobstructed breeze path.
+        </div>`;
+      }
+
+      ventSummary.innerHTML = h;
+    }
   }
 }
 
@@ -1572,10 +1623,15 @@ function drawDaylightFull() {
       for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
       ctx.closePath(); ctx.clip();
 
-      // Compute cell size — use step from grid spacing
-      const xs = rm.df_grid.map(p=>p.x).sort((a,b)=>a-b);
-      const step = xs.length > 1 ? (xs[xs.length-1]-xs[0])/(xs.length-1) : 0.4;
-      const cellPx = Math.max(3, step * xf.sc * 1.05); // slight overlap to avoid gaps
+      // Compute cell size from actual grid spacing
+      // Find minimum x-step between adjacent points to get true grid resolution
+      const xs = [...new Set(rm.df_grid.map(p=>Math.round(p.x*100)/100))].sort((a,b)=>a-b);
+      let step = 0.4;
+      for (let si=1; si<xs.length; si++) {
+        const d = xs[si]-xs[si-1];
+        if (d > 0.01) { step = d; break; }
+      }
+      const cellPx = Math.max(2, step * xf.sc * 1.1); // slight overlap to avoid gaps
 
       for(const pt of rm.df_grid){
         const ratio = pt.df / maxDF;
@@ -1765,11 +1821,31 @@ function renderAptKitchen(data) {
           const W = cv.offsetWidth || cv.parentElement?.offsetWidth || 560; cv.width = W;
           const ctx = cv.getContext('2d');
           ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
-          const xf = planXF(shapes, W, cv.height, 28);
-          if (!xf) return;
-          // Draw all shapes lightly
-          drawShapes(ctx, shapes, xf, false);
-          drawLabels(ctx, shapes, xf, false);
+          // Tight bounding box: kitchen geometry + 2m margin
+          const kitchenPts = [...benches, ...appls].flatMap(f => f.vertices || []);
+          let kmnx=1e9,kmny=1e9,kmxx=-1e9,kmxy=-1e9;
+          for (const [x,y] of kitchenPts) {
+            kmnx=Math.min(kmnx,x); kmny=Math.min(kmny,y);
+            kmxx=Math.max(kmxx,x); kmxy=Math.max(kmxy,y);
+          }
+          const margin = Math.max(1.5, Math.max(kmxx-kmnx, kmxy-kmny) * 0.35);
+          kmnx -= margin; kmny -= margin; kmxx += margin; kmxy += margin;
+          // Build tight transform
+          const H = cv.height;
+          const kpad = 20;
+          const ksc = Math.min((W-kpad*2)/Math.max(kmxx-kmnx,.1), (H-kpad*2)/Math.max(kmxy-kmny,.1));
+          const kox = kpad + ((W-kpad*2) - (kmxx-kmnx)*ksc)/2;
+          const koy = kpad + ((H-kpad*2) - (kmxy-kmny)*ksc)/2;
+          const xf = { tx: x=>kox+(x-kmnx)*ksc, ty: y=>H-(koy+(y-kmny)*ksc), sc:ksc, mnx:kmnx, mny:kmny, mxx:kmxx, mxy:kmxy };
+          // Draw only shapes that overlap the kitchen zone
+          const kitchenShapes = shapes.filter(s => {
+            if (!s.pts || s.pts.length < 3) return false;
+            const cx = s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length;
+            const cy = s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length;
+            return cx >= kmnx && cx <= kmxx && cy >= kmny && cy <= kmxy;
+          });
+          drawShapes(ctx, kitchenShapes, xf, false);
+          drawLabels(ctx, kitchenShapes, xf, false);
           // Highlight bench polygons
           for (const b of benches) {
             if (!b.vertices || b.vertices.length < 3) continue;
