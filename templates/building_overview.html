@@ -5,1158 +5,2226 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Apt. — Building Overview</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#f5f4f2; --surf:#ffffff; --surf2:#f0eeec; --bd:#e2dfd9; --bd2:#ccc9c2;
+  --tx:#1a1916; --dim:#6b6860; --mut:#a8a49e;
+  --pass:#1a7a4a; --pbg:#edf7f2; --pbd:#a3d9bc;
+  --fail:#c0392b; --fbg:#fdf0ee; --fbd:#f5b8b1;
+  --warn:#b45309; --wbg:#fef9f0; --wbd:#f0c070;
+  --acc:#e85d25; --acc2:#c44d1a;
+  --hh:52px; --radius:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 12px rgba(0,0,0,.05);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--tx); font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; }
 
-  :root {
-    --bg:        #0f0f0f;
-    --surface:   #161616;
-    --border:    #252525;
-    --text:      #e8e8e8;
-    --muted:     #6b6b6b;
-    --pass:      #3ecf8e;
-    --pass-dim:  #1a4a36;
-    --fail:      #e8533d;
-    --fail-dim:  #4a1f1a;
-    --warn:      #f0a841;
-    --warn-dim:  #4a3210;
-    --accent:    #4f8ef7;
-    --mono:      'DM Mono', monospace;
-    --sans:      'DM Sans', sans-serif;
-  }
+/* ── Header ── */
+header { background: var(--tx); padding: 0 1.5rem; display: flex; align-items: center; gap: 1rem; height: var(--hh); flex-shrink: 0; z-index: 200; }
+.logo-mark { width: 20px; height: 20px; background: var(--acc); clip-path: polygon(0 0,100% 0,100% 65%,50% 100%,0 65%); flex-shrink: 0; }
+header h1 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+header h1 strong { color: #fff; font-weight: 700; }
+.hflex { flex: 1; }
+.hbadge { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15); border-radius: 3px; padding: .2rem .5rem; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: rgba(255,255,255,.5); letter-spacing: .05em; }
+.hnav { font-size: 11px; font-weight: 500; color: rgba(255,255,255,.45); text-decoration: none; letter-spacing: .04em; padding: .2rem .5rem; border-radius: 3px; border: 1px solid rgba(255,255,255,.12); transition: all .15s; cursor: pointer; background: none; }
+.hnav:hover { color: #fff; border-color: rgba(255,255,255,.35); }
+.hnav.active { color: #fff; border-color: rgba(255,255,255,.5); background: rgba(255,255,255,.1); }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 14px;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
+/* ── Views ── */
+.view { display: none; flex: 1; overflow: hidden; flex-direction: column; min-height: 0; }
+.view.active { display: flex; }
 
-  /* ── Header ── */
-  .header {
-    padding: 20px 28px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  .header-logo {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-  }
-  .header-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .header-badge {
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    margin-left: auto;
-  }
-  .standard-select {
-    font-family: var(--mono);
-    font-size: 11px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 8px;
-    border-radius: 3px;
-    cursor: pointer;
-  }
+/* ══════════════════════════════════════════════
+   BUILDING VIEW
+══════════════════════════════════════════════ */
+.building-body { flex: 1; overflow-y: auto; padding: 1.5rem; }
 
-  /* ── Upload zone ── */
-  #upload-zone {
-    margin: 40px auto;
-    max-width: 540px;
-    width: 100%;
-    padding: 0 24px;
-  }
-  .drop-area {
-    border: 1px dashed var(--border);
-    border-radius: 6px;
-    padding: 48px 32px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
-  }
-  .drop-area:hover, .drop-area.over {
-    border-color: var(--accent);
-    background: rgba(79,142,247,0.04);
-  }
-  .drop-area input[type=file] {
-    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-  }
-  .drop-icon {
-    font-size: 28px;
-    margin-bottom: 12px;
-    opacity: 0.4;
-  }
-  .drop-label {
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 1.7;
-  }
-  .drop-label strong { color: var(--text); font-weight: 500; }
-  .upload-actions {
-    margin-top: 20px;
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-  }
-  .btn {
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 9px 20px;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover:not(:disabled) { opacity: 0.88; }
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-  }
-  .btn-ghost:hover:not(:disabled) { border-color: var(--text); color: var(--text); }
+/* Summary bar */
+.summary-bar { display: flex; gap: 0; background: var(--surf); border: 1px solid var(--bd); border-radius: var(--radius); margin-bottom: 1.25rem; overflow: hidden; box-shadow: var(--shadow); }
+.stat-block { padding: .85rem 1.25rem; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--bd); }
+.stat-block:last-child { border-right: none; }
+.stat-label { font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+.stat-value { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; line-height: 1; }
+.stat-value.pass { color: var(--pass); }
+.stat-value.fail { color: var(--fail); }
+.stat-sub { font-size: 10px; color: var(--mut); }
 
-  /* validation preview */
-  .validation-strip {
-    margin-top: 14px;
-    padding: 10px 14px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    display: none;
-    gap: 12px;
-    align-items: center;
-  }
-  .validation-strip.visible { display: flex; }
-  .v-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pass); flex-shrink: 0; }
-  .v-dot.warn { background: var(--warn); }
-  .v-dot.fail { background: var(--fail); }
+/* Building checks row */
+.building-checks { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.bcheck { display: flex; align-items: center; gap: .5rem; padding: .45rem .85rem; border-radius: var(--radius); font-size: 11px; font-weight: 500; border: 1px solid transparent; }
+.bcheck.pass { background: var(--pbg); border-color: var(--pbd); color: var(--pass); }
+.bcheck.fail { background: var(--fbg); border-color: var(--fbd); color: var(--fail); }
+.bcheck.info { background: #f0f4ff; border-color: #c5d3f5; color: #4f6fd1; }
 
-  /* ── Main layout ── */
-  #results { display: none; flex-direction: column; flex: 1; }
-  #results.visible { display: flex; }
+/* Unit grid */
+.unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.unit-card { background: var(--surf); border: 1.5px solid var(--bd); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all .2s; box-shadow: var(--shadow); }
+.unit-card:hover { border-color: var(--acc); box-shadow: 0 4px 20px rgba(232,93,37,.12); transform: translateY(-2px); }
+.unit-card.pass-card { border-left: 3px solid var(--pass); }
+.unit-card.fail-card { border-left: 3px solid var(--fail); }
+.unit-card-header { padding: .65rem .85rem; display: flex; align-items: center; gap: .6rem; border-bottom: 1px solid var(--bd); }
+.unit-badge { width: 32px; height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.unit-badge.pass { background: var(--pbg); color: var(--pass); }
+.unit-badge.fail { background: var(--fbg); color: var(--fail); }
+.unit-card-title { font-size: 12px; font-weight: 700; }
+.unit-card-meta { font-size: 10px; color: var(--dim); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+.unit-card-chip { margin-left: auto; font-size: 9px; font-weight: 700; padding: .15rem .45rem; border-radius: 3px; }
+.unit-card-chip.pass { background: var(--pbg); color: var(--pass); border: 1px solid var(--pbd); }
+.unit-card-chip.fail { background: var(--fbg); color: var(--fail); border: 1px solid var(--fbd); }
+/* Plan canvas inside card */
+.unit-plan-wrap { background: var(--bg); position: relative; }
+.unit-plan-wrap canvas { display: block; width: 100%; height: 180px; }
+.unit-plan-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(232,93,37,0); transition: background .2s; }
+.unit-card:hover .unit-plan-overlay { background: rgba(232,93,37,.06); }
+.unit-plan-cta { font-size: 11px; font-weight: 600; color: var(--acc); opacity: 0; transition: opacity .2s; background: white; padding: .3rem .75rem; border-radius: 3px; border: 1px solid var(--pbd); }
+.unit-card:hover .unit-plan-cta { opacity: 1; }
+/* Check summary strip inside card */
+.unit-check-strip { padding: .55rem .85rem; display: flex; gap: .25rem; flex-wrap: wrap; }
+.ucs { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ucs.pass { background: var(--pass); }
+.ucs.fail { background: var(--fail); }
+.ucs.na { background: var(--mut); }
+.unit-badges { display: flex; gap: .3rem; flex-wrap: wrap; padding: 0 .85rem .55rem; }
+.ubadge { font-size: 9px; font-weight: 600; padding: .1rem .4rem; border-radius: 2px; }
+.ubadge.cv { background: rgba(79,142,247,.1); border: 1px solid rgba(79,142,247,.3); color: #4f6fd1; }
+.ubadge.adapt { background: var(--wbg); border: 1px solid var(--wbd); color: var(--warn); }
+.ubadge.north { background: var(--pbg); border: 1px solid var(--pbd); color: var(--pass); }
 
-  .results-grid {
-    display: grid;
-    grid-template-columns: 1fr 340px;
-    grid-template-rows: auto 1fr;
-    gap: 1px;
-    background: var(--border);
-    flex: 1;
-  }
+/* Mix bars */
+.mix-bars { display: flex; gap: 5px; align-items: flex-end; height: 28px; margin-top: 4px; }
+.mix-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.mix-bar { width: 22px; background: var(--acc); border-radius: 2px 2px 0 0; opacity: .6; }
+.mix-bar-label { font-size: 8px; color: var(--mut); font-family: 'JetBrains Mono', monospace; }
 
-  /* ── Summary bar (full width) ── */
-  .summary-bar {
-    grid-column: 1 / -1;
-    background: var(--surface);
-    padding: 20px 28px;
-    display: flex;
-    gap: 32px;
-    align-items: stretch;
-    flex-wrap: wrap;
-    border-bottom: 1px solid var(--border);
-  }
-  .stat-block { display: flex; flex-direction: column; gap: 4px; }
-  .stat-label {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .stat-value {
-    font-family: var(--mono);
-    font-size: 22px;
-    font-weight: 500;
-    line-height: 1;
-  }
-  .stat-value.pass { color: var(--pass); }
-  .stat-value.fail { color: var(--fail); }
-  .stat-value.warn { color: var(--warn); }
-  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* Loading */
+.loading-overlay { display: none; position: fixed; inset: 0; background: rgba(245,244,242,.85); z-index: 500; align-items: center; justify-content: center; flex-direction: column; gap: 1rem; }
+.loading-overlay.visible { display: flex; }
+.spinner { width: 24px; height: 24px; border: 2px solid var(--bd); border-top-color: var(--acc); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-label { font-size: 12px; color: var(--dim); font-weight: 500; }
+.prog-bar { width: 180px; height: 3px; background: var(--bd); border-radius: 2px; overflow: hidden; }
+.prog-fill { height: 100%; background: var(--acc); border-radius: 2px; animation: prog 2s ease-in-out infinite; }
+@keyframes prog { 0%{width:10%} 50%{width:80%} 100%{width:10%} }
 
-  .divider { width: 1px; background: var(--border); align-self: stretch; }
+/* Upload zone */
+.upload-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 1.25rem; padding: 2rem; }
+.upload-logo { margin-bottom: .5rem; }
+.upload-title { font-size: 18px; font-weight: 700; }
+.upload-sub { font-size: 11px; color: var(--mut); font-family: 'JetBrains Mono', monospace; }
+.dz { border: 1.5px dashed var(--bd2); border-radius: var(--radius); padding: 1.5rem 2rem; text-align: center; cursor: pointer; transition: all .2s; position: relative; background: var(--surf); width: 100%; max-width: 480px; }
+.dz:hover, .dz.over { border-color: var(--acc); background: rgba(232,93,37,.03); }
+.dz input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.dz-icon { font-size: 24px; color: var(--mut); margin-bottom: .5rem; }
+.dz p { font-size: 12px; color: var(--dim); }
+.dz-sub { font-size: 10px; color: var(--mut); margin-top: .25rem; }
+.fname { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--acc); margin-top: .4rem; }
+.upload-actions { display: flex; gap: .65rem; }
+.btn { padding: .55rem 1.25rem; background: var(--acc); border: none; border-radius: var(--radius); color: #fff; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.btn:hover { background: var(--acc2); }
+.btn:disabled { background: var(--mut); cursor: not-allowed; }
+.btn-ghost { background: transparent; border: 1px solid var(--bd); color: var(--dim); }
+.btn-ghost:hover { border-color: var(--bd2); color: var(--tx); background: var(--surf2); }
+.errbox { background: var(--fbg); border: 1px solid var(--fbd); border-radius: var(--radius); padding: .75rem 1rem; color: var(--fail); font-size: 12px; max-width: 480px; width: 100%; }
 
-  .building-checks { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .bcheck {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 7px 12px;
-    border-radius: 4px;
-    font-family: var(--mono);
-    font-size: 11px;
-    border: 1px solid transparent;
-  }
-  .bcheck.pass { background: var(--pass-dim); border-color: #2a6b52; color: var(--pass); }
-  .bcheck.fail { background: var(--fail-dim); border-color: #6b2a22; color: var(--fail); }
-  .bcheck.info { background: #1a2030; border-color: #2a3a5a; color: var(--accent); }
-  .bcheck-icon { font-size: 12px; }
+/* ══════════════════════════════════════════════
+   APARTMENT DETAIL VIEW  — mirrors index.html
+══════════════════════════════════════════════ */
+.apt-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
-  /* ── Floor plate canvas ── */
-  .canvas-panel {
-    background: var(--bg);
-    position: relative;
-    overflow: hidden;
-    min-height: 480px;
-  }
-  #floor-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-    cursor: crosshair;
-  }
-  .canvas-controls {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .canvas-btn {
-    width: 30px;
-    height: 30px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    color: var(--muted);
-    font-size: 14px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .canvas-btn:hover { color: var(--text); border-color: var(--text); }
-  .canvas-legend {
-    position: absolute;
-    bottom: 14px;
-    left: 14px;
-    display: flex;
-    gap: 14px;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    background: rgba(15,15,15,0.85);
-    padding: 8px 12px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-  }
-  .legend-item { display: flex; align-items: center; gap: 5px; }
-  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+/* Back bar */
+.back-bar { background: var(--surf); border-bottom: 1px solid var(--bd); padding: .5rem 1.25rem; display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
+.back-btn { display: flex; align-items: center; gap: .4rem; font-size: 11px; font-weight: 600; color: var(--acc); cursor: pointer; background: none; border: none; padding: 0; }
+.back-btn:hover { text-decoration: underline; }
+.back-sep { color: var(--mut); font-size: 11px; }
+.back-unit { font-size: 11px; font-weight: 600; color: var(--tx); }
+.back-status { font-size: 9px; font-weight: 700; padding: .15rem .45rem; border-radius: 3px; }
+.back-status.pass { background: var(--pbg); color: var(--pass); border: 1px solid var(--pbd); }
+.back-status.fail { background: var(--fbg); color: var(--fail); border: 1px solid var(--fbd); }
 
-  /* tooltip */
-  #canvas-tooltip {
-    position: absolute;
-    pointer-events: none;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 13px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text);
-    min-width: 160px;
-    display: none;
-    z-index: 10;
-    line-height: 1.8;
-  }
-  #canvas-tooltip.visible { display: block; }
-  .tt-unit { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
-  .tt-pass { color: var(--pass); }
-  .tt-fail { color: var(--fail); }
+/* Tab bar */
+.tab-bar { background: var(--surf); border-bottom: 1px solid var(--bd); flex-shrink: 0; padding: 0 .5rem; display: flex; gap: 0; overflow-x: auto; height: 44px; align-items: stretch; scrollbar-width: thin; }
+.tab-bar::-webkit-scrollbar { height: 2px; }
+.tab-bar::-webkit-scrollbar-thumb { background: var(--bd); }
+.tab { padding: 0 .85rem; font-size: 11px; font-weight: 500; color: var(--mut); cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; user-select: none; white-space: nowrap; display: flex; align-items: center; gap: .35rem; }
+.tab:hover { color: var(--tx); }
+.tab.active { color: var(--acc); border-bottom-color: var(--acc); font-weight: 600; }
+.tab-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--fail); flex-shrink: 0; }
+.tab-dot.ok { background: var(--pass); }
 
-  /* ── Sidebar — apartment list ── */
-  .sidebar {
-    background: var(--surface);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .sidebar-header {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .sidebar-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .filter-row {
-    display: flex;
-    gap: 4px;
-  }
-  .filter-btn {
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .filter-btn.active { background: var(--border); color: var(--text); }
+/* Tab panels */
+.tab-panels { flex: 1; overflow: hidden; min-height: 0; }
+.panel { display: none; height: 100%; overflow-y: auto; padding: 1.5rem; }
+.panel.active { display: block; }
 
-  .apt-list {
-    overflow-y: auto;
-    flex: 1;
-  }
-  .apt-list::-webkit-scrollbar { width: 4px; }
-  .apt-list::-webkit-scrollbar-track { background: transparent; }
-  .apt-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .apt-item {
-    padding: 11px 16px;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: background 0.1s;
-  }
-  .apt-item:hover { background: rgba(255,255,255,0.03); }
-  .apt-item.selected { background: rgba(79,142,247,0.08); }
-  .apt-status-dot {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  }
-  .apt-status-dot.pass { background: var(--pass); }
-  .apt-status-dot.fail { background: var(--fail); }
-  .apt-info { flex: 1; min-width: 0; }
-  .apt-name {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text);
-  }
-  .apt-meta {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
-  .apt-badges { display: flex; gap: 4px; flex-wrap: wrap; }
-  .badge {
-    font-family: var(--mono);
-    font-size: 9px;
-    padding: 2px 5px;
-    border-radius: 2px;
-    border: 1px solid transparent;
-  }
-  .badge.cv { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.3); color: var(--accent); }
-  .badge.adapt { background: rgba(240,168,65,0.1); border-color: rgba(240,168,65,0.3); color: var(--warn); }
-  .badge.north { background: rgba(62,207,142,0.1); border-color: rgba(62,207,142,0.3); color: var(--pass); }
-
-  /* ── Detail panel (below canvas) ── */
-  .detail-panel {
-    display: none;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    padding: 20px 24px;
-    grid-column: 1 / 2;
-  }
-  .detail-panel.visible { display: block; }
-  .detail-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-  .detail-unit-id {
-    font-family: var(--mono);
-    font-size: 18px;
-    font-weight: 500;
-  }
-  .detail-type {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .detail-pill {
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 500;
-    margin-left: auto;
-  }
-  .detail-pill.pass { background: var(--pass-dim); color: var(--pass); }
-  .detail-pill.fail { background: var(--fail-dim); color: var(--fail); }
-
-  .checks-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-  }
-  .check-card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px 12px;
-  }
-  .check-card.pass { border-left: 3px solid var(--pass); }
-  .check-card.fail { border-left: 3px solid var(--fail); }
-  .check-card.na { border-left: 3px solid var(--muted); opacity: 0.5; }
-  .check-name {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  .check-result {
-    font-family: var(--mono);
-    font-size: 12px;
-    margin-top: 4px;
-  }
-  .check-result.pass { color: var(--pass); }
-  .check-result.fail { color: var(--fail); }
-
-  /* ── Progress bar ── */
-  .progress-wrap { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .progress-label {
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--muted);
-    display: flex;
-    justify-content: space-between;
-  }
-  .progress-bar {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.6s ease;
-  }
-  .progress-fill.pass { background: var(--pass); }
-  .progress-fill.fail { background: var(--fail); }
-  .progress-fill.warn { background: var(--warn); }
-
-  /* ── Loading ── */
-  .loading-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(15,15,15,0.8);
-    z-index: 100;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .loading-overlay.visible { display: flex; }
-  .spinner {
-    width: 32px; height: 32px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-text { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-
-  /* ── Mix chart ── */
-  .mix-bars {
-    display: flex;
-    gap: 6px;
-    align-items: flex-end;
-    height: 36px;
-    margin-top: 6px;
-  }
-  .mix-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-  .mix-bar {
-    width: 28px;
-    background: var(--accent);
-    border-radius: 2px 2px 0 0;
-    opacity: 0.7;
-    transition: height 0.5s ease;
-  }
-  .mix-bar-label { font-family: var(--mono); font-size: 9px; color: var(--muted); }
-
-  /* ── Error state ── */
-  .error-banner {
-    display: none;
-    margin: 24px auto;
-    max-width: 540px;
-    padding: 14px 18px;
-    background: var(--fail-dim);
-    border: 1px solid #6b2a22;
-    border-radius: 4px;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--fail);
-    line-height: 1.7;
-  }
-  .error-banner.visible { display: block; }
+/* Results components (from index.html) */
+.rheader { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: var(--surf); border: 1px solid var(--bd); border-radius: var(--radius); margin-bottom: 1rem; box-shadow: var(--shadow); }
+.badge { width: 52px; height: 52px; border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex-shrink: 0; }
+.badge.pass { background: var(--pbg); border: 1.5px solid var(--pbd); }
+.badge.fail { background: var(--fbg); border: 1.5px solid var(--fbd); }
+.badge .bi { font-size: 20px; font-weight: 700; }
+.badge.pass .bi { color: var(--pass); } .badge.fail .bi { color: var(--fail); }
+.badge .bl { font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.badge.pass .bl { color: var(--pass); } .badge.fail .bl { color: var(--fail); }
+.rmeta h2 { font-size: 15px; font-weight: 700; margin-bottom: .15rem; }
+.rmeta p { font-size: 11px; color: var(--dim); }
+.pills { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .35rem; }
+.pill { background: var(--surf2); border: 1px solid var(--bd); border-radius: 3px; padding: .1rem .4rem; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--dim); }
+.pill.warn { color: var(--warn); border-color: var(--wbd); background: var(--wbg); }
+.strip { display: grid; grid-template-columns: repeat(6,1fr); gap: .4rem; margin-bottom: 1rem; }
+.sc { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--radius); padding: .45rem .5rem; cursor: pointer; }
+.sc:hover { box-shadow: var(--shadow); }
+.sc-inner { display: flex; align-items: center; gap: .3rem; }
+.scd { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.sc.pass .scd { background: var(--pass); } .sc.fail .scd { background: var(--fail); } .sc.na .scd { background: var(--mut); }
+.scl { font-size: 10px; color: var(--dim); font-weight: 500; line-height: 1.2; }
+.sec { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--radius); overflow: hidden; margin-bottom: .5rem; box-shadow: var(--shadow); }
+.sec.fail-sec { border-left: 3px solid var(--fail); }
+.sec.pass-sec { border-left: 3px solid var(--pass); opacity: .85; }
+.sec-hdr { display: flex; align-items: center; gap: .55rem; padding: .55rem .85rem; cursor: pointer; user-select: none; background: var(--surf); }
+.sec-hdr:hover { background: var(--surf2); }
+.sec-hdr h3 { font-size: 11px; font-weight: 600; flex: 1; }
+.sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sdot.pass { background: var(--pass); } .sdot.fail { background: var(--fail); } .sdot.na { background: var(--mut); }
+.clref { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--mut); }
+.tog { font-size: 10px; color: var(--mut); transition: transform .2s; }
+.sec-body { padding: .65rem .85rem; border-top: 1px solid var(--bd); overflow: hidden; transition: max-height .22s ease; }
+.sec-body.col { max-height: 0!important; padding: 0!important; border-top: none; }
+.pass-divider { display: flex; align-items: center; gap: .75rem; margin: .75rem 0 .5rem; cursor: pointer; user-select: none; }
+.pass-divider span { font-size: 10px; font-weight: 600; color: var(--mut); white-space: nowrap; letter-spacing: .06em; text-transform: uppercase; }
+.pass-divider hr { flex: 1; border: none; border-top: 1px solid var(--bd); }
+.rt { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rt th { text-align: left; font-weight: 600; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--mut); padding: .3rem .4rem; border-bottom: 1px solid var(--bd); }
+.rt td { padding: .32rem .4rem; border-bottom: 1px solid var(--surf2); vertical-align: middle; }
+.rt tr:last-child td { border-bottom: none; }
+.rt tr.rp { background: transparent; } .rt tr.rf { background: rgba(192,57,43,.04); }
+.v { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+.v.p { color: var(--pass); } .v.f { color: var(--fail); } .v.n { color: var(--dim); } .v.w { color: var(--warn); }
+.chip { display: inline-flex; align-items: center; border-radius: 3px; padding: 1px 5px; font-size: 9px; font-weight: 600; }
+.chip.p { background: var(--pbg); color: var(--pass); border: 1px solid var(--pbd); }
+.chip.f { background: var(--fbg); color: var(--fail); border: 1px solid var(--fbd); }
+.chip.na { background: var(--surf2); color: var(--mut); border: 1px solid var(--bd); }
+.stbox { background: var(--surf2); border: 1px solid var(--bd); border-radius: 4px; overflow: hidden; }
+.str { display: grid; grid-template-columns: 1fr auto auto; align-items: center; padding: .4rem .65rem; gap: .65rem; border-bottom: 1px solid var(--bd); font-size: 11px; }
+.str:last-child { border-bottom: none; }
+.str.sh { background: var(--surf2); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--mut); font-weight: 600; }
+.bwrap { grid-column: 1/-1; padding: 0 .65rem .5rem; }
+.btrack { height: 4px; background: var(--bd); border-radius: 2px; overflow: hidden; }
+.bfill { height: 100%; border-radius: 2px; }
+.bfill.p { background: var(--pass); } .bfill.f { background: var(--fail); }
+.aclist { display: flex; flex-direction: column; gap: .2rem; }
+.acrow { display: flex; align-items: flex-start; gap: .4rem; padding: .22rem 0; }
+.acico { flex-shrink: 0; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; margin-top: .1rem; }
+.acico.p { background: var(--pbg); color: var(--pass); } .acico.f { background: var(--fbg); color: var(--fail); }
+.acdet { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--dim); margin-top: .05rem; }
+.canvaswrap { background: var(--bg); border: 1px solid var(--bd); border-radius: var(--radius); overflow: hidden; }
+canvas { display: block; width: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.li { display: flex; align-items: center; gap: .3rem; font-size: 10px; color: var(--dim); }
+.ls { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.inline-plan { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--radius); overflow: hidden; margin-bottom: 1rem; box-shadow: var(--shadow); }
+.inline-plan-hdr { padding: .5rem .85rem; border-bottom: 1px solid var(--bd); display: flex; align-items: center; justify-content: space-between; }
+.inline-plan-hdr span { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--mut); }
+.viz-tabs { display: flex; gap: .3rem; margin-bottom: .6rem; }
+.vt { padding: .28rem .6rem; font-size: 10px; font-weight: 500; color: var(--dim); cursor: pointer; border-radius: 3px; border: 1px solid var(--bd); background: var(--surf); transition: all .15s; }
+.vt.active { background: var(--acc); color: #fff; border-color: var(--acc); }
+.vt:not(.active):hover { border-color: var(--bd2); color: var(--tx); }
+.viz-pane { display: none; }
+.viz-pane.active { display: block; }
+.dl-scalebar { display: flex; align-items: center; gap: .5rem; margin: .4rem 0; font-size: 10px; color: var(--mut); }
+.tooltip { position: fixed; z-index: 1000; background: var(--tx); color: #fff; border-radius: var(--radius); padding: .6rem .8rem; font-size: 11px; max-width: 280px; pointer-events: none; box-shadow: 0 4px 20px rgba(0,0,0,.25); display: none; line-height: 1.5; }
+.tt-title { font-weight: 600; margin-bottom: .2rem; color: #fff; }
+.tt-ref { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: rgba(255,255,255,.5); margin-bottom: .3rem; }
+.tt-threshold { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: rgba(232,93,37,.9); margin-top: .25rem; }
 </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
-<div class="header">
-  <span class="header-logo">APT.</span>
-  <span class="header-title">Building Overview</span>
-  <select class="standard-select" id="standard-select">
-    <option value="VIC_ADG_2017">VIC ADG 2017</option>
-    <option value="NSW_ADG_2015">NSW ADG 2015</option>
-  </select>
-  <span class="header-badge" id="session-badge">NO SESSION</span>
+<div class="tooltip" id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div class="tt-ref" id="tt-ref"></div>
+  <div id="tt-body"></div>
+  <div class="tt-threshold" id="tt-threshold"></div>
+  <div id="tt-fix" style="font-size:10px;color:rgba(255,255,255,.65);margin-top:.35rem;border-top:1px solid rgba(255,255,255,.1);padding-top:.3rem;line-height:1.5"></div>
 </div>
 
-<!-- ── Loading overlay ── -->
+<header>
+  <div class="logo-mark"></div>
+  <h1><strong>Apt.</strong> Building Overview</h1>
+  <div class="hflex"></div>
+  <span class="hbadge" id="session-badge">NO SESSION</span>
+  <button id="report-btn" onclick="generateReport()" style="display:none;padding:.28rem .75rem;background:#1A3A5F;border:1px solid rgba(255,255,255,.15);border-radius:4px;color:#fff;font-size:10px;font-weight:600;cursor:pointer;letter-spacing:.04em" title="Generate Design Compliance Report">⬇ Compliance Report</button>
+  <a class="hnav" href="/" >Single Apartment</a>
+</header>
+
+<!-- ── Loading ── -->
 <div class="loading-overlay" id="loading">
   <div class="spinner"></div>
-  <div class="loading-text" id="loading-text">Analysing building…</div>
+  <div class="loading-label" id="loading-text">Analysing building…</div>
+  <div class="prog-bar"><div class="prog-fill"></div></div>
 </div>
 
-<!-- ── Upload zone ── -->
-<div id="upload-zone">
-  <div class="drop-area" id="drop-area">
-    <input type="file" id="file-input" accept=".dxf">
-    <div class="drop-icon">⬡</div>
-    <div class="drop-label">
-      <strong>Drop a building DXF here</strong><br>
-      or click to browse<br><br>
-      Layers must use unit prefixes:<br>
-      <code style="color:#4f8ef7;font-size:11px">APT_01_ROOM_MAINBED, APT_02_ROOM_LIVING…</code>
+<!-- ══════════════════════════════════
+     BUILDING VIEW
+══════════════════════════════════ -->
+<div class="view active" id="view-building">
+  <div class="building-body" id="building-body">
+    <!-- Upload state -->
+    <div id="upload-state">
+      <div class="upload-wrap">
+        <div class="upload-logo"><div class="logo-mark" style="width:32px;height:32px"></div></div>
+        <div class="upload-title">Building Compliance</div>
+        <div class="upload-sub">ADG Victoria 2017 · Multi-apartment analysis</div>
+        <div class="dz" id="dz">
+          <input type="file" id="dxf-file" accept=".dxf">
+          <div class="dz-icon">⬡</div>
+          <p>Drop a building DXF or click to browse</p>
+          <div class="dz-sub">Layers must use unit prefixes: APT_01_ROOM_MAINBED, APT_02_ROOM_LIVING…</div>
+          <div class="fname" id="fname"></div>
+        </div>
+        <div class="upload-actions">
+          <button class="btn btn-ghost" id="demo-btn">Load demo data</button>
+          <button class="btn" id="run-btn" disabled>Run building check</button>
+        </div>
+        <div id="err-state" style="display:none" class="errbox"></div>
+      </div>
     </div>
-  </div>
-  <div class="validation-strip" id="validation-strip">
-    <div class="v-dot" id="v-dot"></div>
-    <span id="validation-msg">–</span>
-  </div>
-  <div class="upload-actions">
-    <button class="btn btn-ghost" id="demo-btn">Load demo data</button>
-    <button class="btn btn-primary" id="run-btn" disabled>Run building check</button>
-  </div>
-</div>
 
-<!-- ── Error ── -->
-<div class="error-banner" id="error-banner"></div>
+    <!-- Results state -->
+    <div id="results-state" style="display:none">
+      <!-- Summary bar -->
+      <div class="summary-bar">
+        <div class="stat-block">
+          <div class="stat-label">Total units</div>
+          <div class="stat-value" id="stat-total">–</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Passing</div>
+          <div class="stat-value" id="stat-passing">–</div>
+          <div class="stat-sub" id="stat-pass-rate">–</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Cross ventilation</div>
+          <div class="stat-value" id="stat-cv">–</div>
+          <div class="stat-sub" id="stat-cv-req">–</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Adaptable dwellings</div>
+          <div class="stat-value" id="stat-adapt">–</div>
+          <div class="stat-sub" id="stat-adapt-req">–</div>
+        </div>
+        <div class="stat-block">
+          <div class="stat-label">Solar access</div>
+          <div class="stat-value" id="stat-solar">–</div>
+          <div class="stat-sub" id="stat-solar-req">–</div>
+        </div>
+        <div class="stat-block" style="flex:1">
+          <div class="stat-label">Apartment mix</div>
+          <div class="mix-bars" id="mix-bars"></div>
+        </div>
+      </div>
 
-<!-- ── Results ── -->
-<div id="results">
-  <!-- Summary bar -->
-  <div class="summary-bar">
-    <div class="stat-block">
-      <div class="stat-label">Total units</div>
-      <div class="stat-value" id="stat-total">–</div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div class="stat-label">Passing</div>
-      <div class="stat-value pass" id="stat-passing">–</div>
-      <div class="stat-sub" id="stat-pass-rate">–</div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div class="stat-label">Cross ventilation</div>
-      <div class="stat-value" id="stat-cv">–</div>
-      <div class="stat-sub" id="stat-cv-req">–</div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div class="stat-label">Adaptable dwellings</div>
-      <div class="stat-value" id="stat-adapt">–</div>
-      <div class="stat-sub" id="stat-adapt-req">–</div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div class="stat-label">Apartment mix</div>
-      <div class="mix-bars" id="mix-bars"></div>
-    </div>
-    <div class="divider"></div>
-    <div class="stat-block">
-      <div class="stat-label">Building checks</div>
+      <!-- Building checks -->
       <div class="building-checks" id="building-checks"></div>
+
+      <!-- Apartment mix section -->
+      <div id="mix-section" style="margin-bottom:1rem"></div>
+
+      <!-- Unit grid -->
+      <div class="unit-grid" id="unit-grid"></div>
     </div>
   </div>
+</div>
 
-  <!-- Grid: canvas + sidebar -->
-  <div class="results-grid">
-    <!-- Floor plate canvas -->
-    <div class="canvas-panel">
-      <canvas id="floor-canvas"></canvas>
-      <div class="canvas-controls">
-        <button class="canvas-btn" id="zoom-in" title="Zoom in">+</button>
-        <button class="canvas-btn" id="zoom-out" title="Zoom out">−</button>
-        <button class="canvas-btn" id="zoom-fit" title="Fit to view">⊡</button>
-      </div>
-      <div class="canvas-legend">
-        <div class="legend-item">
-          <div class="legend-dot" style="background:#3ecf8e"></div>Pass
-        </div>
-        <div class="legend-item">
-          <div class="legend-dot" style="background:#e8533d"></div>Fail
-        </div>
-        <div class="legend-item">
-          <div class="legend-dot" style="background:#4f8ef7"></div>Selected
-        </div>
-      </div>
-      <div id="canvas-tooltip">
-        <div class="tt-unit" id="tt-unit">–</div>
-        <div id="tt-type">–</div>
-        <div id="tt-status">–</div>
-        <div id="tt-failures">–</div>
-      </div>
+<!-- ══════════════════════════════════
+     APARTMENT DETAIL VIEW
+══════════════════════════════════ -->
+<div class="view" id="view-apt">
+  <div class="apt-body">
+    <div class="back-bar">
+      <button class="back-btn" id="back-btn">← Building Overview</button>
+      <span class="back-sep">/</span>
+      <span class="back-unit" id="back-unit-label">Unit –</span>
+      <span class="back-status" id="back-unit-status">–</span>
     </div>
-
-    <!-- Apartment sidebar -->
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-title">Apartments</div>
-        <div class="filter-row">
-          <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="fail">Fail</button>
-          <button class="filter-btn" data-filter="pass">Pass</button>
+    <div class="tab-bar" id="apt-tab-bar">
+      <div class="tab active" data-tab="checks"><span class="tab-dot" id="dot-checks"></span>Compliance</div>
+      <div class="tab" data-tab="plan">Plan</div>
+      <div class="tab" data-tab="adjacency"><span class="tab-dot" id="dot-adjacency"></span>Adjacency</div>
+      <div class="tab" data-tab="daylight">Daylight</div>
+      <div class="tab" data-tab="energy">Energy &amp; Noise</div>
+      <div class="tab" data-tab="kitchen">Kitchen</div>
+      <div class="tab" data-tab="diagnostics">Diagnostics</div>
+    </div>
+    <div class="tab-panels">
+      <div class="panel active" id="panel-checks"><div id="checksContent"></div></div>
+      <div class="panel" id="panel-plan">
+        <div class="viz-tabs">
+          <div class="vt active" data-vtab="plan-clean">Clean Plan</div>
+          <div class="vt" data-vtab="plan-depth">Depth Zones</div>
+          <div class="vt" data-vtab="plan-vent">Ventilation</div>
+        </div>
+        <div class="viz-pane active" id="plan-clean"><div class="canvaswrap"><canvas id="planCanvas" height="540"></canvas></div><div class="legend" id="planLegend"></div></div>
+        <div class="viz-pane" id="plan-depth">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;font-size:10px;color:var(--dim)">
+            <span>Shallow</span>
+            <div style="flex:1;height:8px;border-radius:3px;background:linear-gradient(to right,#1a7a4a,#65a30d,#ca8a04,#ea580c,#c0392b)"></div>
+            <span>Over limit</span>
+            <span style="margin-left:.5rem;font-family:monospace;font-size:9px" id="depthMaxLabel"></span>
+          </div>
+          <div class="canvaswrap"><canvas id="depthCanvas" height="500"></canvas></div>
+        </div>
+        <div class="viz-pane" id="plan-vent">
+          <div class="legend" id="ventLegend" style="margin-bottom:.5rem"></div>
+          <div class="canvaswrap"><canvas id="ventCanvas" height="500"></canvas></div>
         </div>
       </div>
-      <div class="apt-list" id="apt-list"></div>
-    </div>
-
-    <!-- Detail panel (spans full width below canvas) -->
-    <div class="detail-panel" id="detail-panel">
-      <div class="detail-header">
-        <div class="detail-unit-id" id="detail-unit-id">Unit –</div>
-        <div class="detail-type" id="detail-type">–</div>
-        <div class="detail-pill" id="detail-pill">–</div>
+      <div class="panel" id="panel-adjacency">
+        <div class="canvaswrap" style="position:relative;margin-bottom:.75rem">
+          <canvas id="adjCanvas" height="420"></canvas>
+          <div id="adjPopup" style="display:none;position:absolute;background:#fff;border:1.5px solid var(--bd);border-radius:6px;padding:.75rem;min-width:200px;max-width:280px;box-shadow:0 4px 24px rgba(15,14,12,.12);font-size:11px;z-index:10;pointer-events:none"></div>
+        </div>
+        <div id="adjMissing" style="margin-bottom:.6rem"></div>
+        <div id="circIssues" style="margin-bottom:.5rem"></div>
+        <div id="topoChecks" style="margin-bottom:.75rem"></div>
+        <div class="slabel" style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:.5rem">Room Detail Cards</div>
+        <div id="roomCards"></div>
       </div>
-      <div class="checks-grid" id="checks-grid"></div>
+      <div class="panel" id="panel-daylight">
+        <p style="font-size:11px;color:var(--dim);margin-bottom:.65rem">Approximate daylight factor (BRE simplified) for all spaces.</p>
+        <div class="canvaswrap" style="margin-bottom:.5rem"><canvas id="dlCanvas" height="460"></canvas></div>
+        <div class="dl-scalebar">
+          <span>0%</span>
+          <div style="flex:1;height:8px;border-radius:3px;background:linear-gradient(to right,#1e3a5f,#2563eb,#1a7a4a,#b45309,#c0392b)"></div>
+          <span id="dlMaxLabel">≥5% DF</span>
+        </div>
+        <div id="dlStats"></div>
+      </div>
+      <div class="panel" id="panel-energy"><div id="energyContent"></div></div>
+      <div class="panel" id="panel-kitchen">
+        <div id="kitchenContent"></div>
+        <div id="kitchenCanvasWrap" style="display:none;margin-top:.75rem">
+          <div class="canvaswrap"><canvas id="kitchenCanvas" height="340"></canvas></div>
+        </div>
+      </div>
+      <div class="panel" id="panel-diagnostics"><div id="diagContent"></div></div>
     </div>
   </div>
 </div>
 
 <script>
-// ─────────────────────────────────────────────────────
-// State
-// ─────────────────────────────────────────────────────
-let state = {
-  apartments: [],
-  summary: null,
-  selectedUnit: null,
-  filter: 'all',
-  dxfFile: null,
-  validationOk: false,
-  // canvas
-  zoom: 1,
-  panX: 0,
-  panY: 0,
-  isPanning: false,
-  panStart: { x: 0, y: 0 },
-  unitBoxes: [], // { unitId, x, y, w, h } in canvas coords
-};
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let BUILDING = null;   // full building result
+let APT_DATA = null;   // currently open apartment's checks data
+let FILE = null;
+let JURISDICTION = 'VIC';
 
-// API base — change this to match your Railway URL
 const API_BASE = window.APT_API_BASE || '';
 
-// ─────────────────────────────────────────────────────
-// DOM refs
-// ─────────────────────────────────────────────────────
-const dropArea = document.getElementById('drop-area');
-const fileInput = document.getElementById('file-input');
-const validationStrip = document.getElementById('validation-strip');
-const validationMsg = document.getElementById('validation-msg');
-const vDot = document.getElementById('v-dot');
-const runBtn = document.getElementById('run-btn');
-const demoBtn = document.getElementById('demo-btn');
-const loading = document.getElementById('loading');
-const loadingText = document.getElementById('loading-text');
-const results = document.getElementById('results');
-const errorBanner = document.getElementById('error-banner');
-const uploadZone = document.getElementById('upload-zone');
-const canvas = document.getElementById('floor-canvas');
-const ctx = canvas.getContext('2d');
-const tooltip = document.getElementById('canvas-tooltip');
-const aptList = document.getElementById('apt-list');
-const detailPanel = document.getElementById('detail-panel');
-const sessionBadge = document.getElementById('session-badge');
-
-// ─────────────────────────────────────────────────────
-// Demo data — mirrors BuildingResult JSON shape
-// ─────────────────────────────────────────────────────
-const DEMO = {
-  session_id: 'demo-session',
-  apartments: [
-    { unit_id:'01', pass:true,  apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:true,  is_adaptable:true,  has_north_facing_pos:true,  checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:true}, ventilation:{pass:true} } },
-    { unit_id:'02', pass:false, apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:false, is_adaptable:false, has_north_facing_pos:false, checks:{ bedroom:{pass:true}, living:{pass:false,message:'Min depth 3.6m not met'}, storage:{pass:true}, pos:{pass:false,message:'POS area below minimum'}, ventilation:{pass:false,message:'No cross ventilation path'} } },
-    { unit_id:'03', pass:true,  apartment_type:'3bed+',bedroom_count:3, has_cross_ventilation:true,  is_adaptable:true,  has_north_facing_pos:true,  checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:true}, ventilation:{pass:true} } },
-    { unit_id:'04', pass:false, apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:true,  is_adaptable:false, has_north_facing_pos:false, checks:{ bedroom:{pass:false,message:'Min width 3.0m not met'}, living:{pass:true}, storage:{pass:false,message:'Insufficient storage volume'}, pos:{pass:true}, ventilation:{pass:true} } },
-    { unit_id:'05', pass:true,  apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:true,  is_adaptable:true,  has_north_facing_pos:false, checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:true}, ventilation:{pass:true} } },
-    { unit_id:'06', pass:true,  apartment_type:'studio',bedroom_count:0,has_cross_ventilation:false, is_adaptable:false, has_north_facing_pos:true,  checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:true}, ventilation:{pass:false,message:'Single aspect only'} } },
-    { unit_id:'07', pass:false, apartment_type:'2bed', bedroom_count:2, has_cross_ventilation:false, is_adaptable:true,  has_north_facing_pos:false, checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:false,message:'POS not usable'}, ventilation:{pass:false,message:'No cross ventilation'} } },
-    { unit_id:'08', pass:true,  apartment_type:'1bed', bedroom_count:1, has_cross_ventilation:true,  is_adaptable:true,  has_north_facing_pos:true,  checks:{ bedroom:{pass:true}, living:{pass:true}, storage:{pass:true}, pos:{pass:true}, ventilation:{pass:true} } },
-  ],
-  summary: {
-    standard:'VIC_ADG_2017', total_units:8, passing_units:5, pass_rate:0.625,
-    pass_rate_pct:'63%', cross_ventilation_pct:0.625, adaptable_dwellings_pct:0.625,
-    north_facing_pos_pct:0.5, worst_unit:'02',
-    apartment_mix:{ studio:1, '1bed':3, '2bed':3, '3bed+':1 },
-    building_checks:[
-      { check_name:'cross_ventilation', pass:true,  value:0.625, required:0.40, value_pct:'63%', required_pct:'40%', description:'5 of 8 apartments achieve cross ventilation (63%) — VIC ADG 2017 requires 40%' },
-      { check_name:'adaptable_dwellings', pass:true, value:0.625, required:0.50, value_pct:'63%', required_pct:'50%', description:'5 of 8 apartments are adaptable (63%) — requires 50% (BCA D3.3)' },
-      { check_name:'north_facing_pos', pass:true, value:0.5, required:0, value_pct:'50%', required_pct:'0%', description:'4 of 8 apartments have north-facing POS or living (50%)' },
-    ],
-    errors:[],
-  },
+// ═══════════════════════════════════════════════════════
+// ROOM COLOURS (same as index.html)
+// ═══════════════════════════════════════════════════════
+const RCFG = {
+  APT_ROOM_MAINBED:       {fill:'rgba(99,102,241,.18)', stroke:'#6366f1',label:'Main Bedroom'},
+  APT_ROOM_BED1:          {fill:'rgba(139,92,246,.15)', stroke:'#8b5cf6',label:'Bedroom 1'},
+  APT_ROOM_BED2:          {fill:'rgba(168,85,247,.15)', stroke:'#a855f7',label:'Bedroom 2'},
+  APT_ROOM_BED3:          {fill:'rgba(192,132,252,.15)',stroke:'#c084fc',label:'Bedroom 3'},
+  APT_ROOM_LIVING:        {fill:'rgba(26,122,74,.12)',  stroke:'#1a7a4a',label:'Living Area'},
+  APT_ROOM_BATHROOM:      {fill:'rgba(14,165,233,.15)', stroke:'#0ea5e9',label:'Bathroom'},
+  APT_ROOM_ENSUITE:       {fill:'rgba(6,182,212,.15)',  stroke:'#06b6d4',label:'Ensuite'},
+  APT_ROOM_LAUNDRY:       {fill:'rgba(100,116,139,.12)',stroke:'#64748b',label:'Laundry'},
+  APT_ROOM_ENTRY:         {fill:'rgba(148,163,184,.12)',stroke:'#94a3b8',label:'Entry'},
+  APT_STORAGE_DESIGNATED: {fill:'rgba(180,83,9,.15)',   stroke:'#b45309',label:'Storage'},
+  APT_STORAGE_SERVICE:    {fill:'rgba(161,61,4,.12)',   stroke:'#9a3a04',label:'Cabinetry'},
+  APT_POS:                {fill:'rgba(20,184,166,.15)', stroke:'#14b8a6',label:'Balcony/POS'},
+  APT_POS_GROUND:         {fill:'rgba(16,185,129,.15)', stroke:'#10b981',label:'Ground POS'},
+  APT_POS_ROOFTOP:        {fill:'rgba(5,150,105,.15)',  stroke:'#059669',label:'Rooftop POS'},
+  APT_WALL_EXTERNAL:      {fill:'rgba(26,25,22,.85)',   stroke:'#0f0e0c',label:'External Wall',building:true},
+  APT_WALL_PARTY:         {fill:'rgba(64,64,64,.7)',    stroke:'#404040',label:'Party Wall',building:true},
+  APT_WALL_INTERNAL:      {fill:'rgba(120,120,120,.5)', stroke:'#787878',label:'Internal Wall',building:true},
+  APT_COLUMN:             {fill:'rgba(40,40,40,.9)',    stroke:'#282828',label:'Column',building:true},
+  APT_OVERHANG:           {fill:'rgba(180,180,180,.25)',stroke:'#aaa',   label:'Overhang',building:true,dashed:true},
+  APT_SHAFT:              {fill:'rgba(90,90,90,.6)',    stroke:'#5a5a5a',label:'Shaft/Core',building:true},
+  APT_KITCHEN_BENCH:      {fill:'rgba(251,146,60,.25)', stroke:'#f97316',label:'Kitchen Bench',fixture:true},
+  APT_KITCHEN_APPLIANCE:  {fill:'rgba(249,115,22,.3)',  stroke:'#ea6c0a',label:'Appliance',fixture:true},
+  APT_BATHROOM_FIXTURE:   {fill:'rgba(125,211,252,.25)',stroke:'#38bdf8',label:'Bathroom Fixture',fixture:true},
+  APT_FURNITURE:          {fill:'rgba(212,212,212,.2)', stroke:'#aaa',   label:'Furniture',fixture:true},
 };
 
-// ─────────────────────────────────────────────────────
-// File handling
-// ─────────────────────────────────────────────────────
-dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('over'); });
-dropArea.addEventListener('dragleave', () => dropArea.classList.remove('over'));
-dropArea.addEventListener('drop', e => {
-  e.preventDefault();
-  dropArea.classList.remove('over');
-  handleFile(e.dataTransfer.files[0]);
+// ═══════════════════════════════════════════════════════
+// UPLOAD & FILE HANDLING
+// ═══════════════════════════════════════════════════════
+const dz = document.getElementById('dz');
+const fi = document.getElementById('dxf-file');
+const fnEl = document.getElementById('fname');
+const runBtn = document.getElementById('run-btn');
+
+fi.addEventListener('change', e => { if (e.target.files[0]) setFile(e.target.files[0]); });
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.toLowerCase().endsWith('.dxf')) setFile(f);
 });
-fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+function setFile(f) { FILE = f; fnEl.textContent = f.name; runBtn.disabled = false; }
 
-async function handleFile(file) {
-  if (!file) return;
-  state.dxfFile = file;
-  state.validationOk = false;
-  runBtn.disabled = true;
-  validationStrip.classList.remove('visible');
+runBtn.addEventListener('click', runBuildingCheck);
+document.getElementById('demo-btn').addEventListener('click', () => renderBuilding(DEMO));
 
-  // Quick validation against the API
-  const fd = new FormData();
-  fd.append('file', file);
-
-  try {
-    const res = await fetch(`${API_BASE}/api/validate-building-dxf`, { method:'POST', body:fd });
-    const data = await res.json();
-    validationStrip.classList.add('visible');
-
-    if (data.is_multi_apartment && data.unit_count > 0) {
-      vDot.className = 'v-dot';
-      validationMsg.textContent = data.message;
-      state.validationOk = true;
-      runBtn.disabled = false;
-    } else {
-      vDot.className = 'v-dot fail';
-      validationMsg.textContent = data.message || 'No unit prefixes found.';
-    }
-  } catch {
-    // API not reachable — allow running anyway (will fail at check time)
-    validationStrip.classList.add('visible');
-    vDot.className = 'v-dot warn';
-    validationMsg.textContent = `${file.name} — validation skipped (API offline)`;
-    state.validationOk = true;
-    runBtn.disabled = false;
-  }
-}
-
-runBtn.addEventListener('click', () => runBuildingCheck());
-demoBtn.addEventListener('click', () => renderResults(DEMO));
-
-// ─────────────────────────────────────────────────────
-// API call
-// ─────────────────────────────────────────────────────
 async function runBuildingCheck() {
-  if (!state.dxfFile) return;
+  if (!FILE) return;
   showLoading('Analysing building…');
-  hideError();
-
+  hideErr();
   const fd = new FormData();
-  fd.append('file', state.dxfFile);
-  fd.append('standard', document.getElementById('standard-select').value);
-
+  fd.append('dxf_file', FILE);
+  fd.append('jurisdiction', JURISDICTION);
   try {
-    const res = await fetch(`${API_BASE}/api/check-building`, { method:'POST', body:fd });
+    const res = await fetch(API_BASE + '/api/check-building', { method: 'POST', body: fd });
     const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || `HTTP ${res.status}`);
-    }
-
+    if (data.error) { hideLoading(); showErr(data.error); return; }
     hideLoading();
-    renderResults(data);
-  } catch (err) {
+    renderBuilding(data);
+  } catch (e) {
     hideLoading();
-    showError(`Building check failed: ${err.message}`);
+    showErr('Connection error: ' + e.message);
   }
 }
 
-// ─────────────────────────────────────────────────────
-// Render results
-// ─────────────────────────────────────────────────────
-function renderResults(data) {
-  state.apartments = data.apartments;
-  state.summary = data.summary;
-  state.selectedUnit = null;
+// ═══════════════════════════════════════════════════════
+// BUILDING RENDER
+// ═══════════════════════════════════════════════════════
+const CHECKS_META = [
+  {k:'bedrooms_pass',l:'Bedrooms'},{k:'living_pass',l:'Living'},
+  {k:'room_depth_pass',l:'Room Depth'},{k:'windows_pass',l:'Windows'},
+  {k:'storage_pass',l:'Storage'},{k:'pos_pass',l:'POS'},
+  {k:'ventilation_pass',l:'Ventilation'},{k:'doors_pass',l:'Doors'},
+  {k:'accessibility_pass',l:'Access'},{k:'daylight_pass',l:'Daylight'},
+  {k:'energy_pass',l:'Energy'},{k:'noise_pass',l:'Noise'},
+];
 
-  sessionBadge.textContent = data.session_id
-    ? data.session_id.slice(0, 8).toUpperCase()
-    : 'DEMO';
+function renderBuilding(data) {
+  BUILDING = data;
+  const s = data.summary;
+  document.getElementById('upload-state').style.display = 'none';
+  document.getElementById('results-state').style.display = '';
+  document.getElementById('session-badge').textContent =
+    (data.token || data.session_id || 'DEMO').slice(0, 8).toUpperCase();
+  document.getElementById('report-btn').style.display = '';
 
-  uploadZone.style.display = 'none';
-  results.classList.add('visible');
-
-  renderSummaryBar(data.summary);
-  renderAptList();
-  renderCanvas();
-  detailPanel.classList.remove('visible');
-}
-
-function renderSummaryBar(s) {
+  // Summary bar
   document.getElementById('stat-total').textContent = s.total_units;
+  const passEl = document.getElementById('stat-passing');
+  passEl.textContent = s.passing_units;
+  passEl.className = 'stat-value ' + (s.pass_rate >= 0.5 ? 'pass' : 'fail');
+  document.getElementById('stat-pass-rate').textContent = s.pass_rate_pct + ' pass rate';
 
-  const passingEl = document.getElementById('stat-passing');
-  passingEl.textContent = s.passing_units;
-  passingEl.className = 'stat-value ' + (s.pass_rate >= 0.5 ? 'pass' : 'fail');
-  document.getElementById('stat-pass-rate').textContent = `${s.pass_rate_pct} pass rate`;
-
-  const cvPct = Math.round(s.cross_ventilation_pct * 100);
-  const cvEl = document.getElementById('stat-cv');
-  cvEl.textContent = `${cvPct}%`;
   const cvCheck = s.building_checks.find(c => c.check_name === 'cross_ventilation');
-  cvEl.className = 'stat-value ' + (cvCheck?.pass ? 'pass' : 'fail');
-  document.getElementById('stat-cv-req').textContent = cvCheck
-    ? `req. ${cvCheck.required_pct}`
-    : '';
+  const cvEl = document.getElementById('stat-cv');
+  cvEl.textContent = Math.round(s.cross_ventilation_pct * 100) + '%';
+  cvEl.className = 'stat-value ' + (cvCheck && cvCheck.pass ? 'pass' : 'fail');
+  document.getElementById('stat-cv-req').textContent = cvCheck ? 'req. ' + cvCheck.required_pct : '';
 
-  const adaptPct = Math.round(s.adaptable_dwellings_pct * 100);
-  const adaptEl = document.getElementById('stat-adapt');
-  adaptEl.textContent = `${adaptPct}%`;
   const adaptCheck = s.building_checks.find(c => c.check_name === 'adaptable_dwellings');
-  adaptEl.className = 'stat-value ' + (adaptCheck?.pass ? 'pass' : 'fail');
-  document.getElementById('stat-adapt-req').textContent = adaptCheck
-    ? `req. ${adaptCheck.required_pct}`
-    : '';
+  const adaptEl = document.getElementById('stat-adapt');
+  adaptEl.textContent = Math.round(s.adaptable_dwellings_pct * 100) + '%';
+  adaptEl.className = 'stat-value ' + (adaptCheck && adaptCheck.pass ? 'pass' : 'fail');
+  document.getElementById('stat-adapt-req').textContent = adaptCheck ? 'req. ' + adaptCheck.required_pct : '';
 
-  // Mix bar chart
-  const mixBars = document.getElementById('mix-bars');
-  mixBars.innerHTML = '';
+  // Solar access stat
+  const solarCheck = s.building_checks.find(c => c.check_name === 'solar_access');
+  const solarEl = document.getElementById('stat-solar');
+  if (solarCheck && solarEl) {
+    solarEl.textContent = solarCheck.value_pct || Math.round((s.solar_access_pct||0)*100) + '%';
+    solarEl.className = 'stat-value ' + (solarCheck.pass ? 'pass' : (solarCheck.required > 0 ? 'fail' : ''));
+    document.getElementById('stat-solar-req').textContent = solarCheck.required > 0 ? 'req. ' + solarCheck.required_pct : 'informational';
+  } else if (solarEl) {
+    solarEl.textContent = Math.round((s.solar_access_pct||0)*100) + '%';
+    solarEl.className = 'stat-value';
+    document.getElementById('stat-solar-req').textContent = 'solar access';
+  }
+
+  // Mix bars
   const mix = s.apartment_mix;
   const maxMix = Math.max(...Object.values(mix), 1);
-  for (const [label, count] of Object.entries(mix)) {
-    const h = Math.max(4, Math.round((count / maxMix) * 36));
-    mixBars.innerHTML += `
-      <div class="mix-bar-wrap">
-        <div class="mix-bar" style="height:${h}px" title="${count} ${label}"></div>
-        <div class="mix-bar-label">${label}</div>
-      </div>`;
-  }
+  const mixColors = {studio:'#a855f7','1bed':'#6366f1','2bed':'#1a7a4a','3bed+':'#e85d25'};
+  document.getElementById('mix-bars').innerHTML = Object.entries(mix).filter(([,v])=>v>0).map(([label, count]) => {
+    const h = Math.max(8, Math.round((count / maxMix) * 42));
+    const col = mixColors[label] || '#a8a49e';
+    return `<div class="mix-bar-wrap" title="${count} ${label}">
+      <div style="font-size:10px;font-weight:600;text-align:center;color:${col};margin-bottom:1px">${count}</div>
+      <div class="mix-bar" style="height:${h}px;background:${col}"></div>
+      <div class="mix-bar-label" style="color:${col}">${label}</div>
+    </div>`;
+  }).join('');
 
   // Building checks
-  const checksEl = document.getElementById('building-checks');
-  checksEl.innerHTML = '';
-  for (const c of s.building_checks) {
-    const cls = c.check_name === 'north_facing_pos' ? 'info' : (c.pass ? 'pass' : 'fail');
-    const icon = c.pass ? '✓' : '✗';
-    checksEl.innerHTML += `
-      <div class="bcheck ${cls}" title="${c.description}">
-        <span class="bcheck-icon">${icon}</span>
-        ${formatCheckName(c.check_name)} ${c.value_pct}
-      </div>`;
+  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space', 'apartments_per_lift', 'apartment_mix', 'facade_glazing', 'acoustic_separation']);
+  document.getElementById('building-checks').innerHTML = s.building_checks.map((c,i) => {
+    const isInfo = INFO_CHECKS.has(c.check_name);
+    const cls = isInfo ? 'info' : (c.pass ? 'pass' : 'fail');
+    const icon = isInfo ? 'i' : (c.pass ? '✓' : '✗');
+    const val = c.value_pct && c.value_pct !== '0%' ? ' ' + c.value_pct : '';
+    return `<div class="bcheck ${cls}" title="${c.description}" style="cursor:pointer" onclick="showBuildingCheckDetail(${i})">${icon} ${fmtCheckName(c.check_name)}${val}</div>`;
+  }).join('');
+
+  // Apartment mix section
+  const mixSection = document.getElementById('mix-section');
+  if (mixSection) {
+    const mix = s.apartment_mix || {};
+    const total = s.total_units || 1;
+    const mixColors = {studio:'#a855f7','1bed':'#6366f1','2bed':'#1a7a4a','3bed+':'#e85d25'};
+    const mixLabels = {studio:'Studio','1bed':'1 Bedroom','2bed':'2 Bedroom','3bed+':'3 Bedroom+'};
+    const mixDesc   = {studio:'Open plan — living and sleeping combined',
+                       '1bed':'Suitable for singles and couples',
+                       '2bed':'Suitable for couples and small families',
+                       '3bed+':'Family apartments'};
+    const entries = Object.entries(mix).filter(([,v])=>v>0);
+    if (entries.length) {
+      let h = `<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--radius);padding:.85rem 1rem;box-shadow:var(--shadow)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.75rem">Apartment Mix</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;margin-bottom:.75rem">`;
+      for (const [key, count] of entries) {
+        const pct = Math.round(count/total*100);
+        const col = mixColors[key]||'#a8a49e';
+        const label = mixLabels[key]||key;
+        const desc = mixDesc[key]||'';
+        h += `<div style="border:1.5px solid ${col}33;border-radius:6px;padding:.6rem .75rem;position:relative;overflow:hidden">
+          <div style="position:absolute;inset:0;background:${col};opacity:.05"></div>
+          <div style="font-size:22px;font-weight:700;color:${col};line-height:1">${count}</div>
+          <div style="font-size:11px;font-weight:600;color:var(--tx);margin:.2rem 0 .1rem">${label}</div>
+          <div style="font-size:10px;color:var(--dim)">${desc}</div>
+          <div style="margin-top:.4rem;height:3px;background:var(--bd);border-radius:2px">
+            <div style="width:${pct}%;height:100%;background:${col};border-radius:2px"></div>
+          </div>
+          <div style="font-size:9px;color:var(--mut);margin-top:.15rem">${pct}% of total</div>
+        </div>`;
+      }
+      h += `</div>`;
+      // Mix diversity note
+      const types = entries.length;
+      const familyPct = Math.round(((mix['2bed']||0)+(mix['3bed+']||0))/total*100);
+      let note = '';
+      if (types === 1) note = `<span style="color:var(--warn)">⚠ Single apartment type — consider diversifying the mix</span>`;
+      else if (familyPct >= 30) note = `<span style="color:var(--pass)">✓ Good family representation (${familyPct}% are 2bed+)</span>`;
+      else if (familyPct < 15 && total >= 5) note = `<span style="color:var(--dim)">ℹ Low family apartment proportion (${familyPct}% are 2bed+)</span>`;
+      else note = `<span style="color:var(--pass)">✓ ${types} apartment types — good mix diversity</span>`;
+      h += `<div style="font-size:11px">${note}</div>`;
+      h += `</div>`;
+      mixSection.innerHTML = h;
+    }
   }
-}
 
-// ─────────────────────────────────────────────────────
-// Apartment list
-// ─────────────────────────────────────────────────────
-function renderAptList() {
-  const filtered = state.apartments.filter(a => {
-    if (state.filter === 'all') return true;
-    return state.filter === 'pass' ? a.pass : !a.pass;
-  });
-
-  aptList.innerHTML = '';
-  for (const apt of filtered) {
-    const cls = apt.pass ? 'pass' : 'fail';
-    const failures = Object.values(apt.checks).filter(c => c && c.pass === false).length;
-    const badges = [
-      apt.has_cross_ventilation ? '<span class="badge cv">CV</span>' : '',
-      apt.is_adaptable ? '<span class="badge adapt">ADP</span>' : '',
-      apt.has_north_facing_pos ? '<span class="badge north">N↑</span>' : '',
-    ].join('');
-
-    const item = document.createElement('div');
-    item.className = 'apt-item' + (state.selectedUnit === apt.unit_id ? ' selected' : '');
-    item.dataset.unit = apt.unit_id;
-    item.innerHTML = `
-      <div class="apt-status-dot ${cls}"></div>
-      <div class="apt-info">
-        <div class="apt-name">Unit ${apt.unit_id}</div>
-        <div class="apt-meta">${apt.apartment_type} · ${failures > 0 ? failures + ' fail' + (failures>1?'s':'') : 'all checks pass'}</div>
-        <div class="apt-badges" style="margin-top:4px">${badges}</div>
-      </div>`;
-    item.addEventListener('click', () => selectUnit(apt.unit_id));
-    aptList.appendChild(item);
-  }
-}
-
-// Filter buttons
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.filter = btn.dataset.filter;
-    renderAptList();
-  });
-});
-
-// ─────────────────────────────────────────────────────
-// Unit selection
-// ─────────────────────────────────────────────────────
-function selectUnit(unitId) {
-  state.selectedUnit = unitId;
-  renderAptList();
-  renderCanvas();
-  renderDetail(unitId);
-}
-
-function renderDetail(unitId) {
-  const apt = state.apartments.find(a => a.unit_id === unitId);
-  if (!apt) return;
-
-  detailPanel.classList.add('visible');
-  document.getElementById('detail-unit-id').textContent = `Unit ${apt.unit_id}`;
-  document.getElementById('detail-type').textContent = apt.apartment_type;
-
-  const pill = document.getElementById('detail-pill');
-  pill.textContent = apt.pass ? 'PASS' : 'FAIL';
-  pill.className = 'detail-pill ' + (apt.pass ? 'pass' : 'fail');
-
-  const grid = document.getElementById('checks-grid');
+  // Unit cards
+  const grid = document.getElementById('unit-grid');
   grid.innerHTML = '';
-  for (const [key, check] of Object.entries(apt.checks)) {
-    if (!check || typeof check !== 'object') continue;
-    const cls = check.pass === true ? 'pass' : check.pass === false ? 'fail' : 'na';
-    const label = check.pass === true ? '✓ Pass' : check.pass === false ? '✗ Fail' : 'N/A';
-    grid.innerHTML += `
-      <div class="check-card ${cls}">
-        <div class="check-name">${formatCheckName(key)}</div>
-        <div class="check-result ${cls}">${label}</div>
-        ${check.message ? `<div style="font-size:10px;color:#6b6b6b;margin-top:4px;font-family:var(--mono)">${check.message}</div>` : ''}
-      </div>`;
+  for (const apt of data.apartments) {
+    const card = buildUnitCard(apt);
+    grid.appendChild(card);
   }
 }
 
-// ─────────────────────────────────────────────────────
-// Canvas floor plate
-// ─────────────────────────────────────────────────────
-const COLS = 4; // apartments per row in the abstract layout
+function buildUnitCard(apt) {
+  const pass = apt.pass;
+  const cls = pass ? 'pass' : 'fail';
+  const div = document.createElement('div');
+  div.className = `unit-card ${cls}-card`;
+  div.dataset.unitId = apt.unit_id;
 
-function resizeCanvas() {
-  const panel = canvas.parentElement;
-  canvas.width = panel.clientWidth;
-  canvas.height = panel.clientHeight;
+  // Failure count from summary flags
+  const sf = apt.summary || {};
+  const failures = Object.entries(sf).filter(([k, v]) => k.endsWith('_pass') && v === false).length;
+  const dot = (k) => {
+    const v = sf[k];
+    if (v === undefined || v === null) return '<div class="ucs na" title="N/A"></div>';
+    return `<div class="ucs ${v ? 'pass' : 'fail'}" title="${fmtCheckName(k)}"></div>`;
+  };
+
+  div.innerHTML = `
+    <div class="unit-card-header">
+      <div class="unit-badge ${cls}">${pass ? '✓' : '✗'}</div>
+      <div>
+        <div class="unit-card-title">Unit ${apt.unit_id}</div>
+        <div class="unit-card-meta">${apt.apartment_type} · ${failures > 0 ? failures + ' failure' + (failures > 1 ? 's' : '') : 'all pass'}</div>
+      </div>
+      <span class="unit-card-chip ${cls}">${pass ? 'PASS' : 'FAIL'}</span>
+    </div>
+    <div class="unit-plan-wrap">
+      <canvas id="card-canvas-${apt.unit_id}" height="180"></canvas>
+      <div class="unit-plan-overlay"><span class="unit-plan-cta">View full analysis →</span></div>
+    </div>
+    <div class="unit-check-strip">
+      ${CHECKS_META.map(m => dot(m.k)).join('')}
+    </div>
+    <div class="unit-badges">
+      ${apt.has_cross_ventilation ? '<span class="ubadge cv">Cross Vent</span>' : ''}
+      ${apt.is_adaptable ? '<span class="ubadge adapt">Adaptable</span>' : ''}
+      ${apt.has_north_living ? '<span class="ubadge north">North Living</span>' : ''}
+    </div>`;
+
+  div.addEventListener('click', () => openApartment(apt));
+
+  // Draw plan on next tick
+  setTimeout(() => drawCardPlan(apt), 50);
+  return div;
 }
 
-function renderCanvas() {
-  resizeCanvas();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ═══════════════════════════════════════════════════════
+// CARD PLAN CANVAS
+// ═══════════════════════════════════════════════════════
+function gatherShapes(data) {
+  const shapes = [];
+  for (const p of (data.building_geometry || [])) if (p.vertices) shapes.push({pts:p.vertices,layer:p.layer,pass:true,building:true});
+  for (const r of (data.bedrooms || [])) if (r.vertices) shapes.push({pts:r.vertices,layer:r.layer,pass:r.overall_pass,label:r.room,area:r.area_sqm,centroid:r.centroid});
+  for (const r of (data.living || [])) if (r.vertices) shapes.push({pts:r.vertices,layer:r.layer,pass:r.overall_pass,label:r.room,area:r.area_sqm,centroid:r.centroid});
+  for (const r of (data.pos || [])) if (r.vertices) shapes.push({pts:r.vertices,layer:r.layer||'APT_POS',pass:r.overall_pass,label:r.space,area:r.area_sqm,centroid:r.centroid});
+  for (const p of (data.storage?.designated_polys || [])) if (p.vertices) shapes.push({pts:p.vertices,layer:'APT_STORAGE_DESIGNATED',pass:true});
+  for (const p of (data.storage?.service_polys || [])) if (p.vertices) shapes.push({pts:p.vertices,layer:'APT_STORAGE_SERVICE',pass:true});
+  for (const nd of (data.adjacency?.nodes || [])) {
+    const known = ['APT_ROOM_BATHROOM','APT_ROOM_ENSUITE','APT_ROOM_LAUNDRY','APT_ROOM_ENTRY'];
+    if (known.includes(nd.layer) && nd.vertices) shapes.push({pts:nd.vertices,layer:nd.layer,pass:true,label:nd.label,centroid:nd.centroid});
+  }
+  for (const p of (data.fixtures || [])) if (p.vertices) shapes.push({pts:p.vertices,layer:p.layer,pass:true,fixture:true});
+  return shapes;
+}
 
-  const apts = state.apartments;
-  if (!apts.length) return;
+function planXF(shapes, W, H, pad) {
+  pad = pad || 16;
+  let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+  for (const s of shapes) for (const [x,y] of s.pts) { mnx=Math.min(mnx,x); mny=Math.min(mny,y); mxx=Math.max(mxx,x); mxy=Math.max(mxy,y); }
+  if (mnx === 1e9) return null;
+  const sc = Math.min((W-pad*2)/Math.max(mxx-mnx,.1), (H-pad*2)/Math.max(mxy-mny,.1));
+  const ox = pad+((W-pad*2)-(mxx-mnx)*sc)/2, oy = pad+((H-pad*2)-(mxy-mny)*sc)/2;
+  return { tx: x => ox+(x-mnx)*sc, ty: y => H-(oy+(y-mny)*sc), sc, mnx, mny, mxx, mxy };
+}
 
-  const cols = Math.min(COLS, apts.length);
-  const rows = Math.ceil(apts.length / cols);
-
-  const padding = 40;
-  const gap = 12;
-  const cellW = (canvas.width - padding * 2 - gap * (cols - 1)) / cols;
-  const cellH = Math.min(cellW * 0.7, (canvas.height - padding * 2 - gap * (rows - 1)) / rows);
-
-  state.unitBoxes = [];
-
-  apts.forEach((apt, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = padding + col * (cellW + gap);
-    const y = padding + row * (cellH + gap);
-
-    const isSelected = apt.unit_id === state.selectedUnit;
-    const isWorst = apt.unit_id === state.summary?.worst_unit;
-
-    state.unitBoxes.push({ unitId: apt.unit_id, x, y, w: cellW, h: cellH });
-
-    // Background
-    const fillColor = isSelected
-      ? 'rgba(79,142,247,0.18)'
-      : apt.pass
-        ? 'rgba(62,207,142,0.08)'
-        : 'rgba(232,83,61,0.08)';
-
-    ctx.fillStyle = fillColor;
-    roundRect(ctx, x, y, cellW, cellH, 4);
-    ctx.fill();
-
-    // Border
-    const strokeColor = isSelected
-      ? '#4f8ef7'
-      : apt.pass ? '#3ecf8e' : '#e8533d';
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = isSelected ? 2 : 1;
-    roundRect(ctx, x, y, cellW, cellH, 4);
-    ctx.stroke();
-
-    // Worst unit indicator
-    if (isWorst && !apt.pass) {
-      ctx.strokeStyle = '#f0a841';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 3]);
-      roundRect(ctx, x - 3, y - 3, cellW + 6, cellH + 6, 6);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Unit label
-    ctx.fillStyle = isSelected ? '#fff' : '#e8e8e8';
-    ctx.font = `500 ${Math.max(10, cellW * 0.12)}px DM Mono, monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`Unit ${apt.unit_id}`, x + cellW / 2, y + cellH * 0.38);
-
-    // Apartment type
-    ctx.fillStyle = '#6b6b6b';
-    ctx.font = `${Math.max(9, cellW * 0.09)}px DM Mono, monospace`;
-    ctx.fillText(apt.apartment_type, x + cellW / 2, y + cellH * 0.54);
-
-    // Status indicator
-    const statusR = Math.max(4, cellW * 0.06);
-    ctx.fillStyle = apt.pass ? '#3ecf8e' : '#e8533d';
+function drawShapes(ctx, shapes, xf, failHighlight) {
+  for (const s of shapes) {
+    if (!s.pts || s.pts.length < 3) continue;
+    const cfg = RCFG[s.layer] || {fill:'rgba(0,0,0,.04)',stroke:'#ccc'};
     ctx.beginPath();
-    ctx.arc(x + cellW / 2, y + cellH * 0.74, statusR, 0, Math.PI * 2);
+    ctx.moveTo(xf.tx(s.pts[0][0]), xf.ty(s.pts[0][1]));
+    for (let i = 1; i < s.pts.length; i++) ctx.lineTo(xf.tx(s.pts[i][0]), xf.ty(s.pts[i][1]));
+    ctx.closePath();
+    if (s.building) {
+      ctx.fillStyle = cfg.fill; ctx.fill();
+      if (cfg.dashed) { ctx.setLineDash([4,3]); }
+      ctx.strokeStyle = cfg.stroke; ctx.lineWidth = s.layer === 'APT_WALL_EXTERNAL' ? 2.5 : 1.5; ctx.stroke();
+      ctx.setLineDash([]);
+      continue;
+    }
+    if (s.fixture) {
+      ctx.fillStyle = cfg.fill; ctx.fill();
+      ctx.strokeStyle = cfg.stroke; ctx.lineWidth = 0.8; ctx.setLineDash([2,2]); ctx.stroke(); ctx.setLineDash([]);
+      continue;
+    }
+    ctx.fillStyle = (failHighlight && s.pass === false) ? 'rgba(192,57,43,.12)' : cfg.fill;
     ctx.fill();
-
-    // Feature badges inside cell
-    const badgeY = y + cellH - 14;
-    let badgeX = x + 8;
-    const badgeH = 10;
-    if (apt.has_cross_ventilation) {
-      drawBadge(ctx, badgeX, badgeY, 'CV', '#4f8ef7'); badgeX += 28;
-    }
-    if (apt.is_adaptable) {
-      drawBadge(ctx, badgeX, badgeY, 'ADP', '#f0a841'); badgeX += 34;
-    }
-  });
-}
-
-function drawBadge(ctx, x, y, label, color) {
-  ctx.font = '8px DM Mono, monospace';
-  const w = ctx.measureText(label).width + 6;
-  ctx.fillStyle = color + '28';
-  roundRect(ctx, x, y - 9, w, 11, 2);
-  ctx.fill();
-  ctx.strokeStyle = color + '80';
-  ctx.lineWidth = 0.5;
-  roundRect(ctx, x, y - 9, w, 11, 2);
-  ctx.stroke();
-  ctx.fillStyle = color;
-  ctx.textAlign = 'left';
-  ctx.fillText(label, x + 3, y);
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
-}
-
-// Canvas mouse events
-canvas.addEventListener('mousemove', e => {
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const hit = state.unitBoxes.find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
-
-  if (hit) {
-    canvas.style.cursor = 'pointer';
-    const apt = state.apartments.find(a => a.unit_id === hit.unitId);
-    if (apt) {
-      const failures = Object.values(apt.checks).filter(c => c && c.pass === false).length;
-      document.getElementById('tt-unit').textContent = `Unit ${apt.unit_id}`;
-      document.getElementById('tt-type').textContent = apt.apartment_type;
-      document.getElementById('tt-status').textContent = apt.pass ? '✓ Pass' : '✗ Fail';
-      document.getElementById('tt-status').className = apt.pass ? 'tt-pass' : 'tt-fail';
-      document.getElementById('tt-failures').textContent = failures > 0 ? `${failures} check failure${failures > 1 ? 's' : ''}` : 'All checks pass';
-      tooltip.style.left = (mx + 14) + 'px';
-      tooltip.style.top = (my - 10) + 'px';
-      tooltip.classList.add('visible');
-    }
-  } else {
-    canvas.style.cursor = 'default';
-    tooltip.classList.remove('visible');
+    ctx.strokeStyle = (failHighlight && s.pass === false) ? '#c0392b' : cfg.stroke;
+    ctx.lineWidth = (failHighlight && s.pass === false) ? 2 : 1.2;
+    ctx.stroke();
   }
-});
-
-canvas.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
-
-canvas.addEventListener('click', e => {
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const hit = state.unitBoxes.find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
-  if (hit) selectUnit(hit.unitId);
-});
-
-window.addEventListener('resize', () => { if (results.classList.contains('visible')) renderCanvas(); });
-
-// Zoom controls (visual only — re-layout in grid)
-document.getElementById('zoom-in').addEventListener('click', () => {});
-document.getElementById('zoom-out').addEventListener('click', () => {});
-document.getElementById('zoom-fit').addEventListener('click', () => renderCanvas());
-
-// ─────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────
-function formatCheckName(key) {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function showLoading(msg) {
-  loadingText.textContent = msg || 'Loading…';
-  loading.classList.add('visible');
+function drawLabels(ctx, shapes, xf, small) {
+  const fs = small ? Math.max(7, Math.min(9, xf.sc * 0.5)) : Math.max(8, Math.min(10, xf.sc * 0.6));
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const s of shapes) {
+    if (!s.label || !s.centroid || s.building || s.fixture) continue;
+    const cx = xf.tx(s.centroid[0]), cy = xf.ty(s.centroid[1]);
+    ctx.font = `600 ${fs}px Inter,sans-serif`; ctx.fillStyle = 'rgba(26,25,22,.75)';
+    ctx.fillText(s.label, cx, cy);
+    if (s.area && !small) { ctx.font = `400 ${Math.max(7,fs-1)}px JetBrains Mono,monospace`; ctx.fillStyle = 'rgba(107,104,96,.65)'; ctx.fillText(s.area + 'm²', cx, cy + fs + 2); }
+  }
 }
-function hideLoading() { loading.classList.remove('visible'); }
-function showError(msg) { errorBanner.textContent = msg; errorBanner.classList.add('visible'); }
-function hideError() { errorBanner.classList.remove('visible'); }
+
+function drawWinDoor(ctx, data, xf) {
+  for (const rm of (data.windows?.habitable || [])) {
+    for (const wl of (rm.window_lines || [])) {
+      if (wl.length < 2) continue;
+      const x1=xf.tx(wl[0][0]),y1=xf.ty(wl[0][1]),x2=xf.tx(wl[1][0]),y2=xf.ty(wl[1][1]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle='rgba(37,99,235,.9)'; ctx.lineWidth=3; ctx.stroke();
+    }
+  }
+  for (const d of (data.doors || [])) {
+    if (!d.p1 || !d.p2) continue;
+    const x1=xf.tx(d.p1[0]),y1=xf.ty(d.p1[1]),x2=xf.tx(d.p2[0]),y2=xf.ty(d.p2[1]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle='rgba(180,83,9,.8)'; ctx.lineWidth=2; ctx.stroke();
+  }
+}
+
+function drawCardPlan(apt) {
+  const cv = document.getElementById('card-canvas-' + apt.unit_id);
+  if (!cv) return;
+  const checks = apt.checks || {};
+  const shapes = gatherShapes(checks);
+  if (!shapes.length) {
+    // No geometry — show placeholder
+    const ctx = cv.getContext('2d');
+    const W = cv.offsetWidth || 280;
+    cv.width = W;
+    ctx.fillStyle = '#f0eeec';
+    ctx.fillRect(0, 0, W, cv.height);
+    ctx.fillStyle = '#a8a49e';
+    ctx.font = '11px Inter,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('No plan geometry', W/2, cv.height/2);
+    return;
+  }
+  const W = cv.offsetWidth || 280;
+  cv.width = W;
+  const ctx = cv.getContext('2d');
+  const xf = planXF(shapes, W, cv.height, 12);
+  if (!xf) return;
+  ctx.fillStyle = '#f5f4f2';
+  ctx.fillRect(0, 0, W, cv.height);
+  drawShapes(ctx, shapes, xf, true);
+  drawWinDoor(ctx, checks, xf);
+  drawLabels(ctx, shapes, xf, true);
+}
+
+// ═══════════════════════════════════════════════════════
+// OPEN APARTMENT
+// ═══════════════════════════════════════════════════════
+function openApartment(apt) {
+  APT_DATA = apt.checks || {};
+  // Normalise — ensure summary/meta exist
+  if (!APT_DATA.summary) APT_DATA.summary = apt.summary || {};
+  if (!APT_DATA.meta) APT_DATA.meta = {};
+  if (!APT_DATA.meta.bedroom_count) APT_DATA.meta.bedroom_count = apt.bedroom_count || 0;
+  if (!APT_DATA.meta.jurisdiction) APT_DATA.meta.jurisdiction = apt.jurisdiction || JURISDICTION;
+  if (!APT_DATA.meta.ceiling_h) APT_DATA.meta.ceiling_h = 2.7;
+  if (!APT_DATA.meta.layers) APT_DATA.meta.layers = [];
+  if (!APT_DATA.meta.window_layers) APT_DATA.meta.window_layers = [];
+
+  // Update back bar
+  document.getElementById('back-unit-label').textContent = 'Unit ' + apt.unit_id;
+  const statusEl = document.getElementById('back-unit-status');
+  statusEl.textContent = apt.pass ? 'PASS' : 'FAIL';
+  statusEl.className = 'back-status ' + (apt.pass ? 'pass' : 'fail');
+
+  // Switch to apt view, reset to compliance tab
+  document.getElementById('view-building').classList.remove('active');
+  document.getElementById('view-apt').classList.add('active');
+  switchAptTab('checks');
+
+  // Render
+  renderAptChecks(APT_DATA);
+  renderAptEnergy(APT_DATA);
+  renderAptKitchen(APT_DATA);
+  renderAptDiagnostics(APT_DATA);
+  // Draw inline plan immediately, then after a beat force all hidden
+  // canvases to the correct width and render them
+  drawInlinePlan(APT_DATA);
+  redrawPlan('plan-clean');
+  setTimeout(() => {
+    // planCanvas is visible so it has a real offsetWidth we can borrow
+    const refW = document.getElementById('planCanvas').offsetWidth || 720;
+    document.getElementById('depthCanvas').width = refW;
+    document.getElementById('ventCanvas').width  = refW;
+    document.getElementById('dlCanvas').width    = refW;
+    redrawPlan('plan-depth');
+    redrawPlan('plan-vent');
+    drawDaylightFull();
+  }, 200);
+
+  // Tab dots
+  const s = APT_DATA.summary || {};
+  const dotC = document.getElementById('dot-checks');
+  const dotA = document.getElementById('dot-adjacency');
+  if (dotC) dotC.className = 'tab-dot' + (s.all_pass ? ' ok' : '');
+  const adjOk = !(APT_DATA.adjacency?.has_circ_errors || (APT_DATA.adjacency?.ideal_missing?.length > 0));
+  if (dotA) dotA.className = 'tab-dot' + (adjOk ? ' ok' : '');
+}
+
+function goBack() {
+  document.getElementById('view-apt').classList.remove('active');
+  document.getElementById('view-building').classList.add('active');
+  APT_DATA = null;
+}
+document.getElementById('back-btn').addEventListener('click', goBack);
+
+// Apt view tabs
+document.querySelectorAll('#apt-tab-bar .tab').forEach(t => t.addEventListener('click', () => {
+  switchAptTab(t.dataset.tab);
+  if (APT_DATA) {
+    if (t.dataset.tab === 'plan') {
+      redrawPlan('plan-clean');
+      setTimeout(() => {
+        const refW = document.getElementById('planCanvas').offsetWidth || 720;
+        document.getElementById('depthCanvas').width = refW;
+        document.getElementById('ventCanvas').width  = refW;
+        redrawPlan('plan-depth');
+        redrawPlan('plan-vent');
+      }, 50);
+    }
+    if (t.dataset.tab === 'adjacency') drawAdjacency();
+    if (t.dataset.tab === 'kitchen') renderAptKitchen(APT_DATA);
+    if (t.dataset.tab === 'daylight') {
+      const refW = document.getElementById('planCanvas').offsetWidth || 720;
+      document.getElementById('dlCanvas').width = refW;
+      setTimeout(drawDaylightFull, 50);
+    }
+  }
+}));
+document.querySelectorAll('.vt').forEach(t => t.addEventListener('click', () => {
+  t.closest('.viz-tabs').querySelectorAll('.vt').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const vtab = t.dataset.vtab;
+  document.querySelectorAll('.viz-pane').forEach(x => x.classList.remove('active'));
+  const pane = document.getElementById(vtab);
+  if (pane) {
+    pane.classList.add('active');
+    if (APT_DATA) {
+      setTimeout(() => {
+        const refW = document.getElementById('planCanvas').offsetWidth || 720;
+        const cmap = {'plan-depth':'depthCanvas','plan-vent':'ventCanvas'};
+        if (cmap[vtab]) document.getElementById(cmap[vtab]).width = refW;
+        redrawPlan(vtab);
+      }, 30);
+    }
+  }
+}));
+
+function switchAptTab(tab) {
+  document.querySelectorAll('#apt-tab-bar .tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-panels .panel').forEach(x => x.classList.remove('active'));
+  const tabEl = document.querySelector(`#apt-tab-bar .tab[data-tab="${tab}"]`);
+  const panelEl = document.getElementById('panel-' + tab);
+  if (tabEl) tabEl.classList.add('active');
+  if (panelEl) panelEl.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════
+// APARTMENT COMPLIANCE RENDER (adapted from index.html)
+// ═══════════════════════════════════════════════════════
+const SEC_INFO = {
+  bedrooms:     {title:'Bedroom Dimensions',  clause:'Table D7 · Cl.58.07-1'},
+  living:       {title:'Living Area',          clause:'Table D8 · Cl.58.07-1'},
+  room_depth:   {title:'Room Depth',           clause:'D25 · Cl.58.07-2'},
+  windows:      {title:'Windows',              clause:'D26 · Cl.58.07-3'},
+  storage:      {title:'Storage',              clause:'Table D6 · Cl.58.05-4'},
+  pos:          {title:'Private Open Space',   clause:'Table D5 · Cl.58.05-3'},
+  ventilation:  {title:'Natural Ventilation',  clause:'D27 · Cl.58.07-4'},
+  doors:        {title:'Doors',                clause:'D17 · Cl.58.05-1'},
+  accessibility:{title:'Accessibility',        clause:'D17 · Cl.58.05-1'},
+  noise:        {title:'Noise Influence Area', clause:'Table D3 · Cl.58.04-3'},
+};
+
+function renderAptChecks(data) {
+  const s = data.summary || {}, m = data.meta || {};
+  let html = '';
+
+  // Ensure all_pass
+  if (s.all_pass === undefined) {
+    const keys = ['bedrooms_pass','living_pass','room_depth_pass','windows_pass','storage_pass','pos_pass','ventilation_pass','doors_pass','accessibility_pass','daylight_pass','energy_pass','noise_pass'];
+    s.all_pass = keys.every(k => s[k] !== false);
+  }
+
+  html += `<div class="rheader">
+    <div class="badge ${s.all_pass ? 'pass' : 'fail'}">
+      <div class="bi">${s.all_pass ? '✓' : '✗'}</div>
+      <div class="bl">${s.all_pass ? 'Pass' : 'Issues'}</div>
+    </div>
+    <div class="rmeta">
+      <h2>${m.bedroom_count || 0}-Bedroom Apartment</h2>
+      <p>${s.all_pass ? 'All compliance checks passed.' : 'One or more checks require attention.'}</p>
+      <div class="pills">
+        <span class="pill">Ceiling ${m.ceiling_h || 2.7}m</span>
+        ${(m.window_layers||[]).length ? `<span class="pill">${m.window_layers.length} window layers</span>` : `<span class="pill warn">No window layers</span>`}
+      </div>
+    </div>
+  </div>`;
+
+  // Strip rows
+  html += `<div class="strip">${CHECKS_META.slice(0,6).map(c =>
+    `<div class="sc ${s[c.k] ? 'pass' : 'fail'}" title="${c.l}" onclick="scrollToSec('${c.k}')">
+      <div class="sc-inner"><div class="scd"></div><div class="scl">${c.l}</div></div>
+    </div>`).join('')}</div>`;
+  html += `<div class="strip">${CHECKS_META.slice(6).map(c =>
+    `<div class="sc ${s[c.k] ? 'pass' : 'fail'}" title="${c.l}" onclick="scrollToSec('${c.k}')">
+      <div class="sc-inner"><div class="scd"></div><div class="scl">${c.l}</div></div>
+    </div>`).join('')}</div>`;
+
+  // Inline plan
+  html += `<div class="inline-plan"><div class="inline-plan-hdr"><span>Floor Plan</span><span style="font-size:10px;color:var(--mut)">Red = failing</span></div><canvas id="inlineCanvas" height="300"></canvas></div>`;
+
+  // Sections
+  const failKeys = ['bedrooms','living','room_depth','windows','storage','pos','ventilation','doors','accessibility','noise'];
+  const failingSecs = failKeys.filter(k => !s[k + '_pass']);
+  const passingSecs = failKeys.filter(k => s[k + '_pass']);
+
+  if (failingSecs.length) {
+    html += failingSecs.map(k => renderSec(k, data, false)).join('');
+  }
+  if (passingSecs.length) {
+    html += `<div class="pass-divider" id="passDivider"><hr><span>Passing checks (${passingSecs.length})</span><span class="tog" id="passTogIcon">▾</span><hr></div>
+    <div id="passingSecs">${passingSecs.map(k => renderSec(k, data, true)).join('')}</div>`;
+  }
+
+  document.getElementById('checksContent').innerHTML = html;
+
+  // Wire collapse
+  document.querySelectorAll('#panel-checks .sec-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const b = hdr.nextElementSibling; const i = hdr.querySelector('.tog');
+      b.classList.toggle('col');
+      if (i) i.style.transform = b.classList.contains('col') ? 'rotate(-90deg)' : '';
+    });
+  });
+  const passDiv = document.getElementById('passDivider');
+  const passSecsEl = document.getElementById('passingSecs');
+  if (passDiv && passSecsEl && failingSecs.length) {
+    passSecsEl.style.display = 'none';
+    document.getElementById('passTogIcon').style.transform = 'rotate(-90deg)';
+    passDiv.addEventListener('click', () => {
+      const hidden = passSecsEl.style.display === 'none';
+      passSecsEl.style.display = hidden ? '' : 'none';
+      document.getElementById('passTogIcon').style.transform = hidden ? '' : 'rotate(-90deg)';
+    });
+  }
+}
+
+function renderSec(key, data, isPass) {
+  const info = SEC_INFO[key] || {title: key, clause: ''};
+  const inner = renderSecInner(key, data);
+  return `<div class="sec ${isPass ? 'pass-sec' : 'fail-sec'}">
+    <div class="sec-hdr" id="sec-${key}">
+      <div class="sdot ${isPass ? 'pass' : 'fail'}"></div>
+      <h3>${info.title}</h3>
+      <span class="clref">${info.clause}</span>
+      <span class="tog" style="margin-left:.4rem">${isPass ? '▸' : '▾'}</span>
+    </div>
+    <div class="sec-body ${isPass ? 'col' : ''}" style="max-height:3000px">${inner}</div>
+  </div>`;
+}
+
+function renderSecInner(key, data) {
+  switch(key) {
+    case 'bedrooms':     return renderBedrooms(data.bedrooms);
+    case 'living':       return renderLiving(data.living);
+    case 'room_depth':   return renderRoomDepth(data.room_depth, data.meta && data.meta.ceiling_h);
+    case 'windows':      return renderWindows(data.windows);
+    case 'storage':      return renderStorage(data.storage);
+    case 'pos':          return renderPOS(data.pos);
+    case 'ventilation':  return renderVentilation(data.ventilation);
+    case 'doors':        return renderDoors(data.doors);
+    case 'accessibility':return renderAccessibility(data.accessibility);
+    case 'noise':        return renderNoiseInline(data.noise);
+    default: return '';
+  }
+}
+
+function renderBedrooms(beds) {
+  if (!beds || !beds.length) return na('No bedroom layers found');
+  let h = `<table class="rt"><thead><tr><th>Room</th><th>Area</th><th>Width</th><th>Req</th><th></th></tr></thead><tbody>`;
+  for (const r of beds) h += `<tr class="${r.overall_pass ? 'rp' : 'rf'}"><td>${r.room}</td><td class="v n">${r.area_sqm}m²</td><td class="v ${r.width_pass ? 'p' : 'f'}">${r.width_m}m</td><td class="v n">≥${r.req_width_m}m</td><td>${chip(r.overall_pass)}</td></tr>`;
+  return h + '</tbody></table>';
+}
+function renderLiving(living) {
+  if (!living || !living.length) return na('No living area layer found');
+  let h = `<table class="rt"><thead><tr><th>Room</th><th>Area</th><th>Req</th><th>Width</th><th>Req</th><th></th></tr></thead><tbody>`;
+  for (const r of living) h += `<tr class="${r.overall_pass ? 'rp' : 'rf'}"><td>${r.room}</td><td class="v ${r.area_pass ? 'p' : 'f'}">${r.area_sqm}m²</td><td class="v n">≥${r.req_area}m²</td><td class="v ${r.width_pass ? 'p' : 'f'}">${r.width_m}m</td><td class="v n">≥${r.req_width}m</td><td>${chip(r.overall_pass)}</td></tr>`;
+  return h + '</tbody></table>';
+}
+function renderRoomDepth(depths, ch) {
+  if (!depths || !depths.length) return na('No habitable rooms found');
+  ch = ch || 2.7;
+  let h = `<p style="font-size:10px;color:var(--mut);margin-bottom:.45rem">Limit = 2.5 × ${ch}m = ${(2.5*ch).toFixed(2)}m</p><div style="background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.5rem .7rem">`;
+  for (const r of depths) {
+    const pct = Math.min(100, (r.depth_used_m / r.limit_m) * 100);
+    h += `<div style="display:flex;align-items:center;gap:.5rem;padding:.28rem 0;border-bottom:1px solid var(--bd)">
+      <div style="min-width:88px;font-size:11px;font-weight:500">${r.room}</div>
+      <div style="flex:1;height:5px;background:var(--bd);border-radius:2px"><div style="width:${pct}%;height:100%;background:${r.overall_pass ? 'var(--pass)' : 'var(--fail)'};border-radius:2px"></div></div>
+      <div style="font-family:monospace;font-size:9px;color:var(--dim);width:72px;text-align:right">${r.depth_used_m}/${r.limit_m}m</div>
+      <div style="width:48px;text-align:right">${chip(r.overall_pass)}</div></div>`;
+  }
+  return h + '</div>';
+}
+function renderWindows(wins) {
+  if (!wins) return na('No window data. Add APT_WINDOW_ROOMNAME layers.');
+  let h = '';
+  if (wins.habitable && wins.habitable.length) {
+    h += `<table class="rt"><thead><tr><th>Room</th><th>Window</th><th>Aspects</th><th></th></tr></thead><tbody>`;
+    for (const r of wins.habitable) h += `<tr class="${r.overall_pass ? 'rp' : 'rf'}"><td>${r.room}</td><td class="v n">${r.has_window ? r.window_count + ' window(s)' : 'Not defined'}</td><td class="v n">${(r.aspects||[]).join(' ')||'—'}</td><td>${chip(r.overall_pass)}</td></tr>`;
+    h += '</tbody></table>';
+  }
+  return h || na('Add APT_WINDOW_* layers to enable window checks');
+}
+function renderStorage(st) {
+  if (!st) return na('No storage layers found');
+  const tp = Math.min(100, (st.total_vol / st.req_total) * 100);
+  const ip = Math.min(100, (st.designated_vol / st.req_internal) * 100);
+  return `<div class="stbox">
+    <div class="str sh"><span>Metric</span><span>Provided</span><span>Required</span></div>
+    <div class="str"><span>Total storage volume</span><span class="v ${st.total_pass ? 'p' : 'f'}">${st.total_vol}m³</span><span class="v n">≥${st.req_total}m³</span></div>
+    <div class="bwrap"><div class="btrack"><div class="bfill ${st.total_pass ? 'p' : 'f'}" style="width:${tp}%"></div></div></div>
+    <div class="str"><span>Internal (designated)</span><span class="v ${st.internal_pass ? 'p' : 'f'}">${st.designated_vol}m³</span><span class="v n">≥${st.req_internal}m³</span></div>
+    <div class="bwrap"><div class="btrack"><div class="bfill ${st.internal_pass ? 'p' : 'f'}" style="width:${ip}%"></div></div></div>
+  </div>`;
+}
+function renderPOS(pos) {
+  if (!pos || !pos.length) return na('No APT_POS layer found');
+  let h = `<table class="rt"><thead><tr><th>Space</th><th>Area</th><th>Req</th><th>Min Dim</th><th>Req</th><th></th></tr></thead><tbody>`;
+  for (const r of pos) h += `<tr class="${r.overall_pass ? 'rp' : 'rf'}"><td>${r.space}</td><td class="v ${r.area_pass ? 'p' : 'f'}">${r.effective_area_sqm || r.area_sqm}m²</td><td class="v n">≥${r.req_area_sqm}m²</td><td class="v ${r.dim_pass ? 'p' : 'f'}">${r.min_dim_m}m</td><td class="v n">≥${r.req_dim_m}m</td><td>${chip(r.overall_pass)}</td></tr>`;
+  return h + '</tbody></table>';
+}
+function renderVentilation(v) {
+  if (!v) return na('No data');
+  let h = '';
+  if (v.habitable_windows && v.habitable_windows.length) {
+    h += `<table class="rt" style="margin-bottom:.55rem"><thead><tr><th>Room</th><th>Window</th><th></th></tr></thead><tbody>`;
+    for (const r of v.habitable_windows) h += `<tr class="${r.has_window ? 'rp' : 'rf'}"><td>${r.room}</td><td class="v n">${r.has_window ? r.count + ' window(s)' : 'No window'}</td><td>${chip(r.has_window)}</td></tr>`;
+    h += '</tbody></table>';
+  }
+  const cv = v.cross_ventilation;
+  if (cv && cv.valid_paths && cv.valid_paths.length) {
+    for (const p of cv.valid_paths) h += `<div style="background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.35rem .65rem;margin-bottom:.3rem;font-size:11px"><strong>${p.room_a}</strong> ↔ <strong>${p.room_b}</strong> — ${p.path_length_m}m ✓</div>`;
+  } else if (cv) {
+    h += `<div style="background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.35rem .65rem;font-size:11px;color:var(--fail)">✗ ${esc(cv.note || 'No cross-ventilation paths')}</div>`;
+  }
+  return h || na('No data');
+}
+function renderDoors(doors) {
+  if (!doors || !doors.length) return na('No APT_DOOR_* layers found.');
+  let h = `<table class="rt"><thead><tr><th>Door</th><th>Width</th><th>Required</th><th></th></tr></thead><tbody>`;
+  for (const d of doors) h += `<tr class="${d.pass ? 'rp' : 'rf'}"><td>${esc(d.label)}</td><td class="v ${d.pass ? 'p' : 'f'}">${Math.round(d.width_m*1000)}mm</td><td class="v n">≥${Math.round(d.req_m*1000)}mm</td><td>${chip(d.pass)}</td></tr>`;
+  return h + '</tbody></table>';
+}
+function renderAccessibility(ac) {
+  if (!ac) return na('No data');
+  let h = `<p style="font-size:10px;color:var(--mut);margin-bottom:.4rem">${esc(ac.note||'')}</p><div class="aclist">`;
+  for (const c of ac.checks) h += `<div class="acrow"><div class="acico ${c.pass ? 'p' : 'f'}">${c.pass ? '✓' : '✗'}</div><div><div style="font-size:11px;font-weight:500">${esc(c.item)}</div><div class="acdet">${esc(c.detail||'')}</div></div></div>`;
+  return h + `</div><p style="font-size:10px;color:var(--mut);margin-top:.35rem">${ac.pass_count}/${ac.total} checks passed</p>`;
+}
+function renderNoiseInline(n) {
+  if (!n) return na('No noise data');
+  if (!n.assessed) return `<p style="font-size:11px;color:var(--dim)">${esc(n.note || 'Not assessed')}</p>`;
+  let h = n.note ? `<p style="font-size:11px;color:${n.in_range ? 'var(--fail)' : 'var(--pass)'};margin-bottom:.5rem">${esc(n.note)}</p>` : '';
+  h += `<table class="rt"><thead><tr><th>Source</th><th>Distance</th><th>Zone</th><th></th></tr></thead><tbody>`;
+  for (const s of n.sources) h += `<tr class="${s.pass ? 'rp' : 'rf'}"><td>${esc(s.source)}</td><td class="v ${s.in_range ? 'f' : 'p'}">${s.distance_m}m</td><td class="v n">≤${s.influence_m}m</td><td>${chip(s.pass)}</td></tr>`;
+  return h + '</tbody></table>';
+}
+
+function scrollToSec(key) {
+  const secKey = key.replace('_pass', '');
+  const el = document.getElementById('sec-' + secKey);
+  if (!el) return;
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+  const body = el.nextElementSibling;
+  if (body && body.classList.contains('col')) { body.classList.remove('col'); const tog = el.querySelector('.tog'); if(tog) tog.style.transform=''; }
+}
+
+// ═══════════════════════════════════════════════════════
+// PLAN CANVASES (apt view — same logic as index.html)
+// ═══════════════════════════════════════════════════════
+function drawInlinePlan(data) {
+  const cv = document.getElementById('inlineCanvas'); if (!cv) return;
+  const W = cv.offsetWidth || 680; cv.width = W;
+  const ctx = cv.getContext('2d');
+  const shapes = gatherShapes(data);
+  if (!shapes.length) { ctx.fillStyle='#f5f4f2'; ctx.fillRect(0,0,W,cv.height); return; }
+  const xf = planXF(shapes, W, cv.height, 24);
+  if (!xf) return;
+  ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+  drawShapes(ctx, shapes, xf, true);
+  drawWinDoor(ctx, data, xf);
+  drawLabels(ctx, shapes, xf, false);
+  drawScaleBar(ctx, xf, W, cv.height, data);
+
+  // Hover: show room details tooltip
+  cv.onmousemove = e => {
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+    const my = (e.clientY - rect.top) * (cv.height / rect.height);
+    for (const s of shapes) {
+      if (!s.pts || s.pts.length < 3) continue;
+      if (!ptInPolyCanvas(mx, my, s.pts, xf)) continue;
+      const cfg = RCFG[s.layer];
+      const label = s.label || (cfg && cfg.label) || s.layer.replace('APT_ROOM_','').replace('APT_','');
+      let lines = [`<strong>${label}</strong>`];
+      if (s.area) lines.push(s.area + 'm²');
+      if (s.pass === false) lines.push('<span style="color:var(--fail)">✗ FAILING</span>');
+      else if (s.pass === true) lines.push('<span style="color:var(--pass)">✓ Pass</span>');
+      // Window/door info from adjacency nodes
+      const node = (data.adjacency?.nodes||[]).find(n => n.layer === s.layer);
+      if (node) {
+        if (node.windows?.length) lines.push('Windows: ' + node.windows.map(w=>w.key+' '+w.width_m+'m').join(', '));
+        if (node.doors?.length) lines.push('Doors: ' + node.doors.map(d=>d.key+' '+d.width_m+'m').join(', '));
+        if (node.nearby_storage?.length) lines.push('Storage: ' + node.nearby_storage.map(st=>st.area_sqm+'m²').join(', '));
+      }
+      showTT(e, '<strong>'+label+'</strong>', lines.slice(1).join(' · '));
+      return;
+    }
+    hideTT();
+  };
+  cv.onmouseleave = hideTT;
+}
+
+function ptInPolyCanvas(px, py, pts, xf) {
+  let inside = false; const n = pts.length; let j = n-1;
+  for (let i=0;i<n;i++) {
+    const xi=xf.tx(pts[i][0]),yi=xf.ty(pts[i][1]),xj=xf.tx(pts[j][0]),yj=xf.ty(pts[j][1]);
+    if (((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+    j=i;
+  }
+  return inside;
+}
+
+function showTT(e, title, body) {
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = `<div style="font-weight:600;margin-bottom:.15rem">${title}</div><div>${body}</div>`;
+  tt.style.display = 'block';
+  const x = e.clientX+14, y = e.clientY-10;
+  const r = tt.getBoundingClientRect();
+  tt.style.left = Math.min(x, window.innerWidth-r.width-8) + 'px';
+  tt.style.top = Math.max(8, y) + 'px';
+}
+function hideTT() { document.getElementById('tooltip').style.display='none'; }
+
+function redrawPlan(variant) {
+  if (!APT_DATA) return;
+  const shapes = gatherShapes(APT_DATA);
+  if (!shapes.length) return;
+
+  if (variant === 'plan-clean') {
+    const cv = document.getElementById('planCanvas');
+    const W = cv.offsetWidth || 720; cv.width = W;
+    const ctx = cv.getContext('2d');
+    const xf = planXF(shapes, W, cv.height, 28);
+    ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+    drawShapes(ctx, shapes, xf, true);
+    drawWinDoor(ctx, APT_DATA, xf);
+    for (const p of (APT_DATA.ventilation?.cross_ventilation?.valid_paths || [])) {
+      const [ax,ay]=p.midpoint_a,[bx,by]=p.midpoint_b;
+      ctx.setLineDash([5,3]); ctx.strokeStyle='rgba(20,184,166,.5)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(xf.tx(ax),xf.ty(ay)); ctx.lineTo(xf.tx(bx),xf.ty(by)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    drawLabels(ctx, shapes, xf, false);
+    drawScaleBar(ctx, xf, W, cv.height, APT_DATA);
+    const leg = document.getElementById('planLegend');
+    if (leg) {
+      const used = new Set(shapes.map(s => s.layer));
+      leg.innerHTML = [...used].filter(l => RCFG[l]).map(l => `<div class="li"><div class="ls" style="background:${RCFG[l].fill};border:1px solid ${RCFG[l].stroke}"></div>${RCFG[l].label}</div>`).join('');
+    }
+  }
+  if (variant === 'plan-depth') {
+    const cv = document.getElementById('depthCanvas');
+    const W = cv.width || 720;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+    const xf = planXF(shapes, W, cv.height, 28);
+    if (!xf) return;
+
+    // Build per-room depth info indexed by room key
+    const depthByLayer = {};
+    for (const d of (APT_DATA.room_depth||[])) {
+      const layerKey = 'APT_ROOM_' + (d.room_key||'');
+      depthByLayer[layerKey] = d;
+    }
+
+    // Draw building/fixture shapes flat first
+    for (const s of shapes) {
+      if (!s.building && !s.fixture) continue;
+      if (!s.pts||s.pts.length<3) continue;
+      const cfg = RCFG[s.layer]||{fill:'rgba(60,60,60,.8)',stroke:'#333'};
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.fillStyle=cfg.fill; ctx.fill();
+      ctx.strokeStyle=cfg.stroke; ctx.lineWidth=1.5; ctx.stroke();
+    }
+
+    // Draw non-habitable rooms as flat grey
+    const HABITABLE_LAYERS = new Set([
+      'APT_ROOM_MAINBED','APT_ROOM_BED1','APT_ROOM_BED2','APT_ROOM_BED3','APT_ROOM_BED4','APT_ROOM_LIVING'
+    ]);
+    for (const s of shapes) {
+      if (s.building||s.fixture) continue;
+      if (!s.pts||s.pts.length<3) continue;
+      if (HABITABLE_LAYERS.has(s.layer)) continue; // handled below with heatmap
+      const cfg = RCFG[s.layer]||{fill:'rgba(200,200,200,.15)',stroke:'#ccc'};
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.fillStyle=cfg.fill; ctx.fill();
+      ctx.strokeStyle=cfg.stroke; ctx.lineWidth=1; ctx.stroke();
+    }
+
+    // For each habitable room, sample a grid and paint depth heatmap cells
+    function depthColor(ratio) {
+      // 0 = deep green, 0.75 = yellow, 1.0 = red, >1.0 = bright red
+      const r = Math.min(ratio, 1.2) / 1.2;
+      const stops = [[26,122,74],[101,163,13],[202,138,4],[234,88,12],[192,57,43]];
+      const t = r * (stops.length-1);
+      const i = Math.min(Math.floor(t), stops.length-2);
+      const f = t - i;
+      const a = stops[i], b = stops[i+1];
+      return [Math.round(a[0]+(b[0]-a[0])*f), Math.round(a[1]+(b[1]-a[1])*f), Math.round(a[2]+(b[2]-a[2])*f)];
+    }
+
+    function ptInPoly2(px, py, pts) {
+      let inside=false; let j=pts.length-1;
+      for (let i=0;i<pts.length;i++) {
+        const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+        if (((yi>py)!==(yj>py)) && (px<(xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+        j=i;
+      }
+      return inside;
+    }
+
+    for (const s of shapes) {
+      if (!HABITABLE_LAYERS.has(s.layer)) continue;
+      if (!s.pts||s.pts.length<3) continue;
+      const dep = depthByLayer[s.layer];
+      if (!dep) continue;
+
+      // Find window lines for this room (for measuring distance-from-window)
+      const rk = s.layer.replace('APT_ROOM_','');
+      const winLines = (APT_DATA.windows?.habitable||[])
+        .find(w=>w.room_key===rk)?.window_lines || [];
+
+      // Bounding box of room in world coords
+      const xs = s.pts.map(p=>p[0]), ys = s.pts.map(p=>p[1]);
+      const mnx=Math.min(...xs), mny=Math.min(...ys), mxx=Math.max(...xs), mxy=Math.max(...ys);
+      const step = Math.max(0.08, Math.min(mxx-mnx, mxy-mny)/28);
+      const cellPx = Math.max(2, step * xf.sc);
+
+      // Set up clip to room outline
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.clip();
+
+      for (let wx=mnx+step/2; wx<mxx; wx+=step) {
+        for (let wy=mny+step/2; wy<mxy; wy+=step) {
+          if (!ptInPoly2(wx,wy,s.pts)) continue;
+          // Depth = min distance from a window line, or from bbox edge closest to window
+          let dist;
+          if (winLines.length > 0) {
+            dist = Infinity;
+            for (const wl of winLines) {
+              if (wl.length < 2) continue;
+              const [p1,p2] = wl;
+              const dx=p2[0]-p1[0], dy=p2[1]-p1[1], len=Math.hypot(dx,dy);
+              if (len<1e-9) continue;
+              const t2=Math.max(0,Math.min(1,((wx-p1[0])*dx+(wy-p1[1])*dy)/(len*len)));
+              const d2=Math.hypot(wx-p1[0]-t2*dx, wy-p1[1]-t2*dy);
+              dist = Math.min(dist, d2);
+            }
+          } else {
+            // No window — use distance from nearest exterior edge
+            dist = dep.depth_used_m * (Math.hypot(wx-(mnx+mxx)/2, wy-(mny+mxy)/2) /
+                   Math.max(Math.hypot(mxx-mnx,mxy-mny)/2, 0.1));
+          }
+          const ratio = dist / dep.limit_m;
+          const [r,g,b] = depthColor(ratio);
+          ctx.fillStyle = `rgba(${r},${g},${b},0.72)`;
+          ctx.fillRect(xf.tx(wx)-cellPx/2, xf.ty(wy)-cellPx/2, cellPx, cellPx);
+        }
+      }
+      ctx.restore();
+
+      // Room outline
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath();
+      ctx.strokeStyle = dep.overall_pass ? 'rgba(26,122,74,.6)' : 'rgba(192,57,43,.8)';
+      ctx.lineWidth = dep.overall_pass ? 1.5 : 2.5; ctx.stroke();
+    }
+
+    // Window lines on top
+    for (const rm of (APT_DATA.windows?.habitable||[])) {
+      for (const wl of (rm.window_lines||[])) {
+        if (wl.length<2) continue;
+        const x1=xf.tx(wl[0][0]),y1=xf.ty(wl[0][1]),x2=xf.tx(wl[1][0]),y2=xf.ty(wl[1][1]);
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+        ctx.strokeStyle='rgba(37,99,235,.9)'; ctx.lineWidth=3.5; ctx.stroke();
+      }
+    }
+
+    drawLabels(ctx,shapes,xf,false);
+    drawScaleBar(ctx,xf,W,cv.height,APT_DATA);
+
+    // Colour scale bar
+    const legEl=document.getElementById('depthMaxLabel');
+    const maxLim = Math.max(...(APT_DATA.room_depth||[]).map(d=>d.limit_m||0),1);
+    if(legEl) legEl.textContent = 'Green = shallow · Red = at/over ' + maxLim.toFixed(1) + 'm limit';
+  }
+
+  if (variant === 'plan-vent') {
+    const cv = document.getElementById('ventCanvas');
+    const W = cv.offsetWidth || cv.parentElement?.offsetWidth || document.getElementById('planCanvas')?.offsetWidth || 720;
+    cv.width = W;
+    const ctx = cv.getContext('2d');
+    const xf = planXF(shapes, W, cv.height, 28);
+    if (!xf) return;
+    ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+    const habWins = APT_DATA.ventilation?.habitable_windows || [];
+    const winByRoom = Object.fromEntries(habWins.map(w=>[w.room,w]));
+    for (const s of shapes) {
+      if (!s.pts||s.pts.length<3) continue;
+      const cfg = RCFG[s.layer]||{fill:'rgba(200,200,200,.2)',stroke:'#ccc'};
+      if (s.building||s.fixture) {
+        ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+        for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+        ctx.closePath(); ctx.fillStyle=cfg.fill; ctx.fill(); ctx.strokeStyle=cfg.stroke; ctx.lineWidth=1.5; ctx.stroke();
+        continue;
+      }
+      const wd = winByRoom[s.label];
+      const fill = wd ? (wd.has_window?'rgba(20,184,166,.18)':'rgba(192,57,43,.12)') : cfg.fill;
+      const stroke = wd ? (wd.has_window?'#14b8a6':'#c0392b') : cfg.stroke;
+      ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+      for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+      ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.strokeStyle=stroke; ctx.lineWidth=1.8; ctx.stroke();
+    }
+    drawWinDoor(ctx,APT_DATA,xf);
+    for (const p of (APT_DATA.ventilation?.cross_ventilation?.valid_paths||[])) {
+      if (!p.midpoint_a||!p.midpoint_b) continue;
+      const x1=xf.tx(p.midpoint_a[0]),y1=xf.ty(p.midpoint_a[1]),x2=xf.tx(p.midpoint_b[0]),y2=xf.ty(p.midpoint_b[1]);
+      ctx.setLineDash([8,4]); ctx.strokeStyle='rgba(20,184,166,.9)'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
+      const ang=Math.atan2(y2-y1,x2-x1);
+      ctx.fillStyle='rgba(20,184,166,.9)'; ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2-10*Math.cos(ang-0.35),y2-10*Math.sin(ang-0.35));
+      ctx.lineTo(x2-10*Math.cos(ang+0.35),y2-10*Math.sin(ang+0.35));
+      ctx.closePath(); ctx.fill();
+    }
+    drawLabels(ctx,shapes,xf,false); drawScaleBar(ctx,xf,W,cv.height,APT_DATA);
+  }
+}
+
+function drawScaleBar(ctx, xf, W, H, data) {
+  const bm=2, bpx=bm*xf.sc, bx=24, by=H-12;
+  ctx.strokeStyle='#a8a49e'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(bx+bpx,by); ctx.stroke();
+  [[bx,by-3],[bx,by+3],[bx+bpx,by-3],[bx+bpx,by+3]].forEach(([x,y])=>{ctx.beginPath();ctx.moveTo(x,by);ctx.lineTo(x,y);ctx.stroke();});
+  ctx.fillStyle='#a8a49e'; ctx.font='8px JetBrains Mono,monospace'; ctx.textAlign='center';
+  ctx.fillText('2m', bx+bpx/2, by-8);
+
+  const north = data?.meta?.north_vec || [0,1];
+  const ax=north[0]/Math.hypot(north[0],north[1]||.001), ay=north[1]/Math.hypot(north[0],north[1]||.001);
+  const cax=ax, cay=-ay, nr=16, ncx=W-28, ncy=H-28;
+  ctx.strokeStyle='rgba(107,104,96,.6)'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(ncx-cax*nr*.6,ncy-cay*nr*.6); ctx.lineTo(ncx+cax*nr*.6,ncy+cay*nr*.6); ctx.stroke();
+  const ang = Math.atan2(cay,cax)+Math.PI/2;
+  ctx.fillStyle='rgba(232,93,37,.8)';
+  ctx.beginPath(); ctx.moveTo(ncx+cax*nr*.6,ncy+cay*nr*.6);
+  ctx.lineTo(ncx+cax*nr*.6-5*Math.cos(ang-.4),ncy+cay*nr*.6-5*Math.sin(ang-.4));
+  ctx.lineTo(ncx+cax*nr*.6-5*Math.cos(ang+.4),ncy+cay*nr*.6-5*Math.sin(ang+.4));
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='rgba(107,104,96,.7)'; ctx.font='bold 8px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('N', ncx+cax*(nr*.6+7), ncy+cay*(nr*.6+7));
+}
+
+// ═══════════════════════════════════════════════════════
+// ADJACENCY (simplified from index.html)
+// ═══════════════════════════════════════════════════════
+const NODE_COL = {bedroom:'#6366f1',living:'#1a7a4a',wet:'#0ea5e9',circulation:'#94a3b8',outdoor:'#14b8a6',other:'#a8a49e'};
+
+function drawAdjacency() {
+  if (!APT_DATA) return;
+  const adj = APT_DATA.adjacency || {};
+  const circEl = document.getElementById('circIssues');
+  if (circEl) {
+    const issues = adj.circ_issues || [], ok = adj.circ_ok || [];
+    let h = '';
+    for (const ci of issues) h += `<div style="background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.4rem .65rem;margin-bottom:.3rem;font-size:11px"><strong>${esc(ci.title)}</strong> — ${esc(ci.detail)}</div>`;
+    for (const c of ok) h += `<div style="background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.4rem .65rem;margin-bottom:.3rem;font-size:11px">✓ ${esc(c.detail||c.check)}</div>`;
+    if (!issues.length && !ok.length) h = '<div style="font-size:11px;color:var(--pass)">✓ No circulation issues detected</div>';
+    circEl.innerHTML = h;
+  }
+
+  const cv = document.getElementById('adjCanvas'); if (!cv) return;
+  if (!adj.nodes || !adj.nodes.length) {
+    const ctx = cv.getContext('2d'); const W = cv.offsetWidth||720; cv.width=W;
+    ctx.fillStyle='#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+    ctx.fillStyle='#a8a49e'; ctx.font='12px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('No room adjacency data', W/2, cv.height/2); return;
+  }
+  const W = cv.offsetWidth||720; cv.width=W; const H=cv.height;
+  const ctx = cv.getContext('2d');
+  const allPts = adj.nodes.flatMap(n => n.vertices||[]);
+  let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+  for(const[x,y]of allPts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
+  const pad=32, sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
+  const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2, oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
+  const tx=x=>ox+(x-mnx)*sc, ty=y=>H-(oy+(y-mny)*sc);
+  ctx.fillStyle='#f5f4f2'; ctx.fillRect(0,0,W,H);
+  const byId = Object.fromEntries(adj.nodes.map(n=>[n.id,n]));
+  for (const e of (adj.edges||[])) {
+    const a=byId[e.a],b=byId[e.b]; if(!a?.centroid||!b?.centroid) continue;
+    ctx.lineWidth=Math.max(1.5,Math.min(6,e.shared_m*sc*.4));
+    ctx.strokeStyle=e.is_bad?'rgba(192,57,43,.75)':e.is_ideal?'rgba(26,122,74,.6)':'rgba(148,163,184,.5)';
+    if(e.is_bad) ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(tx(a.centroid[0]),ty(a.centroid[1])); ctx.lineTo(tx(b.centroid[0]),ty(b.centroid[1])); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  for (const n of adj.nodes) {
+    if(!n.vertices||n.vertices.length<3) continue;
+    const col=NODE_COL[n.type]||'#a8a49e';
+    ctx.beginPath(); ctx.moveTo(tx(n.vertices[0][0]),ty(n.vertices[0][1]));
+    for(let i=1;i<n.vertices.length;i++) ctx.lineTo(tx(n.vertices[i][0]),ty(n.vertices[i][1]));
+    ctx.closePath(); ctx.fillStyle=col+'28'; ctx.fill(); ctx.strokeStyle=col; ctx.lineWidth=1.8; ctx.stroke();
+    const cx=tx(n.centroid[0]),cy=ty(n.centroid[1]);
+    ctx.fillStyle=col; ctx.font='600 9px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(n.label,cx,cy-4);
+    ctx.fillStyle='rgba(107,104,96,.55)'; ctx.font='7px Inter,sans-serif';
+    ctx.fillText(n.area_sqm+'m²',cx,cy+6);
+  }
+
+  // Room cards
+  const cardsEl = document.getElementById('roomCards');
+  if (cardsEl && adj.nodes.length) {
+    cardsEl.innerHTML = adj.nodes.map(n => {
+      const col=NODE_COL[n.type]||'#a8a49e';
+      const wins=n.windows||[],drs=n.doors||[],stor=n.nearby_storage||[];
+      return `<div style="background:var(--surf);border:1px solid var(--bd);border-left:3px solid ${col};border-radius:var(--radius);padding:.55rem .75rem;margin-bottom:.4rem">
+        <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px">${esc(n.label)}<span style="font-weight:400;font-size:10px;color:var(--dim)">${n.area_sqm}m²</span></div>
+        ${wins.length?`<div style="font-size:10px;color:var(--dim);margin-top:.25rem">Windows: ${wins.map(w=>w.key+' ('+w.width_m+'m)').join(', ')}</div>`:''}
+        ${drs.length?`<div style="font-size:10px;color:var(--dim)">Doors: ${drs.map(d=>d.key+' ('+d.width_m+'m)').join(', ')}</div>`:''}
+        ${stor.length?`<div style="font-size:10px;color:var(--dim)">Storage: ${stor.map(s=>s.label+' '+s.area_sqm+'m²').join(', ')}</div>`:''}
+      </div>`;
+    }).join('');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// DAYLIGHT
+// ═══════════════════════════════════════════════════════
+function drawDaylightFull() {
+  if (!APT_DATA) return;
+  const cv = document.getElementById('dlCanvas'); if (!cv) return;
+  const W = cv.width || 720;
+  const H = cv.height;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0f1a2e'; ctx.fillRect(0,0,W,H); // dark background for daylight viz
+
+  const shapes = gatherShapes(APT_DATA);
+  const rooms  = APT_DATA.daylight?.rooms || [];
+
+  if (!shapes.length && !rooms.length) {
+    ctx.fillStyle='#a8a49e'; ctx.font='12px Inter,sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('No room data — add APT_WINDOW_* layers', W/2, H/2); return;
+  }
+
+  // Unified bounding box
+  const allVerts = [
+    ...shapes.flatMap(s => s.pts||[]),
+    ...rooms.flatMap(r => r.vertices||[]),
+    ...rooms.flatMap(r => (r.df_grid||[]).map(p=>[p.x,p.y]))
+  ];
+  if (!allVerts.length) return;
+  let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
+  for(const[x,y]of allVerts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
+  const pad=32;
+  const sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
+  const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2;
+  const oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
+  const xf={tx:x=>ox+(x-mnx)*sc, ty:y=>H-(oy+(y-mny)*sc), sc, mnx, mny, mxx, mxy};
+
+  // Dark room outlines
+  for(const s of shapes){
+    if(!s.pts||s.pts.length<3) continue;
+    ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
+    for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+    ctx.closePath();
+    if (s.building) { ctx.fillStyle='rgba(10,10,10,.9)'; ctx.fill(); }
+    ctx.strokeStyle=s.building?'#444':'rgba(255,255,255,.08)'; ctx.lineWidth=s.building?2:0.8; ctx.stroke();
+  }
+
+  const allDF = rooms.flatMap(r=>(r.df_grid||[]).map(p=>p.df));
+  const maxDF = allDF.length ? Math.max(5, Math.ceil(Math.max(...allDF))) : 5;
+
+  // For each room with df_grid data, paint a smooth heatmap
+  function dfColorDark(r) {
+    // dark-background palette: dark blue → mid blue → teal → yellow → bright orange
+    const stops = [[15,23,42],[30,64,175],[14,116,144],[161,177,21],[234,88,12],[192,57,43]];
+    const t = Math.min(r,1) * (stops.length-1);
+    const i = Math.min(Math.floor(t), stops.length-2);
+    const f = t - i;
+    const a=stops[i], b=stops[i+1];
+    return [Math.round(a[0]+(b[0]-a[0])*f), Math.round(a[1]+(b[1]-a[1])*f), Math.round(a[2]+(b[2]-a[2])*f)];
+  }
+
+  function ptInPoly3(px,py,pts){
+    let inside=false; let j=pts.length-1;
+    for(let i=0;i<pts.length;i++){
+      const xi=pts[i][0],yi=pts[i][1],xj=pts[j][0],yj=pts[j][1];
+      if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+      j=i;
+    }
+    return inside;
+  }
+
+  for(const rm of rooms){
+    if(!rm.vertices||rm.vertices.length<3) continue;
+
+    if ((rm.df_grid||[]).length > 0) {
+      // Clip to room shape, then paint the grid
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
+      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+      ctx.closePath(); ctx.clip();
+
+      // Compute cell size — use step from grid spacing
+      const xs = rm.df_grid.map(p=>p.x).sort((a,b)=>a-b);
+      const step = xs.length > 1 ? (xs[xs.length-1]-xs[0])/(xs.length-1) : 0.4;
+      const cellPx = Math.max(3, step * xf.sc * 1.05); // slight overlap to avoid gaps
+
+      for(const pt of rm.df_grid){
+        const ratio = pt.df / maxDF;
+        const [r,g,b] = dfColorDark(ratio);
+        ctx.fillStyle = `rgba(${r},${g},${b},0.88)`;
+        const px = xf.tx(pt.x), py = xf.ty(pt.y);
+        ctx.fillRect(px-cellPx/2, py-cellPx/2, cellPx, cellPx);
+      }
+      ctx.restore();
+    } else {
+      // No grid — draw a dim room fill with DF label
+      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
+      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+      ctx.closePath(); ctx.fillStyle='rgba(30,58,138,.2)'; ctx.fill();
+    }
+
+    // Room outline
+    ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
+    for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+    ctx.closePath();
+    ctx.strokeStyle = rm.df_pass ? 'rgba(20,184,166,.7)' : 'rgba(239,68,68,.8)';
+    ctx.lineWidth = rm.df_pass ? 1.5 : 2.5; ctx.stroke();
+
+    // Label
+    if(rm.centroid){
+      const cx=xf.tx(rm.centroid[0]), cy=xf.ty(rm.centroid[1]);
+      // Shadow for legibility over dark bg
+      ctx.shadowColor='rgba(0,0,0,.8)'; ctx.shadowBlur=4;
+      ctx.font='bold 10px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fillText(rm.room, cx, cy-8);
+      const dfCol = rm.df_pass ? '#4ade80' : '#f87171';
+      ctx.font='bold 9px JetBrains Mono,monospace'; ctx.fillStyle=dfCol;
+      ctx.fillText(rm.avg_df+'% DF', cx, cy+6);
+      if(rm.sun_hours != null){
+        ctx.font='8px JetBrains Mono,monospace'; ctx.fillStyle='rgba(255,255,255,.6)';
+        ctx.fillText(rm.sun_hours+'h sun', cx, cy+17);
+      }
+      ctx.shadowBlur=0;
+    }
+  }
+
+  // Window lines — bright white-blue on dark background
+  for(const rm of (APT_DATA.windows?.habitable||[])){
+    for(const wl of (rm.window_lines||[])){
+      if(wl.length<2) continue;
+      const x1=xf.tx(wl[0][0]),y1=xf.ty(wl[0][1]),x2=xf.tx(wl[1][0]),y2=xf.ty(wl[1][1]);
+      // Glow effect
+      ctx.shadowColor='rgba(147,197,253,.8)'; ctx.shadowBlur=8;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle='rgba(219,234,254,.95)'; ctx.lineWidth=4; ctx.stroke();
+      // Hatch marks
+      const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
+      if(len>4){ const ux=dx/len,uy=dy/len,nx=-uy,ny=ux,steps=Math.max(2,Math.floor(len/8));
+        ctx.strokeStyle='rgba(147,197,253,.5)'; ctx.lineWidth=1;
+        for(let k=1;k<steps;k++){const t2=k/steps,hx=x1+t2*dx,hy=y1+t2*dy;
+          ctx.beginPath();ctx.moveTo(hx+nx*4,hy+ny*4);ctx.lineTo(hx-nx*4,hy-ny*4);ctx.stroke();}
+      }
+      ctx.shadowBlur=0;
+    }
+  }
+
+  // Colour scale bar (bottom)
+  const barW=180, barH=8, barX=(W-barW)/2, barY=H-18;
+  const grad=ctx.createLinearGradient(barX,0,barX+barW,0);
+  grad.addColorStop(0,'#1e3a8a'); grad.addColorStop(0.3,'#0e9bab');
+  grad.addColorStop(0.6,'#a1b115'); grad.addColorStop(0.85,'#ea580c'); grad.addColorStop(1,'#c0392b');
+  ctx.fillStyle=grad; ctx.fillRect(barX,barY,barW,barH);
+  ctx.fillStyle='rgba(255,255,255,.6)'; ctx.font='8px JetBrains Mono,monospace';
+  ctx.textAlign='left';  ctx.fillText('0% DF', barX, barY-3);
+  ctx.textAlign='right'; ctx.fillText(maxDF+'% DF', barX+barW, barY-3);
+
+  document.getElementById('dlMaxLabel').textContent = maxDF + '% DF max';
+
+  // Stats table
+  if(rooms.length){
+    let h=`<table class="rt" style="margin-top:.75rem">
+      <thead><tr><th>Room</th><th>Avg DF</th><th>Target</th><th>Min DF</th><th>WFAR</th><th>Win area</th><th>Sun (Jun 21)</th><th></th></tr></thead><tbody>`;
+    for(const r of rooms){
+      const sunCell = r.sun_hours!=null
+        ? `<span class="v ${r.sun_pass?'p':'f'}">${r.sun_hours}h</span>`
+        : '<span class="v n">—</span>';
+      h += `<tr class="${r.overall_pass?'rp':'rf'}">
+        <td>${r.room}</td>
+        <td class="v ${r.df_pass?'p':'f'}">${r.avg_df}%</td>
+        <td class="v n">≥${r.df_target}%</td>
+        <td class="v n">${r.min_df}%</td>
+        <td class="v ${(r.wfar_pct||0)>=10?'p':'w'}">${r.wfar_pct||0}%</td>
+        <td class="v n">${r.win_area_m2||0}m²</td>
+        <td>${sunCell}</td>
+        <td>${chip(r.overall_pass)}</td>
+      </tr>`;
+    }
+    document.getElementById('dlStats').innerHTML = h + '</tbody></table>' +
+      '<p style="font-size:9px;color:var(--mut);margin-top:.4rem">BRE simplified geometric method. ' +
+      'Scale: dark blue (0%) → teal → orange → red (≥'+maxDF+'% DF). ' +
+      'Glowing lines = windows. Jun 21 solar for Melbourne lat −37.8°.</p>';
+  }
+}
+function dfColor(r){
+  const stops=[[30,58,95],[37,99,235],[26,122,74],[180,83,9],[192,57,43]];
+  const t=r*(stops.length-1); const i=Math.min(Math.floor(t),stops.length-2); const f=t-i;
+  const a=stops[i],b=stops[i+1];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`;
+}
+
+// ═══════════════════════════════════════════════════════
+// ENERGY
+// ═══════════════════════════════════════════════════════
+function renderAptEnergy(data) {
+  const en = data.energy || {}, n = data.noise || {};
+  let h = `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.6rem">Energy Efficiency</div>`;
+  if (en.checks && en.checks.length) {
+    h += `<div class="aclist" style="margin-bottom:.85rem">`;
+    for (const c of en.checks) h += `<div class="acrow"><div class="acico ${c.pass?'p':'f'}">${c.pass?'✓':'✗'}</div><div><div style="font-size:11px;font-weight:500">${esc(c.item)}</div><div class="acdet">${esc(c.detail||'')}</div></div></div>`;
+    h += '</div>';
+  }
+  h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem;margin-top:.25rem">Noise</div>`;
+  h += renderNoiseInline(n);
+  document.getElementById('energyContent').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════
+// KITCHEN
+// ═══════════════════════════════════════════════════════
+function renderAptKitchen(data) {
+  const k = data.kitchen || {};
+  const el = document.getElementById('kitchenContent');
+  const wrap = document.getElementById('kitchenCanvasWrap');
+  if (!el) return;
+  if (!k.found) {
+    if (wrap) wrap.style.display = 'none';
+    el.innerHTML = `<p style="font-size:11px;color:var(--dim)">No kitchen geometry found. Draw closed curves on APT_KITCHEN_BENCH and APT_KITCHEN_APPLIANCE layers.</p>`;
+    return;
+  }
+  let h = '';
+  // Work triangle
+  if (k.work_triangle) {
+    const t = k.work_triangle;
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Work Triangle ${chip(t.pass)}</div>
+      <table class="rt"><thead><tr><th>Leg</th><th>Distance</th></tr></thead><tbody>
+        ${t.cooktop_to_fridge_m!=null?`<tr class="rp"><td>Cooktop → Fridge</td><td class="v n">${t.cooktop_to_fridge_m}m</td></tr>`:''}
+        ${t.fridge_to_sink_m!=null?`<tr class="rp"><td>Fridge → Sink</td><td class="v n">${t.fridge_to_sink_m}m</td></tr>`:''}
+        ${t.sink_to_cooktop_m!=null?`<tr class="rp"><td>Sink → Cooktop</td><td class="v n">${t.sink_to_cooktop_m}m</td></tr>`:''}
+        <tr class="${t.pass?'rp':'rf'}"><td><strong>Perimeter</strong></td><td class="v ${t.pass?'p':'f'}">${t.perimeter_m!=null?t.perimeter_m.toFixed(1):'?'}m <span style="color:var(--dim);font-weight:400">target 4–7m</span></td></tr>
+      </tbody></table>
+      ${t.note?`<div style="font-size:10px;color:var(--dim);margin-top:.3rem">${esc(t.note)}</div>`:''}
+    </div>`;
+  }
+  // Bench run
+  if (k.bench_run) {
+    const b = k.bench_run;
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Bench Run ${chip(b.pass)}</div>
+      <table class="rt"><thead><tr><th>Metric</th><th>Value</th><th>Required</th></tr></thead><tbody>
+        <tr class="${b.pass?'rp':'rf'}"><td>Longest continuous run</td><td class="v ${b.pass?'p':'f'}">${b.longest_run_m}m</td><td class="v n">≥${b.req_m}m</td></tr>
+        <tr class="rp"><td>Total bench length</td><td class="v n">${b.total_length_m}m</td><td class="v n">—</td></tr>
+      </tbody></table>
+    </div>`;
+  }
+  // Clearance
+  if (k.clearance) {
+    const c = k.clearance;
+    h += `<div class="sec" style="margin-bottom:.5rem">
+      <div style="display:flex;align-items:center;gap:.5rem;font-weight:600;font-size:11px;margin-bottom:.4rem">Clearance ${chip(c.pass)}</div>
+      <table class="rt"><thead><tr><th>Context</th><th>Clearance</th><th>Required</th></tr></thead><tbody>
+        <tr class="${c.pass?'rp':'rf'}"><td>${esc(c.context||'')}</td><td class="v ${c.pass?'p':'f'}">${c.min_clearance_m}m</td><td class="v n">≥${c.required_m}m</td></tr>
+      </tbody></table>
+    </div>`;
+  }
+  // Natural light
+  if (k.natural_light !== undefined) {
+    h += `<div style="font-size:11px;margin-bottom:.4rem">${k.natural_light?'<span style="color:var(--pass)">✓ Natural light to kitchen</span>':'<span style="color:var(--fail)">✗ No natural light to kitchen</span>'}</div>`;
+  }
+  el.innerHTML = h || `<p style="font-size:11px;color:var(--dim)">Kitchen geometry found but no analysis data.</p>`;
+  // Kitchen canvas with work triangle
+  if (wrap) {
+    const fixtures = data.fixtures || [];
+    const benches = fixtures.filter(f => f.layer === 'APT_KITCHEN_BENCH');
+    const appls   = fixtures.filter(f => f.layer === 'APT_KITCHEN_APPLIANCE');
+    if (benches.length || appls.length) {
+      wrap.style.display = '';
+      const cv = document.getElementById('kitchenCanvas');
+      if (cv) {
+        setTimeout(() => {
+          const shapes = gatherShapes(data);
+          const W = cv.offsetWidth || cv.parentElement?.offsetWidth || 560; cv.width = W;
+          const ctx = cv.getContext('2d');
+          ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
+          const xf = planXF(shapes, W, cv.height, 28);
+          if (!xf) return;
+          // Draw all shapes lightly
+          drawShapes(ctx, shapes, xf, false);
+          drawLabels(ctx, shapes, xf, false);
+          // Highlight bench polygons
+          for (const b of benches) {
+            if (!b.vertices || b.vertices.length < 3) continue;
+            ctx.beginPath(); ctx.moveTo(xf.tx(b.vertices[0][0]),xf.ty(b.vertices[0][1]));
+            for (let i=1;i<b.vertices.length;i++) ctx.lineTo(xf.tx(b.vertices[i][0]),xf.ty(b.vertices[i][1]));
+            ctx.closePath(); ctx.fillStyle='rgba(251,146,60,.35)'; ctx.fill();
+            ctx.strokeStyle='#f97316'; ctx.lineWidth=1.8; ctx.stroke();
+          }
+          // Appliance polygons + centroids
+          const APPL_NAMES = ['Fridge','Cooktop','Sink'];
+          const APPL_COLS  = ['#3b82f6','#f59e0b','#6366f1'];
+          const sortedAppls = [...appls].sort((a,b) => {
+            const area = p => p.vertices ? Math.abs(p.vertices.reduce((s,_,i,arr)=>{const j=(i+1)%arr.length;return s+arr[i][0]*arr[j][1]-arr[j][0]*arr[i][1];},0)/2) : 0;
+            return area(b) - area(a);
+          });
+          const cents = [];
+          sortedAppls.slice(0,3).forEach((a, i) => {
+            if (!a.vertices || a.vertices.length < 3) return;
+            const cx = a.vertices.reduce((s,p)=>s+p[0],0)/a.vertices.length;
+            const cy = a.vertices.reduce((s,p)=>s+p[1],0)/a.vertices.length;
+            cents.push({x: xf.tx(cx), y: xf.ty(cy), col: APPL_COLS[i], name: APPL_NAMES[i]});
+            ctx.beginPath(); ctx.moveTo(xf.tx(a.vertices[0][0]),xf.ty(a.vertices[0][1]));
+            for (let j=1;j<a.vertices.length;j++) ctx.lineTo(xf.tx(a.vertices[j][0]),xf.ty(a.vertices[j][1]));
+            ctx.closePath(); ctx.fillStyle=APPL_COLS[i]+'44'; ctx.fill();
+            ctx.strokeStyle=APPL_COLS[i]; ctx.lineWidth=2; ctx.stroke();
+            ctx.fillStyle=APPL_COLS[i]; ctx.font='bold 9px Inter,sans-serif';
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(APPL_NAMES[i], xf.tx(cx), xf.ty(cy));
+          });
+          // Work triangle
+          if (cents.length === 3) {
+            const [f,c,s] = cents;
+            ctx.save();
+            ctx.strokeStyle='rgba(232,93,37,.8)'; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+            ctx.beginPath(); ctx.moveTo(f.x,f.y); ctx.lineTo(c.x,c.y); ctx.lineTo(s.x,s.y); ctx.closePath(); ctx.stroke();
+            ctx.fillStyle='rgba(232,93,37,.06)'; ctx.fill();
+            ctx.setLineDash([]);
+            // Dimension labels
+            const wt = k.work_triangle || {};
+            function dimLine(x1,y1,x2,y2,label) {
+              const mx=(x1+x2)/2, my=(y1+y2)/2;
+              ctx.fillStyle='rgba(232,93,37,.9)'; ctx.font='bold 8px JetBrains Mono,monospace';
+              ctx.textAlign='center'; ctx.textBaseline='middle';
+              ctx.fillText(label, mx, my-8);
+            }
+            if (wt.cooktop_to_fridge_m) dimLine(f.x,f.y,c.x,c.y,wt.cooktop_to_fridge_m+'m');
+            if (wt.sink_to_cooktop_m)   dimLine(c.x,c.y,s.x,s.y,wt.sink_to_cooktop_m+'m');
+            if (wt.fridge_to_sink_m)    dimLine(s.x,s.y,f.x,f.y,wt.fridge_to_sink_m+'m');
+            ctx.restore();
+            // Legend
+            cents.forEach((ap,i) => {
+              ctx.beginPath(); ctx.arc(12,12+i*16,5,0,2*Math.PI); ctx.fillStyle=ap.col; ctx.fill();
+              ctx.fillStyle='rgba(26,25,22,.7)'; ctx.font='bold 9px Inter,sans-serif';
+              ctx.textAlign='left'; ctx.textBaseline='middle';
+              ctx.fillText(ap.name, 21, 12+i*16);
+            });
+            // Orange triangle legend
+            ctx.strokeStyle='rgba(232,93,37,.8)'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+            ctx.beginPath(); ctx.moveTo(12,12+3*16); ctx.lineTo(32,12+3*16); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle='rgba(107,104,96,.7)'; ctx.font='9px Inter,sans-serif';
+            ctx.textAlign='left'; ctx.textBaseline='middle';
+            ctx.fillText('Work triangle', 36, 12+3*16);
+          }
+          drawScaleBar(ctx, xf, W, cv.height, data);
+        }, 80);
+      }
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// DIAGNOSTICS
+// ═══════════════════════════════════════════════════════
+function renderAptDiagnostics(data) {
+  const diag = data.diagnostics || [];
+  const s = data.summary || {};
+  let h = '';
+
+  // Quality flags
+  const warnings = diag.filter(d => d.severity === 'warning' || d.severity === 'error');
+  const infos    = diag.filter(d => d.severity === 'info');
+
+  if (warnings.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Quality Flags</div>`;
+    for (const d of warnings) {
+      const sev = d.severity || 'warning';
+      const col = sev === 'error' ? 'var(--fail)' : 'var(--warn)';
+      const bg  = sev === 'error' ? 'var(--fbg)'  : 'var(--wbg)';
+      const bdc = sev === 'error' ? 'var(--fbd)'  : 'var(--wbd)';
+      const icon = sev === 'error' ? '⛔' : '⚠';
+      h += `<div style="background:${bg};border:1px solid ${bdc};border-radius:var(--radius);padding:.5rem .75rem;margin-bottom:.35rem;display:flex;gap:.6rem">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:${col};flex-shrink:0;margin-top:.1rem">${icon} ${sev.toUpperCase()}</div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:${col};margin-bottom:.1rem">${esc(d.title)}</div>
+          <div style="font-size:11px;color:var(--dim)">${esc(d.detail||'')}</div>
+          ${d.suggestion?`<div style="font-size:11px;color:var(--acc);margin-top:.2rem">→ ${esc(d.suggestion)}</div>`:''}
+        </div>
+      </div>`;
+    }
+    h += '<div style="height:.5rem"></div>';
+  } else {
+    h += '<div style="font-size:11px;color:var(--pass);margin-bottom:.75rem">✓ No diagnostic warnings raised.</div>';
+  }
+
+  if (infos.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Notes</div>`;
+    for (const d of infos) {
+      h += `<div style="background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.4rem .65rem;margin-bottom:.3rem;font-size:11px;display:flex;gap:.5rem">
+        <span style="color:var(--dim);flex-shrink:0">ℹ</span>
+        <div>
+          <div style="font-weight:600;color:var(--dim)">${esc(d.title)}</div>
+          ${d.detail?`<div style="color:var(--mut);font-size:10px">${esc(d.detail)}</div>`:''}
+        </div>
+      </div>`;
+    }
+    h += '<div style="height:.5rem"></div>';
+  }
+
+  // Passing quality benchmarks from summary
+  const passingBenchmarks = [];
+  const adjOk = data.adjacency?.circ_ok || [];
+  if (s.daylight_pass)     passingBenchmarks.push({icon:'☀', text:'Daylight factors meet targets in all habitable rooms'});
+  if (s.ventilation_pass)  {
+    const paths = data.ventilation?.cross_ventilation?.valid_paths || [];
+    if (paths.length) passingBenchmarks.push({icon:'🌬', text:`Cross ventilation: ${paths.length} valid breeze path${paths.length>1?'s':''} found`});
+    else passingBenchmarks.push({icon:'✓', text:'Ventilation checks passed'});
+  }
+  if (s.storage_pass) {
+    const st = data.storage || {};
+    if (st.total_vol) passingBenchmarks.push({icon:'📦', text:`Storage: ${st.total_vol}m³ total — meets requirement`});
+  }
+  if (s.pos_pass) {
+    const pos = data.pos || [];
+    if (pos.length) passingBenchmarks.push({icon:'🌿', text:`POS: ${pos.map(p=>p.space+' '+p.area_sqm+'m²').join(', ')}`});
+  }
+  if (s.bedrooms_pass) {
+    const beds = data.bedrooms || [];
+    if (beds.length) passingBenchmarks.push({icon:'⬡', text:`All ${beds.length} bedroom${beds.length>1?'s':''} meet dimension requirements`});
+  }
+  if (s.energy_pass) {
+    const en = data.energy || {};
+    if (en.north_glazing_pct) passingBenchmarks.push({icon:'🔆', text:`Energy: ${en.north_glazing_pct}% north glazing · cooling risk: ${en.cooling_risk||'Low'}`});
+  }
+  for (const c of adjOk) passingBenchmarks.push({icon:'✓', text: c.detail || c.check});
+
+  if (passingBenchmarks.length) {
+    h += `<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.4rem">Design Quality Achieved</div>`;
+    for (const p of passingBenchmarks) {
+      h += `<div style="display:flex;align-items:baseline;gap:.5rem;font-size:11px;color:var(--pass);padding:.3rem .6rem;background:var(--pbg);border:1px solid var(--pbd);border-radius:3px;margin-bottom:.25rem">
+        <span>${p.icon}</span><span>${esc(p.text)}</span>
+      </div>`;
+    }
+  }
+
+  document.getElementById('diagContent').innerHTML = h;
+}
+
+// ===============================================================
+// BUILDING CHECK DETAIL PANEL
+// ===============================================================
+const BCHECK_REFS = {
+  cross_ventilation:    'ADG Vic D27 / NSW ADG 4B -- Cross Ventilation',
+  adaptable_dwellings:  'BCA D3.3 / ADG D17 -- Accessibility',
+  north_facing_living:  'ADG D6 / NSW 4U -- Energy Efficiency',
+  solar_access:         'NSW ADG 4A -- Solar and Daylight Access',
+  apartments_per_core:  'NSW ADG 4F -- Common Circulation',
+  storage_nsw:          'NSW ADG 4G -- Storage',
+  communal_open_space:  'ADG Vic B36/D7 -- Communal Open Space',
+};
+const BCHECK_GUIDANCE = {
+  cross_ventilation:   'Achieved when a dwelling has openable windows on at least two different orientations with an unobstructed breeze path of 5-18m.',
+  adaptable_dwellings: 'Requires 850mm clear entry door, 1200mm circulation path to living and main bedroom, and accessible bathroom.',
+  north_facing_living: 'Informational -- encourage north-facing living rooms to reduce cooling load and improve winter solar gain.',
+  solar_access:        'NSW only: 70% of apartments must receive at least 2 hours of direct sunlight between 9am-3pm on 21 June.',
+  apartments_per_core: 'NSW only: informational -- max 8 apartments off one circulation core per level. Verify on plans.',
+  storage_nsw:         'NSW 4G minimums: Studio 4m3, 1-bed 6m3, 2-bed 8m3, 3-bed+ 10m3. At least 50% must be within the apartment.',
+  communal_open_space: 'VIC only: buildings with 40+ dwellings must provide 2.5m2 per dwelling or 250m2 communal open space, whichever is less.',
+};
+
+function showBuildingCheckDetail(idx) {
+  if (!BUILDING) return;
+  const checks = BUILDING.summary.building_checks || [];
+  if (idx >= checks.length) return;
+  const c = checks[idx];
+  const INFO_CHECKS = new Set(['north_facing_living', 'apartments_per_core', 'communal_open_space']);
+  const isInfo = INFO_CHECKS.has(c.check_name);
+  const ref = BCHECK_REFS[c.check_name] || c.check_name;
+  const guidance = BCHECK_GUIDANCE[c.check_name] || '';
+  const colour = isInfo ? '#4f6fd1' : (c.pass ? 'var(--pass)' : 'var(--fail)');
+  const icon = isInfo ? 'i' : (c.pass ? '✓' : '✗');
+
+  // Find per-apartment breakdown for this check
+  let aptBreakdown = '';
+  if (c.check_name === 'cross_ventilation') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.has_cross_ventilation;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--fail)'}">${ok?'✓ Cross ventilated':'✗ Not cross ventilated'}</span>
+      </div>`;
+    }).join('');
+  } else if (c.check_name === 'adaptable_dwellings') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.is_adaptable;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--fail)'}">${ok?'✓ Adaptable':'✗ Not adaptable'}</span>
+      </div>`;
+    }).join('');
+  } else if (c.check_name === 'north_facing_living') {
+    aptBreakdown = BUILDING.apartments.map(a => {
+      const ok = a.has_north_living;
+      return `<div style="display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px solid var(--bd);font-size:11px">
+        <span>Unit ${esc(a.unit_id)} (${esc(a.apartment_type)})</span>
+        <span style="color:${ok?'var(--pass)':'var(--dim)'}">${ok?'✓ North living':'— South/other'}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const valBar = (c.value !== undefined && c.required > 0) ? `
+    <div style="margin:.6rem 0">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-bottom:.3rem">
+        <span>${c.value_pct || Math.round(c.value*100)+'%'} achieved</span>
+        <span>${c.required_pct || Math.round(c.required*100)+'%'} required</span>
+      </div>
+      <div style="height:6px;background:var(--bd);border-radius:3px;position:relative">
+        <div style="width:${Math.min(100,c.value/c.required*100)}%;height:100%;background:${c.pass?'var(--pass)':'var(--fail)'};border-radius:3px"></div>
+        <div style="position:absolute;top:-3px;left:100%;height:12px;width:2px;background:var(--ink);transform:translateX(-1px)"></div>
+      </div>
+    </div>` : '';
+
+  const html = `
+    <div style="padding:1rem">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem">
+        <div style="width:28px;height:28px;border-radius:50%;background:${colour};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${icon}</div>
+        <div>
+          <div style="font-size:13px;font-weight:700">${fmtCheckName(c.check_name)}</div>
+          <div style="font-size:10px;color:var(--mut)">${esc(ref)}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:.6rem">${esc(c.description)}</div>
+      ${valBar}
+      ${guidance?`<div style="font-size:11px;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.45rem .65rem;margin-bottom:.6rem">${esc(guidance)}</div>`:''}
+      ${aptBreakdown?`<div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.35rem">Per Apartment</div>${aptBreakdown}`:''}
+    </div>`;
+
+  // Show in a modal overlay
+  let overlay = document.getElementById('bcheck-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bcheck-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem';
+    overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML = `
+    <div style="background:var(--surf);border-radius:8px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--bd)">
+        <div style="font-size:12px;font-weight:600">Building Check Detail</div>
+        <button onclick="document.getElementById('bcheck-overlay').remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--dim);padding:.2rem .4rem">✕</button>
+      </div>
+      ${html}
+    </div>`;
+  overlay.style.display = 'flex';
+}
+
+// ===============================================================
+// HELPERS
+// ===============================================================
+function chip(p) { return p ? `<span class="chip p">✓ Pass</span>` : `<span class="chip f">✗ Fail</span>`; }
+function na(m) { return `<p style="font-size:11px;color:var(--mut);padding:.2rem 0">${esc(m)}</p>`; }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtCheckName(k) { return k.replace(/_pass$/,'').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()); }
+function showLoading(msg) { document.getElementById('loading-text').textContent = msg||'Loading…'; document.getElementById('loading').classList.add('visible'); }
+function hideLoading() { document.getElementById('loading').classList.remove('visible'); }
+function showErr(msg) { const el = document.getElementById('err-state'); el.textContent = msg; el.style.display = ''; }
+function hideErr() { document.getElementById('err-state').style.display = 'none'; }
+
+// ═══════════════════════════════════════════════════════
+// DEMO DATA
+// ═══════════════════════════════════════════════════════
+const DEMO = JSON.parse('{"token": "demo-session", "apartments": [{"unit_id": "01", "pass": true, "apartment_type": "2bed", "bedroom_count": 2, "has_cross_ventilation": true, "is_adaptable": true, "has_north_living": true, "jurisdiction": "VIC", "summary": {"bedrooms_pass": true, "living_pass": true, "storage_pass": true, "pos_pass": true, "ventilation_pass": true, "accessibility_pass": true, "all_pass": true}, "checks": {"summary": {"bedrooms_pass": true, "living_pass": true, "storage_pass": true, "pos_pass": true, "ventilation_pass": true, "accessibility_pass": true, "all_pass": true}, "meta": {"bedroom_count": 2, "ceiling_h": 2.7, "layers": [], "window_layers": ["APT_WINDOW_MAINBED", "APT_WINDOW_LIVING"]}, "bedrooms": [{"room": "Main Bedroom", "layer": "APT_ROOM_MAINBED", "area_sqm": 14.2, "width_m": 3.2, "req_width_m": 3.0, "width_pass": true, "depth_m": 4.4, "req_depth_m": 3.4, "depth_pass": true, "overall_pass": true}], "living": [{"room": "Living Area", "area_sqm": 18.5, "width_m": 4.1, "req_area": 12, "req_width": 3.6, "area_pass": true, "width_pass": true, "overall_pass": true}], "storage": {"total_vol": 16.2, "req_total": 14, "total_pass": true, "designated_vol": 10.1, "req_internal": 9, "internal_pass": true, "designated_area": 3.7, "service_area": 2.2, "ceiling_h": 2.7, "designated_polys": [], "service_polys": []}, "pos": [{"space": "Balcony/POS", "area_sqm": 9.4, "req_area_sqm": 8, "area_pass": true, "min_dim_m": 2.2, "req_dim_m": 2.0, "dim_pass": true, "living_conn": true, "overall_pass": true}], "ventilation": {"habitable_windows": [{"room": "Main Bedroom", "has_window": true, "count": 1, "aspects": ["N"]}, {"room": "Living Area", "has_window": true, "count": 2, "aspects": ["N", "E"]}], "cross_ventilation": {"pass": true, "valid_paths": [{"room_a": "Main Bedroom", "room_b": "Living Area", "path_length_m": 8.2, "midpoint_a": [5, 3], "midpoint_b": [5, 9]}]}}, "doors": [{"label": "Entry door", "width_m": 0.87, "req_m": 0.85, "pass": true}, {"label": "Main bedroom door", "width_m": 0.87, "req_m": 0.85, "pass": true}], "accessibility": {"pass": true, "overall_pass": true, "note": "Meets adaptable dwelling requirements", "pass_count": 4, "total": 4, "checks": [{"item": "Entry door clear width", "detail": "870mm meets 850mm", "pass": true}, {"item": "1200mm circulation path", "detail": "Clear path through entry", "pass": true}, {"item": "Bedroom door width", "detail": "870mm meets 850mm", "pass": true}, {"item": "Accessible bathroom", "detail": "1200x1200mm circulation", "pass": true}]}, "noise": {"assessed": false, "note": "No noise sources assessed"}, "energy": {"checks": [{"item": "North-facing living area", "detail": "Living area window faces north", "pass": true}]}, "diagnostics": []}}, {"unit_id": "02", "pass": false, "apartment_type": "1bed", "bedroom_count": 1, "has_cross_ventilation": false, "is_adaptable": false, "has_north_living": false, "jurisdiction": "VIC", "summary": {"bedrooms_pass": true, "living_pass": false, "storage_pass": true, "pos_pass": false, "ventilation_pass": false, "accessibility_pass": false, "all_pass": false}, "checks": {"summary": {"bedrooms_pass": true, "living_pass": false, "storage_pass": true, "pos_pass": false, "ventilation_pass": false, "accessibility_pass": false, "all_pass": false}, "meta": {"bedroom_count": 1, "ceiling_h": 2.7, "layers": [], "window_layers": []}, "bedrooms": [{"room": "Main Bedroom", "layer": "APT_ROOM_MAINBED", "area_sqm": 10.8, "width_m": 3.1, "req_width_m": 3.0, "width_pass": true, "depth_m": 3.5, "req_depth_m": 3.4, "depth_pass": true, "overall_pass": true}], "living": [{"room": "Living Area", "area_sqm": 8.2, "width_m": 2.9, "req_area": 10, "req_width": 3.3, "area_pass": false, "width_pass": false, "overall_pass": false}], "storage": {"total_vol": 11.4, "req_total": 10, "total_pass": true, "designated_vol": 6.8, "req_internal": 6, "internal_pass": true, "designated_area": 2.5, "service_area": 1.7, "ceiling_h": 2.7, "designated_polys": [], "service_polys": []}, "pos": [{"space": "Balcony/POS", "area_sqm": 5.1, "req_area_sqm": 8, "area_pass": false, "min_dim_m": 1.6, "req_dim_m": 1.8, "dim_pass": false, "living_conn": true, "overall_pass": false}], "ventilation": {"habitable_windows": [{"room": "Main Bedroom", "has_window": false, "count": 0, "aspects": []}, {"room": "Living Area", "has_window": false, "count": 0, "aspects": []}], "cross_ventilation": {"pass": false, "note": "No windows detected on any aspect"}}, "doors": [{"label": "Entry door", "width_m": 0.78, "req_m": 0.85, "pass": false}], "accessibility": {"pass": false, "overall_pass": false, "note": "Does not meet adaptable requirements", "pass_count": 1, "total": 4, "checks": [{"item": "Entry door clear width", "detail": "780mm below 850mm minimum", "pass": false}, {"item": "1200mm circulation path", "detail": "Entry corridor too narrow", "pass": false}, {"item": "Bedroom door width", "detail": "Not assessed", "pass": false}, {"item": "Accessible bathroom", "detail": "Insufficient turning space", "pass": false}]}, "noise": {"assessed": false, "note": "No noise sources assessed"}, "energy": {"checks": [{"item": "North-facing living area", "detail": "Living area faces south", "pass": false}]}, "diagnostics": [{"title": "Undersized living area", "severity": "warning", "detail": "Living area is 2.9m wide, below 3.3m minimum.", "suggestion": "Extend the living area by relocating the kitchen wall 400mm westward."}]}}, {"unit_id": "03", "pass": true, "apartment_type": "3bed+", "bedroom_count": 3, "has_cross_ventilation": true, "is_adaptable": true, "has_north_living": true, "jurisdiction": "VIC", "summary": {"bedrooms_pass": true, "living_pass": true, "storage_pass": true, "pos_pass": true, "ventilation_pass": true, "accessibility_pass": true, "all_pass": true}, "checks": {"summary": {"bedrooms_pass": true, "living_pass": true, "storage_pass": true, "pos_pass": true, "ventilation_pass": true, "accessibility_pass": true, "all_pass": true}, "meta": {"bedroom_count": 3, "ceiling_h": 2.7, "layers": [], "window_layers": ["APT_WINDOW_MAINBED", "APT_WINDOW_BED1", "APT_WINDOW_LIVING"]}, "bedrooms": [{"room": "Main Bedroom", "layer": "APT_ROOM_MAINBED", "area_sqm": 16.1, "width_m": 3.4, "req_width_m": 3.0, "width_pass": true, "depth_m": 4.7, "req_depth_m": 3.4, "depth_pass": true, "overall_pass": true}], "living": [{"room": "Living Area", "area_sqm": 22.0, "width_m": 4.5, "req_area": 12, "req_width": 3.6, "area_pass": true, "width_pass": true, "overall_pass": true}], "storage": {"total_vol": 19.4, "req_total": 18, "total_pass": true, "designated_vol": 12.4, "req_internal": 12, "internal_pass": true, "designated_area": 4.6, "service_area": 2.5, "ceiling_h": 2.7, "designated_polys": [], "service_polys": []}, "pos": [{"space": "Balcony/POS", "area_sqm": 14.2, "req_area_sqm": 12, "area_pass": true, "min_dim_m": 2.8, "req_dim_m": 2.4, "dim_pass": true, "living_conn": true, "overall_pass": true}], "ventilation": {"habitable_windows": [{"room": "Main Bedroom", "has_window": true, "count": 1, "aspects": ["N"]}, {"room": "Living Area", "has_window": true, "count": 2, "aspects": ["N", "W"]}], "cross_ventilation": {"pass": true, "valid_paths": [{"room_a": "Main Bedroom", "room_b": "Living Area", "path_length_m": 10.1, "midpoint_a": [5, 3], "midpoint_b": [5, 9]}]}}, "doors": [{"label": "Entry door", "width_m": 0.9, "req_m": 0.85, "pass": true}], "accessibility": {"pass": true, "overall_pass": true, "note": "Meets adaptable dwelling requirements", "pass_count": 4, "total": 4, "checks": [{"item": "Entry door", "detail": "900mm", "pass": true}, {"item": "Circulation", "detail": "Clear 1200mm path", "pass": true}, {"item": "Bedroom door", "detail": "900mm", "pass": true}, {"item": "Bathroom", "detail": "Adaptable layout", "pass": true}]}, "noise": {"assessed": false, "note": "No noise sources assessed"}, "energy": {"checks": [{"item": "North-facing living", "detail": "Living faces north", "pass": true}]}, "diagnostics": []}}], "summary": {"jurisdiction": "VIC", "total_units": 3, "passing_units": 2, "pass_rate": 0.667, "pass_rate_pct": "67%", "cross_ventilation_pct": 0.667, "adaptable_dwellings_pct": 0.667, "north_living_pct": 0.667, "worst_unit": "02", "apartment_mix": {"studio": 0, "1bed": 1, "2bed": 1, "3bed+": 1}, "building_checks": [{"check_name": "cross_ventilation", "pass": true, "value": 0.667, "required": 0.4, "value_pct": "67%", "required_pct": "40%", "description": "2 of 3 apartments achieve cross ventilation - VIC requires 40%"}, {"check_name": "adaptable_dwellings", "pass": true, "value": 0.667, "required": 0.5, "value_pct": "67%", "required_pct": "50%", "description": "2 of 3 apartments meet adaptability checks - BCA D3.3 requires 50%"}, {"check_name": "north_facing_living", "pass": true, "value": 0.667, "required": 0, "value_pct": "67%", "required_pct": "0%", "description": "2 of 3 apartments have a north-facing living-area window"}], "errors": []}}');
+
+// ═══════════════════════════════════════════════════════
+// TOKEN LOADING (from URL)
+// ═══════════════════════════════════════════════════════
+(function() {
+  const pathMatch = window.location.pathname.match(/\/building\/([a-f0-9]{6,})/);
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = (pathMatch && pathMatch[1]) || urlParams.get('token');
+  if (token) {
+    showLoading('Loading building results…');
+    fetch(API_BASE + '/api/results-building/' + token)
+      .then(r => r.json())
+      .then(data => {
+        hideLoading();
+        const result = data.results || data;
+        result.token = token;
+        renderBuilding(result);
+      })
+      .catch(e => {
+        hideLoading();
+        showErr('Could not load result: ' + e.message);
+      });
+  }
+})();
+// ═══════════════════════════════════════════════════════
+// REPORT GENERATION
+// ═══════════════════════════════════════════════════════
+function generateReport() {
+  if (!BUILDING) { alert('No compliance data loaded yet.'); return; }
+  const btn = document.getElementById('report-btn');
+  btn.textContent = '⏳ Generating...';
+  btn.disabled = true;
+
+  // Collect project metadata from a quick modal
+  const projectDefaults = {
+    name:      BUILDING.token ? 'Project ' + BUILDING.token.slice(0,6).toUpperCase() : 'Apartment Project',
+    address:   '',
+    applicant: '',
+    designer:  '',
+    certifier: '',
+    ref:       'DCR-' + new Date().toISOString().slice(0,10).replace(/-/g,''),
+    basix:     '',
+    frv:       '',
+    storeys:   '',
+    rise:      '',
+    height:    '',
+    gfa:       '',
+  };
+
+  // Show a compact project details modal before generating
+  let overlay = document.getElementById('report-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'report-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center;padding:1rem';
+    document.body.appendChild(overlay);
+  }
+
+  const jur = (BUILDING.summary && BUILDING.summary.jurisdiction) || 'VIC';
+  const isNSW = jur === 'NSW' || jur === 'BEST_PRACTICE';
+  const isVIC = jur === 'VIC' || jur === 'BEST_PRACTICE';
+
+  overlay.innerHTML = `
+    <div style="background:var(--surf);border-radius:8px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+      <div style="background:#1A3A5F;padding:.85rem 1.1rem;border-radius:8px 8px 0 0;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="color:#fff;font-weight:700;font-size:13px">Generate Design Compliance Report</div>
+          <div style="color:rgba(255,255,255,.5);font-size:10px">For Building Permit Application &amp; Certification</div>
+        </div>
+        <button onclick="document.getElementById('report-modal').remove();document.getElementById('report-btn').disabled=false;document.getElementById('report-btn').textContent='⬇ Compliance Report'"
+          style="background:none;border:none;color:rgba(255,255,255,.6);font-size:18px;cursor:pointer;padding:.2rem .4rem">✕</button>
+      </div>
+      <div style="padding:1rem">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.6rem">Project Details</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem">
+          ${[
+            ['project-name','Project Name','text','Apartment Building'],
+            ['project-address','Site Address','text','123 Smith Street, Melbourne VIC 3000'],
+            ['project-applicant','Applicant / Owner','text',''],
+            ['project-designer','Architect / Designer','text',''],
+            ['project-certifier','Principal Certifier','text','[Name & Accreditation No.]'],
+            ['project-ref','Report Reference No.','text','DCR-20250527'],
+          ].map(([id,label,type,ph]) =>
+            `<div><label style="display:block;font-size:10px;color:var(--dim);margin-bottom:.2rem">${label}</label>
+            <input id="${id}" type="${type}" placeholder="${ph}" style="width:100%;padding:.3rem .5rem;border:1px solid var(--bd);border-radius:4px;font-size:11px;outline:none;background:var(--surf2)"></div>`
+          ).join('')}
+        </div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:.6rem">Building Parameters</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem">
+          ${[
+            ['project-storeys','No. Storeys','4'],
+            ['project-rise','Rise in Storeys','3'],
+            ['project-height','Effective Height (m)','10.5'],
+            ['project-gfa','GFA (m²)','2500'],
+            isVIC ? ['project-frv','FRV Report No.',''] : null,
+            isNSW ? ['project-basix','BASIX Certificate No.',''] : null,
+          ].filter(Boolean).map(([id,label,ph]) =>
+            `<div><label style="display:block;font-size:10px;color:var(--dim);margin-bottom:.2rem">${label}</label>
+            <input id="${id}" placeholder="${ph}" style="width:100%;padding:.3rem .5rem;border:1px solid var(--bd);border-radius:4px;font-size:11px;outline:none;background:var(--surf2)"></div>`
+          ).join('')}
+        </div>
+        <div style="background:var(--surf2);border-radius:4px;padding:.5rem .75rem;font-size:10px;color:var(--dim);margin-bottom:.85rem">
+          <strong>Jurisdiction:</strong> ${jur === 'BEST_PRACTICE' ? 'Best Practice (NSW + VIC)' : jur === 'NSW' ? 'NSW — SEPP 65 & ADG 2015' : 'VIC — ADG 2017 · Cl.55 & 58'}
+          &nbsp;|&nbsp; <strong>Units:</strong> ${BUILDING.summary ? BUILDING.summary.total_units : '?'}
+          &nbsp;|&nbsp; Items marked ✎ require practitioner completion in the generated document.
+        </div>
+        <button onclick="submitReport()" style="width:100%;padding:.65rem;background:#1A3A5F;border:none;border-radius:5px;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Generate Compliance Report (.docx)</button>
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+  btn.textContent = '⬇ Compliance Report';
+  btn.disabled = false;
+}
+
+async function submitReport() {
+  const get = id => document.getElementById(id)?.value?.trim() || '';
+  const btn = document.querySelector('#report-modal button[onclick="submitReport()"]');
+  if (btn) { btn.textContent = '⏳ Generating report...'; btn.disabled = true; }
+
+  const project = {
+    name:      get('project-name')     || 'Apartment Project',
+    address:   get('project-address')  || '',
+    applicant: get('project-applicant')|| '',
+    designer:  get('project-designer') || '',
+    certifier: get('project-certifier')|| '',
+    ref:       get('project-ref')      || 'DCR-' + new Date().toISOString().slice(0,10).replace(/-/g,''),
+    storeys:   get('project-storeys')  || '',
+    rise:      get('project-rise')     || '',
+    height:    get('project-height')   || '',
+    gfa:       get('project-gfa')      || '',
+    frv:       get('project-frv')      || '',
+    basix:     get('project-basix')    || '',
+  };
+
+  const jur = (BUILDING.summary && BUILDING.summary.jurisdiction) || 'VIC';
+
+  try {
+    const res = await fetch('/api/generate-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jurisdiction: jur,
+        project,
+        results: BUILDING.apartments && BUILDING.apartments.length > 0
+          ? BUILDING.apartments[0].checks || {}
+          : {},
+        building_results: BUILDING,
+        token: BUILDING.token || '',
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error || 'Server error ' + res.status);
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Design_Compliance_Report_' + (project.name || 'Project').replace(/\s+/g,'_') + '.docx';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    document.getElementById('report-modal')?.remove();
+  } catch (err) {
+    alert('Report generation failed: ' + err.message);
+    if (btn) { btn.textContent = 'Generate Compliance Report (.docx)'; btn.disabled = false; }
+  }
+}
+
 </script>
 </body>
 </html>
-
