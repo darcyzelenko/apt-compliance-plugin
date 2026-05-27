@@ -424,6 +424,13 @@ canvas { display: block; width: 100%; }
       <div class="panel" id="panel-kitchen">
         <div id="kitchenContent"></div>
         <div id="kitchenCanvasWrap" style="display:none;margin-top:.75rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+            <span class="slabel" style="margin-bottom:0">Kitchen Plan</span>
+            <div style="display:flex;gap:.3rem">
+              <button onclick="kitchenZoom('tight')" id="kz-tight" class="vt active" style="padding:.2rem .55rem;font-size:10px">Kitchen only</button>
+              <button onclick="kitchenZoom('context')" id="kz-context" class="vt" style="padding:.2rem .55rem;font-size:10px">In context</button>
+            </div>
+          </div>
           <div class="canvaswrap"><canvas id="kitchenCanvas" height="300"></canvas></div>
         </div>
       </div>
@@ -1599,28 +1606,23 @@ function drawDaylightFull() {
     ctx.fillText('No daylight data — add APT_WINDOW_* layers', W/2, H/2); return;
   }
 
-  // Bounding box from ROOM vertices only (not all shapes) so scale fits the apartment plan tightly
-  const roomVerts = [
-    ...rooms.flatMap(r => r.vertices||[]),
-    ...rooms.flatMap(r => (r.df_grid||[]).map(p=>[p.x,p.y]))
-  ];
-  if (!roomVerts.length) return;
+  // Use the same transform as the clean plan so orientation is consistent
+  // This ensures rooms aren't rotated even when drawn at an angle in world space
+  const allShapePts = shapes.flatMap(s=>s.pts||[]);
+  const allRoomPts  = rooms.flatMap(r=>r.vertices||[]);
+  const bboxPts = allShapePts.length ? allShapePts : allRoomPts;
+  if (!bboxPts.length) return;
   let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
-  for(const[x,y]of roomVerts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
-  // Small padding
+  for(const[x,y]of bboxPts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
   const pad=28;
   const sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
   const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2;
   const oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
   const xf={tx:x=>ox+(x-mnx)*sc, ty:y=>H-(oy+(y-mny)*sc), sc, mnx, mny, mxx, mxy};
 
-  // Draw background shapes (building geometry) that fall within the room bounds
+  // Draw all background shapes lightly (same as clean plan)
   for(const s of shapes){
     if(!s.pts||s.pts.length<3) continue;
-    // Only draw shapes that are close to the daylight rooms
-    const cx=s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length;
-    const cy=s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length;
-    if(cx<mnx-2||cx>mxx+2||cy<mny-2||cy>mxy+2) continue;
     ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
     for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
     ctx.closePath();
@@ -1795,6 +1797,14 @@ function renderAptEnergy(data) {
 // ═══════════════════════════════════════════════════════
 // KITCHEN
 // ═══════════════════════════════════════════════════════
+let _kitchenZoomMode = 'tight';
+function kitchenZoom(mode) {
+  _kitchenZoomMode = mode;
+  document.getElementById('kz-tight').classList.toggle('active', mode==='tight');
+  document.getElementById('kz-context').classList.toggle('active', mode==='context');
+  if (APT_DATA) renderAptKitchen(APT_DATA);
+}
+
 function renderAptKitchen(data) {
   const k = data.kitchen || {};
   const el = document.getElementById('kitchenContent');
@@ -1860,31 +1870,38 @@ function renderAptKitchen(data) {
           const W = cv.offsetWidth || cv.parentElement?.offsetWidth || 560; cv.width = W;
           const ctx = cv.getContext('2d');
           ctx.fillStyle = '#f5f4f2'; ctx.fillRect(0,0,W,cv.height);
-          // Tight bounding box: kitchen geometry + 2m margin
+          // Bounding box depends on zoom mode
           const kitchenPts = [...benches, ...appls].flatMap(f => f.vertices || []);
           let kmnx=1e9,kmny=1e9,kmxx=-1e9,kmxy=-1e9;
           for (const [x,y] of kitchenPts) {
             kmnx=Math.min(kmnx,x); kmny=Math.min(kmny,y);
             kmxx=Math.max(kmxx,x); kmxy=Math.max(kmxy,y);
           }
-          const margin = Math.max(1.5, Math.max(kmxx-kmnx, kmxy-kmny) * 0.35);
-          kmnx -= margin; kmny -= margin; kmxx += margin; kmxy += margin;
-          // Build tight transform
           const H = cv.height;
-          const kpad = 20;
-          const ksc = Math.min((W-kpad*2)/Math.max(kmxx-kmnx,.1), (H-kpad*2)/Math.max(kmxy-kmny,.1));
-          const kox = kpad + ((W-kpad*2) - (kmxx-kmnx)*ksc)/2;
-          const koy = kpad + ((H-kpad*2) - (kmxy-kmny)*ksc)/2;
-          const xf = { tx: x=>kox+(x-kmnx)*ksc, ty: y=>H-(koy+(y-kmny)*ksc), sc:ksc, mnx:kmnx, mny:kmny, mxx:kmxx, mxy:kmxy };
-          // Draw only shapes that overlap the kitchen zone
-          const kitchenShapes = shapes.filter(s => {
+          let xf;
+          if (_kitchenZoomMode === 'tight') {
+            // Tight: kitchen geometry + small margin
+            const margin = Math.max(0.8, Math.max(kmxx-kmnx, kmxy-kmny) * 0.25);
+            const bx0=kmnx-margin, by0=kmny-margin, bx1=kmxx+margin, by1=kmxy+margin;
+            const kpad = 16;
+            const ksc = Math.min((W-kpad*2)/Math.max(bx1-bx0,.1), (H-kpad*2)/Math.max(by1-by0,.1));
+            const kox = kpad + ((W-kpad*2) - (bx1-bx0)*ksc)/2;
+            const koy = kpad + ((H-kpad*2) - (by1-by0)*ksc)/2;
+            xf = { tx: x=>kox+(x-bx0)*ksc, ty: y=>H-(koy+(y-by0)*ksc), sc:ksc, mnx:bx0, mny:by0, mxx:bx1, mxy:by1 };
+          } else {
+            // Context: use full apartment plan transform
+            xf = planXF(shapes, W, H, 24);
+          }
+          if (!xf) return;
+          // Draw shapes in the visible zone
+          const visShapes = _kitchenZoomMode === 'tight' ? shapes.filter(s => {
             if (!s.pts || s.pts.length < 3) return false;
             const cx = s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length;
             const cy = s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length;
-            return cx >= kmnx && cx <= kmxx && cy >= kmny && cy <= kmxy;
-          });
-          drawShapes(ctx, kitchenShapes, xf, false);
-          drawLabels(ctx, kitchenShapes, xf, false);
+            return cx >= xf.mnx-1 && cx <= xf.mxx+1 && cy >= xf.mny-1 && cy <= xf.mxy+1;
+          }) : shapes;
+          drawShapes(ctx, visShapes, xf, false);
+          drawLabels(ctx, visShapes, xf, false);
           // Highlight bench polygons
           for (const b of benches) {
             if (!b.vertices || b.vertices.length < 3) continue;
