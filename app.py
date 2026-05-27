@@ -11,11 +11,12 @@ from compliance_engine import run_compliance
 
 
 from app_report_routes import register_report_routes
-register_report_routes(app)
+
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
+register_report_routes(app)
 
 @app.route('/')
 def index():
