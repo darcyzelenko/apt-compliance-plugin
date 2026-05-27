@@ -1606,25 +1606,55 @@ function drawDaylightFull() {
     ctx.fillText('No daylight data — add APT_WINDOW_* layers', W/2, H/2); return;
   }
 
-  // Use the same transform as the clean plan so orientation is consistent
-  // This ensures rooms aren't rotated even when drawn at an angle in world space
+  // Auto-rotate: use PCA to align apartment's principal axis to horizontal
   const allShapePts = shapes.flatMap(s=>s.pts||[]);
-  const allRoomPts  = rooms.flatMap(r=>r.vertices||[]);
+  const allRoomPts  = rooms.flatMap(r => r.vertices||[]);
   const bboxPts = allShapePts.length ? allShapePts : allRoomPts;
   if (!bboxPts.length) return;
-  let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
-  for(const[x,y]of bboxPts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
-  const pad=28;
-  const sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
-  const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2;
-  const oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
-  const xf={tx:x=>ox+(x-mnx)*sc, ty:y=>H-(oy+(y-mny)*sc), sc, mnx, mny, mxx, mxy};
 
-  // Draw all background shapes lightly (same as clean plan)
+  // Centroid
+  let sumx=0,sumy=0;
+  for(const[x,y]of bboxPts){sumx+=x;sumy+=y;}
+  const cx0=sumx/bboxPts.length, cy0=sumy/bboxPts.length;
+
+  // PCA covariance
+  let cxx=0,cxy=0,cyy=0;
+  for(const[x,y]of bboxPts){const dx=x-cx0,dy=y-cy0;cxx+=dx*dx;cxy+=dx*dy;cyy+=dy*dy;}
+  let angle = Math.abs(cxy) < 1e-9 ? 0 : 0.5*Math.atan2(2*cxy, cxx-cyy);
+
+  // Try both angle and angle+90 to pick the one that gives wider-than-tall bbox
+  function getBBox(a) {
+    const c=Math.cos(a),s=Math.sin(a);
+    let mn=[1e9,1e9],mx=[-1e9,-1e9];
+    for(const[x,y]of bboxPts){
+      const rx=c*(x-cx0)-s*(y-cy0)+cx0, ry=s*(x-cx0)+c*(y-cy0)+cy0;
+      mn=[Math.min(mn[0],rx),Math.min(mn[1],ry)];
+      mx=[Math.max(mx[0],rx),Math.max(mx[1],ry)];
+    }
+    return {mn,mx,w:mx[0]-mn[0],h:mx[1]-mn[1]};
+  }
+  const bb0=getBBox(-angle), bb1=getBBox(-angle+Math.PI/2);
+  const useAngle = bb0.w >= bb0.h ? -angle : -angle+Math.PI/2;
+  const {mn,mx,w,h} = getBBox(useAngle);
+  const cosF=Math.cos(useAngle), sinF=Math.sin(useAngle);
+  function rotF(x,y){return[cosF*(x-cx0)-sinF*(y-cy0)+cx0, sinF*(x-cx0)+cosF*(y-cy0)+cy0];}
+
+  const pad=28;
+  const sc=Math.min((W-pad*2)/Math.max(w,.1),(H-pad*2)/Math.max(h,.1));
+  const ox=pad+((W-pad*2)-w*sc)/2;
+  const oy=pad+((H-pad*2)-h*sc)/2;
+  const xf={
+    tx:(x,y)=>{const[rx]=rotF(x,y);return ox+(rx-mn[0])*sc;},
+    ty:(x,y)=>{const[,ry]=rotF(x,y);return H-(oy+(ry-mn[1])*sc);},
+    sc, mnx:mn[0], mny:mn[1], mxx:mx[0], mxy:mx[1]
+  };
+
+  // Draw all background shapes with rotated transform
   for(const s of shapes){
     if(!s.pts||s.pts.length<3) continue;
-    ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
-    for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
+    ctx.beginPath();
+    ctx.moveTo(xf.tx(s.pts[0][0],s.pts[0][1]), xf.ty(s.pts[0][0],s.pts[0][1]));
+    for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0],s.pts[i][1]), xf.ty(s.pts[i][0],s.pts[i][1]));
     ctx.closePath();
     if (s.building) { ctx.fillStyle='rgba(10,10,10,.85)'; ctx.fill(); ctx.strokeStyle='#555'; ctx.lineWidth=1.5; ctx.stroke(); }
     else { ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=0.8; ctx.stroke(); }
@@ -1660,8 +1690,8 @@ function drawDaylightFull() {
     if ((rm.df_grid||[]).length > 0) {
       // Clip to room shape, then paint the grid
       ctx.save();
-      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
-      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0],rm.vertices[0][1]),xf.ty(rm.vertices[0][0],rm.vertices[0][1]));
+      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0],rm.vertices[i][1]),xf.ty(rm.vertices[i][0],rm.vertices[i][1]));
       ctx.closePath(); ctx.clip();
 
       // Compute cell size from actual grid spacing
@@ -1678,27 +1708,27 @@ function drawDaylightFull() {
         const ratio = pt.df / maxDF;
         const [r,g,b] = dfColorDark(ratio);
         ctx.fillStyle = `rgba(${r},${g},${b},0.88)`;
-        const px = xf.tx(pt.x), py = xf.ty(pt.y);
+        const px = xf.tx(pt.x,pt.y), py = xf.ty(pt.x,pt.y);
         ctx.fillRect(px-cellPx/2, py-cellPx/2, cellPx, cellPx);
       }
       ctx.restore();
     } else {
       // No grid — draw a dim room fill with DF label
-      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
-      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+      ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0],rm.vertices[0][1]),xf.ty(rm.vertices[0][0],rm.vertices[0][1]));
+      for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0],rm.vertices[i][1]),xf.ty(rm.vertices[i][0],rm.vertices[i][1]));
       ctx.closePath(); ctx.fillStyle='rgba(30,58,138,.2)'; ctx.fill();
     }
 
     // Room outline
-    ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0]),xf.ty(rm.vertices[0][1]));
-    for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0]),xf.ty(rm.vertices[i][1]));
+    ctx.beginPath(); ctx.moveTo(xf.tx(rm.vertices[0][0],rm.vertices[0][1]),xf.ty(rm.vertices[0][0],rm.vertices[0][1]));
+    for(let i=1;i<rm.vertices.length;i++) ctx.lineTo(xf.tx(rm.vertices[i][0],rm.vertices[i][1]),xf.ty(rm.vertices[i][0],rm.vertices[i][1]));
     ctx.closePath();
     ctx.strokeStyle = rm.df_pass ? 'rgba(20,184,166,.7)' : 'rgba(239,68,68,.8)';
     ctx.lineWidth = rm.df_pass ? 1.5 : 2.5; ctx.stroke();
 
     // Label
     if(rm.centroid){
-      const cx=xf.tx(rm.centroid[0]), cy=xf.ty(rm.centroid[1]);
+      const cx=xf.tx(rm.centroid[0],rm.centroid[1]), cy=xf.ty(rm.centroid[0],rm.centroid[1]);
       // Shadow for legibility over dark bg
       ctx.shadowColor='rgba(0,0,0,.8)'; ctx.shadowBlur=4;
       ctx.font='bold 10px Inter,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -1718,7 +1748,7 @@ function drawDaylightFull() {
   for(const rm of (APT_DATA.windows?.habitable||[])){
     for(const wl of (rm.window_lines||[])){
       if(wl.length<2) continue;
-      const x1=xf.tx(wl[0][0]),y1=xf.ty(wl[0][1]),x2=xf.tx(wl[1][0]),y2=xf.ty(wl[1][1]);
+      const x1=xf.tx(wl[0][0],wl[0][1]),y1=xf.ty(wl[0][0],wl[0][1]),x2=xf.tx(wl[1][0],wl[1][1]),y2=xf.ty(wl[1][0],wl[1][1]);
       // Glow effect
       ctx.shadowColor='rgba(147,197,253,.8)'; ctx.shadowBlur=8;
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
