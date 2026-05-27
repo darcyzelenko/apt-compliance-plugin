@@ -60,6 +60,9 @@ header h1 strong { color: #fff; font-weight: 700; }
 
 /* Unit grid */
 .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.filter-btn { padding:.2rem .55rem; background:var(--surf2); border:1px solid var(--bd); border-radius:3px; font-size:10px; font-weight:500; color:var(--dim); cursor:pointer; transition:all .15s; }
+.filter-btn:hover { border-color:var(--bd2); color:var(--tx); }
+.filter-btn.active { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
 .unit-card { background: var(--surf); border: 1.5px solid var(--bd); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all .2s; box-shadow: var(--shadow); }
 .unit-card:hover { border-color: var(--acc); box-shadow: 0 4px 20px rgba(232,93,37,.12); transform: translateY(-2px); }
 .unit-card.pass-card { border-left: 3px solid var(--pass); }
@@ -331,6 +334,21 @@ canvas { display: block; width: 100%; }
       <!-- Apartment mix section -->
       <div id="mix-section" style="margin-bottom:1rem"></div>
 
+      <!-- Filter bar -->
+      <div id="filter-bar" style="display:none;margin-bottom:.75rem">
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)">Filter:</span>
+          <div id="filter-types" style="display:flex;gap:.3rem;flex-wrap:wrap"></div>
+          <div style="display:flex;gap:.3rem;margin-left:.25rem">
+            <button onclick="setStatusFilter('all')" id="filter-all" class="filter-btn active">All</button>
+            <button onclick="setStatusFilter('pass')" id="filter-pass" class="filter-btn">Passing</button>
+            <button onclick="setStatusFilter('fail')" id="filter-fail" class="filter-btn">Failing</button>
+          </div>
+          <button onclick="clearFilters()" id="filter-clear" style="display:none;margin-left:auto;padding:.2rem .6rem;background:var(--surf2);border:1px solid var(--bd);border-radius:3px;font-size:10px;color:var(--dim);cursor:pointer">✕ Clear</button>
+        </div>
+        <div id="filter-count" style="font-size:10px;color:var(--mut);margin-top:.35rem"></div>
+      </div>
+
       <!-- Unit grid -->
       <div class="unit-grid" id="unit-grid"></div>
     </div>
@@ -419,6 +437,7 @@ canvas { display: block; width: 100%; }
 // STATE
 // ═══════════════════════════════════════════════════════
 let BUILDING = null;   // full building result
+let APT_FILTER = { types: new Set(), status: 'all' }; // active filters
 let APT_DATA = null;   // currently open apartment's checks data
 let FILE = null;
 let JURISDICTION = 'VIC';
@@ -617,6 +636,22 @@ function renderBuilding(data) {
       h += `</div>`;
       mixSection.innerHTML = h;
     }
+  }
+
+  // Build filter bar from apartment types
+  const filterBar = document.getElementById('filter-bar');
+  const filterTypes = document.getElementById('filter-types');
+  if (filterBar && filterTypes) {
+    filterBar.style.display = '';
+    const mixColors = {studio:'#a855f7','1bed':'#6366f1','2bed':'#1a7a4a','3bed+':'#e85d25'};
+    const types = [...new Set(data.apartments.map(a=>a.apartment_type).filter(Boolean))];
+    filterTypes.innerHTML = types.map(t => {
+      const col = mixColors[t]||'#a8a49e';
+      const count = data.apartments.filter(a=>a.apartment_type===t).length;
+      return `<button onclick="toggleTypeFilter('${t}')" id="filter-type-${t.replace('+','plus')}"
+        class="filter-btn" style="border-color:${col}33"
+        data-type="${t}">${t} <span style="opacity:.65">(${count})</span></button>`;
+    }).join('');
   }
 
   // Unit cards
@@ -1553,40 +1588,44 @@ function drawDaylightFull() {
   const W = cv.width || 720;
   const H = cv.height;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#0f1a2e'; ctx.fillRect(0,0,W,H); // dark background for daylight viz
+  ctx.fillStyle = '#0f1a2e'; ctx.fillRect(0,0,W,H);
 
   const shapes = gatherShapes(APT_DATA);
   const rooms  = APT_DATA.daylight?.rooms || [];
 
-  if (!shapes.length && !rooms.length) {
+  if (!rooms.length) {
     ctx.fillStyle='#a8a49e'; ctx.font='12px Inter,sans-serif';
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('No room data — add APT_WINDOW_* layers', W/2, H/2); return;
+    ctx.fillText('No daylight data — add APT_WINDOW_* layers', W/2, H/2); return;
   }
 
-  // Unified bounding box
-  const allVerts = [
-    ...shapes.flatMap(s => s.pts||[]),
+  // Bounding box from ROOM vertices only (not all shapes) so scale fits the apartment plan tightly
+  const roomVerts = [
     ...rooms.flatMap(r => r.vertices||[]),
     ...rooms.flatMap(r => (r.df_grid||[]).map(p=>[p.x,p.y]))
   ];
-  if (!allVerts.length) return;
+  if (!roomVerts.length) return;
   let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
-  for(const[x,y]of allVerts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
-  const pad=32;
+  for(const[x,y]of roomVerts){mnx=Math.min(mnx,x);mny=Math.min(mny,y);mxx=Math.max(mxx,x);mxy=Math.max(mxy,y);}
+  // Small padding
+  const pad=28;
   const sc=Math.min((W-pad*2)/Math.max(mxx-mnx,.1),(H-pad*2)/Math.max(mxy-mny,.1));
   const ox=pad+((W-pad*2)-(mxx-mnx)*sc)/2;
   const oy=pad+((H-pad*2)-(mxy-mny)*sc)/2;
   const xf={tx:x=>ox+(x-mnx)*sc, ty:y=>H-(oy+(y-mny)*sc), sc, mnx, mny, mxx, mxy};
 
-  // Dark room outlines
+  // Draw background shapes (building geometry) that fall within the room bounds
   for(const s of shapes){
     if(!s.pts||s.pts.length<3) continue;
+    // Only draw shapes that are close to the daylight rooms
+    const cx=s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length;
+    const cy=s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length;
+    if(cx<mnx-2||cx>mxx+2||cy<mny-2||cy>mxy+2) continue;
     ctx.beginPath(); ctx.moveTo(xf.tx(s.pts[0][0]),xf.ty(s.pts[0][1]));
     for(let i=1;i<s.pts.length;i++) ctx.lineTo(xf.tx(s.pts[i][0]),xf.ty(s.pts[i][1]));
     ctx.closePath();
-    if (s.building) { ctx.fillStyle='rgba(10,10,10,.9)'; ctx.fill(); }
-    ctx.strokeStyle=s.building?'#444':'rgba(255,255,255,.08)'; ctx.lineWidth=s.building?2:0.8; ctx.stroke();
+    if (s.building) { ctx.fillStyle='rgba(10,10,10,.85)'; ctx.fill(); ctx.strokeStyle='#555'; ctx.lineWidth=1.5; ctx.stroke(); }
+    else { ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=0.8; ctx.stroke(); }
   }
 
   const allDF = rooms.flatMap(r=>(r.df_grid||[]).map(p=>p.df));
@@ -2298,6 +2337,94 @@ async function submitReport() {
   } catch (err) {
     alert('Report generation failed: ' + err.message);
     if (btn) { btn.textContent = 'Generate Compliance Report (.docx)'; btn.disabled = false; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// APARTMENT FILTERS
+// ═══════════════════════════════════════════════════════
+function toggleTypeFilter(type) {
+  if (APT_FILTER.types.has(type)) {
+    APT_FILTER.types.delete(type);
+  } else {
+    APT_FILTER.types.add(type);
+  }
+  applyFilters();
+}
+
+function setStatusFilter(status) {
+  APT_FILTER.status = status;
+  document.querySelectorAll('#filter-pass,#filter-fail,#filter-all').forEach(b => b.classList.remove('active'));
+  document.getElementById('filter-'+status)?.classList.add('active');
+  applyFilters();
+}
+
+function clearFilters() {
+  APT_FILTER.types.clear();
+  APT_FILTER.status = 'all';
+  document.querySelectorAll('.filter-btn[data-type]').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#filter-pass,#filter-fail').forEach(b => b.classList.remove('active'));
+  document.getElementById('filter-all')?.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  if (!BUILDING) return;
+  const mixColors = {studio:'#a855f7','1bed':'#6366f1','2bed':'#1a7a4a','3bed+':'#e85d25'};
+  const apts = BUILDING.apartments || [];
+
+  // Update type button states
+  document.querySelectorAll('.filter-btn[data-type]').forEach(b => {
+    const t = b.dataset.type;
+    const col = mixColors[t] || '#a8a49e';
+    if (APT_FILTER.types.has(t)) {
+      b.classList.add('active');
+      b.style.background = col;
+      b.style.borderColor = col;
+      b.style.color = '#fff';
+    } else {
+      b.classList.remove('active');
+      b.style.background = '';
+      b.style.borderColor = col + '33';
+      b.style.color = '';
+    }
+  });
+
+  // Show/hide clear button
+  const hasFilter = APT_FILTER.types.size > 0 || APT_FILTER.status !== 'all';
+  const clearBtn = document.getElementById('filter-clear');
+  if (clearBtn) clearBtn.style.display = hasFilter ? '' : 'none';
+
+  // Filter apartments
+  const filtered = apts.filter(apt => {
+    const typeOk = APT_FILTER.types.size === 0 || APT_FILTER.types.has(apt.apartment_type);
+    const statusOk = APT_FILTER.status === 'all' ||
+      (APT_FILTER.status === 'pass' && apt.pass === true) ||
+      (APT_FILTER.status === 'fail' && apt.pass === false);
+    return typeOk && statusOk;
+  });
+
+  // Update count label
+  const countEl = document.getElementById('filter-count');
+  if (countEl) {
+    if (hasFilter) {
+      countEl.textContent = `Showing ${filtered.length} of ${apts.length} apartments`;
+    } else {
+      countEl.textContent = '';
+    }
+  }
+
+  // Re-render grid with filtered apartments
+  const grid = document.getElementById('unit-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--mut);font-size:12px">No apartments match the current filter. <a href="#" onclick="clearFilters();return false" style="color:var(--acc)">Clear filter</a></div>';
+    return;
+  }
+  for (const apt of filtered) {
+    const card = buildUnitCard(apt);
+    grid.appendChild(card);
   }
 }
 
