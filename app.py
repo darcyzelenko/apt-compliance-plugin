@@ -24,11 +24,24 @@ register_report_routes(app)
 
 
 
+"""
+BUILDABILITY MODULE ROUTES
+Add these imports and routes to your existing app.py
+─────────────────────────────────────────────────────
+"""
+
+# ── Add to existing imports in app.py ────────────────────────────────────────
+# from buildability_engine import run_buildability, parse_dxf_for_buildability
+# import json, os
+
+# ── Add these routes to app.py ───────────────────────────────────────────────
+
+
 @app.route('/build')
 def build():
     return render_template('build.html')
- 
- 
+
+
 @app.route('/api/nest', methods=['POST'])
 def api_nest():
     \"\"\"
@@ -39,14 +52,14 @@ def api_nest():
     \"\"\"
     import json, os
     from buildability_engine import run_buildability, parse_dxf_for_buildability
- 
+
     # Load building system JSON
     system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
     with open(system_path) as f:
         system = json.load(f)
- 
+
     mode = request.form.get('mode') or (request.json or {}).get('mode', 'greedy')
- 
+
     # Branch: file upload vs JSON
     if 'dxf_file' in request.files:
         dxf_file = request.files['dxf_file']
@@ -62,14 +75,14 @@ def api_nest():
         wall_segments = data.get('wall_segments', [])
         openings = data.get('openings', [])
         room_bboxes = data.get('room_bboxes', [])
- 
+
     if not wall_segments:
         return jsonify({"error": "No wall segments provided"}), 400
- 
+
     result = run_buildability(wall_segments, openings, room_bboxes, system, mode=mode)
     return jsonify(result)
- 
- 
+
+
 @app.route('/api/building-system', methods=['GET'])
 def api_building_system():
     \"\"\"Returns the building_system.json for the frontend to read panel definitions.\"\"\"
@@ -78,8 +91,8 @@ def api_building_system():
     with open(system_path) as f:
         system = json.load(f)
     return jsonify(system)
- 
- 
+
+
 @app.route('/api/building-system', methods=['POST'])
 def api_update_building_system():
     \"\"\"Allows adding a custom panel to building_system.json at runtime.\"\"\"
@@ -87,25 +100,25 @@ def api_update_building_system():
     system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
     with open(system_path) as f:
         system = json.load(f)
- 
+
     body = request.json or {}
     panel_type = body.get('panel_type')  # 'wall_panels' | 'floor_panels'
     panel = body.get('panel')
- 
+
     if panel_type not in ('wall_panels', 'floor_panels', 'custom_panels'):
         return jsonify({'error': 'Invalid panel_type'}), 400
     if not panel or 'id' not in panel:
         return jsonify({'error': 'Panel must have an id'}), 400
- 
+
     # Avoid duplicates
     ids = [p['id'] for p in system.get(panel_type, [])]
     if panel['id'] in ids:
         return jsonify({'error': f"Panel {panel['id']} already exists"}), 409
- 
+
     system[panel_type].append(panel)
     with open(system_path, 'w') as f:
         json.dump(system, f, indent=2)
- 
+
     return jsonify({'ok': True, 'panel': panel})
 
 @app.route('/')
