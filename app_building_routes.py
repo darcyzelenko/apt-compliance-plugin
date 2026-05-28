@@ -48,7 +48,7 @@ def register_building_routes(app):
 
     # Re-use the session helpers already defined in app.py
     # (imported at call time to avoid circular imports at module level)
-    from app import _get_session, _set_session
+    from session_store import _get_session, _set_session
 
     # ── POST /api/check-building ───────────────────────────────────────────────
 
