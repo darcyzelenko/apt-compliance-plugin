@@ -2,40 +2,25 @@
 Victorian Apartment Compliance Checker  v0.4
 Flask web application
 """
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response
 import os, sys, json, urllib.request, urllib.parse, urllib.error
-from app_building_routes import register_building_routes
+import uuid, time, threading
 
 sys.path.insert(0, os.path.dirname(__file__))
+
 from compliance_engine import run_compliance
-
-
-from app_report_routes import register_report_routes
-
 from buildability_engine import run_buildability, parse_dxf_for_buildability
-import json, os
+from app_building_routes import register_building_routes
+from app_report_routes import register_report_routes
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
-
-
 register_report_routes(app)
+register_building_routes(app)
 
 
-
-"""
-BUILDABILITY MODULE ROUTES
-Add these imports and routes to your existing app.py
-─────────────────────────────────────────────────────
-"""
-
-# ── Add to existing imports in app.py ────────────────────────────────────────
-# from buildability_engine import run_buildability, parse_dxf_for_buildability
-# import json, os
-
-# ── Add these routes to app.py ───────────────────────────────────────────────
-
+# ── Buildability ──────────────────────────────────────────────────────────────
 
 @app.route('/build')
 def build():
@@ -44,23 +29,18 @@ def build():
 
 @app.route('/api/nest', methods=['POST'])
 def api_nest():
-    \"\"\"
+    """
     Accepts either:
       a) multipart DXF upload  (field: 'dxf_file')
       b) JSON body with pre-parsed data
     Plus: mode ('greedy' | 'min_variety'), optional manual overrides
-    \"\"\"
-    import json, os
-    from buildability_engine import run_buildability, parse_dxf_for_buildability
-
-    # Load building system JSON
+    """
     system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
     with open(system_path) as f:
         system = json.load(f)
 
     mode = request.form.get('mode') or (request.json or {}).get('mode', 'greedy')
 
-    # Branch: file upload vs JSON
     if 'dxf_file' in request.files:
         dxf_file = request.files['dxf_file']
         dxf_content = dxf_file.read().decode('utf-8', errors='replace')
@@ -85,8 +65,7 @@ def api_nest():
 
 @app.route('/api/building-system', methods=['GET'])
 def api_building_system():
-    \"\"\"Returns the building_system.json for the frontend to read panel definitions.\"\"\"
-    import json, os
+    """Returns the building_system.json for the frontend to read panel definitions."""
     system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
     with open(system_path) as f:
         system = json.load(f)
@@ -95,14 +74,13 @@ def api_building_system():
 
 @app.route('/api/building-system', methods=['POST'])
 def api_update_building_system():
-    \"\"\"Allows adding a custom panel to building_system.json at runtime.\"\"\"
-    import json, os
+    """Allows adding a custom panel to building_system.json at runtime."""
     system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
     with open(system_path) as f:
         system = json.load(f)
 
     body = request.json or {}
-    panel_type = body.get('panel_type')  # 'wall_panels' | 'floor_panels'
+    panel_type = body.get('panel_type')
     panel = body.get('panel')
 
     if panel_type not in ('wall_panels', 'floor_panels', 'custom_panels'):
@@ -110,7 +88,6 @@ def api_update_building_system():
     if not panel or 'id' not in panel:
         return jsonify({'error': 'Panel must have an id'}), 400
 
-    # Avoid duplicates
     ids = [p['id'] for p in system.get(panel_type, [])]
     if panel['id'] in ids:
         return jsonify({'error': f"Panel {panel['id']} already exists"}), 409
@@ -120,6 +97,9 @@ def api_update_building_system():
         json.dump(system, f, indent=2)
 
     return jsonify({'ok': True, 'panel': panel})
+
+
+# ── Compliance ────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -143,7 +123,7 @@ def check_compliance():
     except Exception as e:
         return jsonify({'error': f'Could not read file: {e}'}), 400
     jurisdiction = request.form.get('jurisdiction', 'VIC').strip().upper()
-    if jurisdiction not in ('VIC','NSW','BEST_PRACTICE'):
+    if jurisdiction not in ('VIC', 'NSW', 'BEST_PRACTICE'):
         jurisdiction = 'VIC'
     try:
         results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
@@ -156,15 +136,13 @@ def check_compliance():
 @app.route('/api/geocode', methods=['GET'])
 def geocode():
     """
-    Geocode an address using Nominatim (OSM) — free, no API key needed.
-    Returns lat/lon + identified noise sources within influence distances.
+    Geocode an address using Nominatim (OSM).
     GET /api/geocode?address=123+Smith+St+Collingwood+VIC
     """
     address = request.args.get('address', '').strip()
     if not address:
         return jsonify({'error': 'No address provided'}), 400
 
-    # Nominatim geocode
     encoded = urllib.parse.quote(address + ', Victoria, Australia')
     url = f'https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=1&countrycodes=au'
     req = urllib.request.Request(url, headers={
@@ -182,26 +160,14 @@ def geocode():
     lat = float(data[0]['lat'])
     lon = float(data[0]['lon'])
     display = data[0].get('display_name', address)
-
-    # Query Overpass API for nearby noise sources
     noise_sources = query_noise_sources(lat, lon)
 
-    return jsonify({
-        'address': display,
-        'lat': lat,
-        'lon': lon,
-        'noise_sources': noise_sources,
-    })
+    return jsonify({'address': display, 'lat': lat, 'lon': lon, 'noise_sources': noise_sources})
 
 
 def query_noise_sources(lat, lon):
-    """
-    Use Overpass API to find railways and major roads within noise influence distances.
-    Table D3: industry 300m, roads 300m, rail 80-135m.
-    """
-    # Search radius — use 400m to catch anything near influence boundaries
+    """Use Overpass API to find railways and major roads within noise influence distances."""
     radius = 400
-
     overpass_query = f"""
 [out:json][timeout:10];
 (
@@ -246,7 +212,6 @@ out center tags;
             name = tags.get('name', '')
 
             if railway in ('rail', 'subway'):
-                # Determine freight vs passenger
                 service = tags.get('service', '')
                 freight = 'freight' in name.lower() or service == 'freight'
                 source_type = 'RAIL_FREIGHT_METRO' if freight else 'RAIL_PASSENGER'
@@ -254,35 +219,27 @@ out center tags;
                 sources.append({
                     'type': source_type,
                     'label': f"{'Freight' if freight else 'Passenger'} railway{f' ({name})' if name else ''}",
-                    'distance_m': dist,
-                    'influence_m': influence,
+                    'distance_m': dist, 'influence_m': influence,
                     'in_range': dist <= influence,
                     'layer_suggestion': f'APT_NOISE_{source_type}',
                 })
-            elif railway == 'tram':
-                pass  # trams not in Table D3
             elif highway in ('motorway', 'trunk', 'primary'):
                 ref = tags.get('ref', '')
                 label = name or ref or highway
                 sources.append({
                     'type': 'ROAD',
                     'label': f"Major road{f' ({label})' if label else ''}",
-                    'distance_m': dist,
-                    'influence_m': 300,
-                    'in_range': dist <= 300,
-                    'layer_suggestion': 'APT_NOISE_ROAD',
+                    'distance_m': dist, 'influence_m': 300,
+                    'in_range': dist <= 300, 'layer_suggestion': 'APT_NOISE_ROAD',
                 })
             elif landuse == 'industrial':
                 sources.append({
                     'type': 'INDUSTRY',
                     'label': f"Industrial area{f' ({name})' if name else ''}",
-                    'distance_m': dist,
-                    'influence_m': 300,
-                    'in_range': dist <= 300,
-                    'layer_suggestion': 'APT_NOISE_INDUSTRY',
+                    'distance_m': dist, 'influence_m': 300,
+                    'in_range': dist <= 300, 'layer_suggestion': 'APT_NOISE_INDUSTRY',
                 })
 
-        # Deduplicate by type — keep closest
         seen = {}
         for s in sorted(sources, key=lambda x: x['distance_m']):
             if s['type'] not in seen:
@@ -311,10 +268,10 @@ def _send_dxf(filename, download_name):
 def sample():
     return _send_dxf('test_apartment.dxf', 'sample_2bed_passing.dxf')
 
+
 @app.route('/api/sample_fail')
 def sample_fail():
     return _send_dxf('test_apartment_failing.dxf', 'sample_3bed_failing.dxf')
-
 
 
 @app.route('/trace')
@@ -326,21 +283,17 @@ def trace():
 def fetch_floorplan():
     """
     Server-side proxy to fetch floor plan images from listing sites.
-    Avoids CORS issues and lets us parse listing pages for image URLs.
     POST { "url": "https://www.realestate.com.au/property/..." }
-    Returns { "image_url": "...", "images": [...], "address": "..." }
     """
     body = request.get_json(silent=True) or {}
     url = body.get('url', '').strip()
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
-    # Validate — only allow known listing domains
     allowed = ['realestate.com.au', 'domain.com.au', 'allhomes.com.au']
-    from urllib.parse import urlparse
-    host = urlparse(url).netloc.replace('www.', '')
+    host = urllib.parse.urlparse(url).netloc.replace('www.', '')
     if not any(host.endswith(d) for d in allowed):
-        return jsonify({'error': f'Only realestate.com.au, domain.com.au and allhomes.com.au are supported'}), 400
+        return jsonify({'error': 'Only realestate.com.au, domain.com.au and allhomes.com.au are supported'}), 400
 
     try:
         req = urllib.request.Request(url, headers={
@@ -354,18 +307,11 @@ def fetch_floorplan():
         return jsonify({'error': f'Could not fetch listing: {e}'}), 502
 
     import re
-
-    # Extract floor plan images — look for common patterns
     floor_plan_images = []
-
-    # realestate.com.au: floor plan images are in JSON-LD or og tags
-    # Pattern: "floorplan" near image URL
     patterns = [
         r'https?://[^"\']+(?:floorplan|floor.plan|fp)[^"\']*\.(?:jpg|jpeg|png|webp)',
         r'https?://[^"\']+\.(?:jpg|jpeg|png|webp)[^"\']*(?:floorplan|floor.plan)',
-        # realestate.com.au CDN pattern
         r'https?://rimages\.realestate\.com\.au/[^"\']+\.(?:jpg|jpeg|png)',
-        # domain.com.au
         r'https?://bucket-[^"\']+\.domain\.com\.au/[^"\']+\.(?:jpg|jpeg|png)',
     ]
 
@@ -377,7 +323,6 @@ def fetch_floorplan():
                 seen.add(img)
                 floor_plan_images.append(img)
 
-    # Also grab all images labelled near "floor" text in JSON blobs
     json_blobs = re.findall(r'\{[^{}]{0,2000}floor[^{}]{0,2000}\}', html, re.IGNORECASE | re.DOTALL)
     for blob in json_blobs[:10]:
         for m in re.finditer(r'"(?:url|src|href)"\s*:\s*"(https?://[^"]+\.(?:jpg|jpeg|png|webp))"', blob, re.IGNORECASE):
@@ -386,50 +331,33 @@ def fetch_floorplan():
                 seen.add(img)
                 floor_plan_images.append(img)
 
-    # Extract address
     address = ''
-    addr_patterns = [
-        r'<title>([^<]+)</title>',
-        r'"streetAddress"\s*:\s*"([^"]+)"',
-        r'"address"\s*:\s*"([^"]+)"',
-        r'property-info-address[^>]*>([^<]+)<',
-    ]
-    for pat in addr_patterns:
+    for pat in [r'<title>([^<]+)</title>', r'"streetAddress"\s*:\s*"([^"]+)"',
+                r'"address"\s*:\s*"([^"]+)"', r'property-info-address[^>]*>([^<]+)<']:
         m = re.search(pat, html, re.IGNORECASE)
         if m:
             candidate = m.group(1).strip()
-            if len(candidate) > 5 and len(candidate) < 200:
+            if 5 < len(candidate) < 200:
                 address = candidate
                 break
 
     if not floor_plan_images:
         return jsonify({
             'error': 'No floor plan images found on this listing. Try pasting the floor plan image URL directly.',
-            'images': [],
-            'address': address,
+            'images': [], 'address': address,
         }), 404
 
-    return jsonify({
-        'image_url': floor_plan_images[0],
-        'images': floor_plan_images[:6],
-        'address': address,
-    })
+    return jsonify({'image_url': floor_plan_images[0], 'images': floor_plan_images[:6], 'address': address})
 
 
 @app.route('/api/proxy-image')
 def proxy_image():
-    """
-    Proxy an image URL to avoid CORS when loading listing images into canvas.
-    GET /api/proxy-image?url=https://...
-    """
+    """Proxy an image URL to avoid CORS."""
     url = request.args.get('url', '').strip()
-    if not url:
-        return 'No URL', 400
-    if not url.startswith('http'):
+    if not url or not url.startswith('http'):
         return 'Invalid URL', 400
 
     import re
-    # Strip CDN filter directives that force webp — serve jpeg/png instead
     clean_url = re.sub(r'filters:[^/]+/', '', url)
 
     for attempt_url in ([clean_url, url] if clean_url != url else [url]):
@@ -442,23 +370,18 @@ def proxy_image():
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = resp.read()
                 ct = resp.headers.get('Content-Type', 'image/jpeg')
-            from flask import Response
             return Response(data, content_type=ct)
         except Exception:
             continue
     return 'Could not fetch image', 502
 
-import uuid
-import time
-import json
-import os
-import threading
 
-# File-backed session store -- survives server restarts within same dyno
-# Falls back gracefully if filesystem not writable
-SESSION_TTL = 7200  # 2 hours
+# ── Session store ─────────────────────────────────────────────────────────────
+
+SESSION_TTL = 7200
 _SESSION_FILE = '/tmp/apt_sessions.json'
 _session_lock = threading.Lock()
+
 
 def _load_sessions():
     try:
@@ -469,6 +392,7 @@ def _load_sessions():
         pass
     return {}
 
+
 def _save_sessions(sessions):
     try:
         with open(_SESSION_FILE, 'w') as f:
@@ -476,13 +400,6 @@ def _save_sessions(sessions):
     except Exception:
         pass
 
-def _clean_and_load():
-    with _session_lock:
-        sessions = _load_sessions()
-        now = time.time()
-        sessions = {k: v for k, v in sessions.items() if now - v['ts'] < SESSION_TTL}
-        _save_sessions(sessions)
-    return sessions
 
 def _get_session(token):
     with _session_lock:
@@ -491,6 +408,7 @@ def _get_session(token):
         if s and time.time() - s['ts'] < SESSION_TTL:
             return s
         return None
+
 
 def _set_session(token, results, ts=None):
     with _session_lock:
@@ -503,83 +421,51 @@ def _set_session(token, results, ts=None):
 
 @app.route('/api/store', methods=['POST'])
 def store_results():
-    """
-    Accepts a DXF file, runs compliance check, stores results, returns a token.
-    Used by Rhino/Revit plugins to get a shareable report URL.
-    POST multipart: dxf_file, ceiling_height, jurisdiction
-    Returns: { token: "abc123", url: "https://.../report/abc123" }
-    """
+    """Run compliance check, store results, return a token."""
     import traceback, logging
     try:
-        logging.warning('store_results: parsing request')
         if 'dxf_file' not in request.files:
-            logging.warning('store_results: no dxf_file in request.files, keys: ' + str(list(request.files.keys())) + ' form: ' + str(list(request.form.keys())))
-            return jsonify({'error': 'No DXF file', 'files': list(request.files.keys()), 'form': list(request.form.keys())}), 400
-
+            return jsonify({'error': 'No DXF file', 'files': list(request.files.keys())}), 400
         f = request.files['dxf_file']
         text = f.read().decode('utf-8', errors='replace')
         ceiling_h = float(request.form.get('ceiling_height', 2.7))
         jurisdiction = request.form.get('jurisdiction', 'VIC').upper()
         if jurisdiction not in ('VIC', 'NSW', 'BEST_PRACTICE'):
             jurisdiction = 'VIC'
-        logging.warning(f'store_results: parsed ok, dxf len={len(text)}, ceiling={ceiling_h}, jur={jurisdiction}')
     except Exception as e:
-        logging.error('store_results parse error: ' + traceback.format_exc())
-        return jsonify({'error': 'Request parsing failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
+        return jsonify({'error': 'Request parsing failed: ' + str(e)}), 500
 
     try:
-        logging.warning('store_results: running compliance')
         results = run_compliance(text, ceiling_h=ceiling_h, jurisdiction=jurisdiction)
-        logging.warning('store_results: compliance done')
     except Exception as e:
-        logging.error('store_results compliance error: ' + traceback.format_exc())
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-    try:
-        logging.warning('store_results: storing session')
-        token = uuid.uuid4().hex[:12]
-        _set_session(token, results)
-        logging.warning('store_results: session stored, token=' + token)
-    except Exception as e:
-        logging.error('store_results session error: ' + traceback.format_exc())
-        return jsonify({'error': 'Session storage failed: ' + str(e), 'traceback': traceback.format_exc()}), 500
-
+    token = uuid.uuid4().hex[:12]
+    _set_session(token, results)
     base_url = request.host_url.rstrip('/')
-    return jsonify({
-        'token': token,
-        'url': f'{base_url}/report/{token}',
-    })
+    return jsonify({'token': token, 'url': f'{base_url}/report/{token}'})
 
 
 @app.route('/report/<token>')
 def report(token):
-    """Serve the main page -- JS will fetch results using the token."""
     return render_template('index.html')
 
 
 @app.route('/api/test')
 def api_test():
-    """Quick health check -- returns engine version info."""
+    """Health check."""
     try:
-        from compliance_engine import build_adjacency, run_compliance
-        import inspect, os
+        from compliance_engine import build_adjacency
+        import inspect
         sig = str(inspect.signature(build_adjacency))
-        # Try a minimal compliance run to catch import-time errors
         test_dxf = '  0\nSECTION\n  2\nENTITIES\n  0\nENDSEC\n  0\nEOF'
         try:
-            r = run_compliance(test_dxf)
-            run_ok = True
-            run_err = None
+            run_compliance(test_dxf)
+            run_ok, run_err = True, None
         except Exception as re:
-            run_ok = False
-            run_err = str(re)
-        return jsonify({
-            'ok': True,
-            'build_adjacency_sig': sig,
-            'version': '2.0',
-            'run_compliance_ok': run_ok,
-            'run_compliance_error': run_err,
-        })
+            run_ok, run_err = False, str(re)
+        return jsonify({'ok': True, 'build_adjacency_sig': sig, 'version': '2.0',
+                        'run_compliance_ok': run_ok, 'run_compliance_error': run_err})
     except Exception as e:
         import traceback
         return jsonify({'ok': False, 'error': str(e), 'traceback': traceback.format_exc()})
@@ -626,12 +512,8 @@ def update_results(token):
 
 @app.route('/api/analyse-image', methods=['POST'])
 def analyse_image():
-    """
-    Send a floor plan image to Claude vision API.
-    Returns structured room data: polygons, scale, north.
-    POST JSON: { image: "<base64>", media_type: "image/jpeg" }
-    """
-    import os, requests as req
+    """Send a floor plan image to Claude vision API."""
+    import requests as req
 
     api_key = os.environ.get('ANTHROPIC_API_KEY', '')
     if not api_key:
@@ -671,14 +553,7 @@ Return ONLY a JSON object in this exact format, no other text:
 RULES:
 - vertices are [x, y] as proportions of image width and height (0.0 to 1.0), origin top-left
 - trace the actual room boundaries as accurately as possible, use 4-8 vertices per room
-- do not overlap rooms - each area belongs to one room only
 - layer must be one of: APT_ROOM_MAINBED, APT_ROOM_BED1, APT_ROOM_BED2, APT_ROOM_BED3, APT_ROOM_LIVING, APT_ROOM_BATHROOM, APT_ROOM_ENSUITE, APT_ROOM_LAUNDRY, APT_ROOM_ENTRY, APT_STORAGE_DESIGNATED, APT_POS
-- identify balconies/outdoor areas as APT_POS
-- identify combined bathroom+toilet as APT_ROOM_BATHROOM, separate toilet as APT_ROOM_BATHROOM
-- identify WIR/wardrobe as APT_STORAGE_DESIGNATED
-- if you see a dimension annotation (e.g. "3200" or "3.2m"), report it in scale
-- north: 0=up, 90=right, 180=down, 270=left
-- if the plan is too small or unclear, still return your best attempt
 - ONLY return the JSON object, nothing else"""
 
     try:
@@ -692,51 +567,31 @@ RULES:
             json={
                 'model': 'claude-opus-4-5',
                 'max_tokens': 2000,
-                'messages': [{
-                    'role': 'user',
-                    'content': [
-                        {
-                            'type': 'image',
-                            'source': {
-                                'type': 'base64',
-                                'media_type': media_type,
-                                'data': image_data,
-                            }
-                        },
-                        {
-                            'type': 'text',
-                            'text': prompt
-                        }
-                    ]
-                }]
+                'messages': [{'role': 'user', 'content': [
+                    {'type': 'image', 'source': {'type': 'base64', 'media_type': media_type, 'data': image_data}},
+                    {'type': 'text', 'text': prompt}
+                ]}]
             },
             timeout=60
         )
         response.raise_for_status()
         data = response.json()
         text = data['content'][0]['text'].strip()
-
-        # Strip markdown fences if present
         if text.startswith('```'):
             text = text.split('```')[1]
             if text.startswith('json'):
                 text = text[4:]
         text = text.strip()
-
         import json as json_mod
         result = json_mod.loads(text)
         return jsonify(result)
-
     except req.exceptions.RequestException as e:
         return jsonify({'error': 'API request failed: ' + str(e)}), 502
     except Exception as e:
         return jsonify({'error': 'Analysis failed: ' + str(e)}), 500
 
 
-register_building_routes(app)
-
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     print(f'\n  Apt. Compliance Checker — http://localhost:{port}\n')
