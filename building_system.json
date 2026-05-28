@@ -1,0 +1,43 @@
+{
+  "_schema_version": "1.0.0",
+  "_notes": "All dimensions in millimetres. Extend panel objects with price, materials, weight, lifting_points, fixings as data becomes available.",
+
+  "system_defaults": {
+    "wall_thickness": 200,
+    "storey_height": 3000,
+    "wall_height": 3000
+  },
+
+  "wall_panels": [
+    { "id": "W3600", "length": 3600, "label": "W3.6", "crane_lift": true, "install_minutes": 55, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "W3000", "length": 3000, "label": "W3.0", "crane_lift": true, "install_minutes": 50, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "W2400", "length": 2400, "label": "W2.4", "crane_lift": true, "install_minutes": 45, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "W1800", "length": 1800, "label": "W1.8", "crane_lift": true, "install_minutes": 40, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "W1200", "length": 1200, "label": "W1.2", "crane_lift": true, "install_minutes": 35, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "W600",  "length": 600,  "label": "W0.6", "crane_lift": true, "install_minutes": 25, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null }
+  ],
+
+  "floor_panels": [
+    { "id": "F3600x4000", "length": 3600, "width": 4000, "label": "F3.6×4.0", "crane_lift": true, "install_minutes": 60, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "F3000x4000", "length": 3000, "width": 4000, "label": "F3.0×4.0", "crane_lift": true, "install_minutes": 55, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "F2400x4000", "length": 2400, "width": 4000, "label": "F2.4×4.0", "crane_lift": true, "install_minutes": 50, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "F1800x4000", "length": 1800, "width": 4000, "label": "F1.8×4.0", "crane_lift": true, "install_minutes": 40, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null },
+    { "id": "F1200x4000", "length": 1200, "width": 4000, "label": "F1.2×4.0", "crane_lift": true, "install_minutes": 35, "weight_kg": null, "price": null, "materials": null, "lifting_points": null, "fixings": null }
+  ],
+
+  "door_frames": [
+    { "id": "D900",  "opening": 900,  "label": "D0.9",  "crane_lift": false, "install_minutes": 20 },
+    { "id": "D1200", "opening": 1200, "label": "D1.2",  "crane_lift": false, "install_minutes": 25 },
+    { "id": "D1800", "opening": 1800, "label": "D1.8",  "crane_lift": false, "install_minutes": 30 }
+  ],
+
+  "window_frames": [
+    { "id": "WF600",  "opening": 600,  "label": "WF0.6", "crane_lift": false, "install_minutes": 20 },
+    { "id": "WF900",  "opening": 900,  "label": "WF0.9", "crane_lift": false, "install_minutes": 20 },
+    { "id": "WF1200", "opening": 1200, "label": "WF1.2", "crane_lift": false, "install_minutes": 25 },
+    { "id": "WF1800", "opening": 1800, "label": "WF1.8", "crane_lift": false, "install_minutes": 30 },
+    { "id": "WF2400", "opening": 2400, "label": "WF2.4", "crane_lift": false, "install_minutes": 35 }
+  ],
+
+  "custom_panels": []
+}

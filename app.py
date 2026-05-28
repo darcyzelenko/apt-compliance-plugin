@@ -12,11 +12,101 @@ from compliance_engine import run_compliance
 
 from app_report_routes import register_report_routes
 
+from buildability_engine import run_buildability, parse_dxf_for_buildability
+import json, os
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
+
+
 register_report_routes(app)
+
+
+
+@app.route('/build')
+def build():
+    return render_template('build.html')
+ 
+ 
+@app.route('/api/nest', methods=['POST'])
+def api_nest():
+    \"\"\"
+    Accepts either:
+      a) multipart DXF upload  (field: 'dxf_file')
+      b) JSON body with pre-parsed data
+    Plus: mode ('greedy' | 'min_variety'), optional manual overrides
+    \"\"\"
+    import json, os
+    from buildability_engine import run_buildability, parse_dxf_for_buildability
+ 
+    # Load building system JSON
+    system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
+    with open(system_path) as f:
+        system = json.load(f)
+ 
+    mode = request.form.get('mode') or (request.json or {}).get('mode', 'greedy')
+ 
+    # Branch: file upload vs JSON
+    if 'dxf_file' in request.files:
+        dxf_file = request.files['dxf_file']
+        dxf_content = dxf_file.read().decode('utf-8', errors='replace')
+        parsed, err = parse_dxf_for_buildability(dxf_content)
+        if err:
+            return jsonify({"error": f"DXF parse error: {err}"}), 400
+        wall_segments = parsed['wall_segments']
+        openings = parsed['openings']
+        room_bboxes = parsed['room_bboxes']
+    else:
+        data = request.json or {}
+        wall_segments = data.get('wall_segments', [])
+        openings = data.get('openings', [])
+        room_bboxes = data.get('room_bboxes', [])
+ 
+    if not wall_segments:
+        return jsonify({"error": "No wall segments provided"}), 400
+ 
+    result = run_buildability(wall_segments, openings, room_bboxes, system, mode=mode)
+    return jsonify(result)
+ 
+ 
+@app.route('/api/building-system', methods=['GET'])
+def api_building_system():
+    \"\"\"Returns the building_system.json for the frontend to read panel definitions.\"\"\"
+    import json, os
+    system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
+    with open(system_path) as f:
+        system = json.load(f)
+    return jsonify(system)
+ 
+ 
+@app.route('/api/building-system', methods=['POST'])
+def api_update_building_system():
+    \"\"\"Allows adding a custom panel to building_system.json at runtime.\"\"\"
+    import json, os
+    system_path = os.path.join(os.path.dirname(__file__), 'building_system.json')
+    with open(system_path) as f:
+        system = json.load(f)
+ 
+    body = request.json or {}
+    panel_type = body.get('panel_type')  # 'wall_panels' | 'floor_panels'
+    panel = body.get('panel')
+ 
+    if panel_type not in ('wall_panels', 'floor_panels', 'custom_panels'):
+        return jsonify({'error': 'Invalid panel_type'}), 400
+    if not panel or 'id' not in panel:
+        return jsonify({'error': 'Panel must have an id'}), 400
+ 
+    # Avoid duplicates
+    ids = [p['id'] for p in system.get(panel_type, [])]
+    if panel['id'] in ids:
+        return jsonify({'error': f"Panel {panel['id']} already exists"}), 409
+ 
+    system[panel_type].append(panel)
+    with open(system_path, 'w') as f:
+        json.dump(system, f, indent=2)
+ 
+    return jsonify({'ok': True, 'panel': panel})
 
 @app.route('/')
 def index():
