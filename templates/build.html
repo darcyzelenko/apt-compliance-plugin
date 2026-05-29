@@ -5,381 +5,345 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Buildability · Apt</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
-  :root {
-    --bg:#0e0f11;--surface:#15171a;--panel:#1c1f23;--border:#2a2d33;
-    --accent:#c8f560;--accent2:#60b4f5;--warn:#f5a623;--danger:#f55a5a;
-    --text:#e8eaed;--muted:#6b7280;--mono:'DM Mono',monospace;--display:'Syne',sans-serif;
-    --cW3600:#c8f560;--cW3000:#60f5b4;--cW2400:#60c8f5;--cW1800:#a060f5;
-    --cW1200:#f560c8;--cW600:#f5a023;--cCUT:#f55a5a;--cFLOOR:#1e3a5a;--cFLOOR_CUT:#5a1e1e;
-  }
-  *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:var(--display);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
-  .topbar{height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;flex-shrink:0;z-index:10;}
-  .topbar-logo{font-weight:800;font-size:15px;letter-spacing:-.02em;color:var(--accent);}
-  .topbar-logo span{color:var(--text);}
-  .topbar-sep{width:1px;height:20px;background:var(--border);}
-  .mode-tabs{display:flex;gap:2px;background:var(--panel);border-radius:6px;padding:3px;}
-  .mode-tab{font-family:var(--mono);font-size:11px;padding:4px 12px;border:none;border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.02em;}
-  .mode-tab.active{background:var(--accent);color:#0e0f11;font-weight:500;}
-  .mode-tab:hover:not(.active){color:var(--text);background:var(--border);}
-  .topbar-actions{margin-left:auto;display:flex;gap:8px;align-items:center;}
-  .btn{font-family:var(--mono);font-size:11px;padding:6px 14px;border-radius:5px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;transition:all .15s;letter-spacing:.02em;}
-  .btn:hover{border-color:var(--accent);color:var(--accent);}
-  .btn-primary{background:var(--accent);color:#0e0f11;border-color:var(--accent);font-weight:500;}
-  .btn-primary:hover{opacity:.85;color:#0e0f11;}
-  .btn-sm{padding:4px 10px;font-size:10px;}
-  .main{flex:1;display:flex;overflow:hidden;}
-  /* Sidebar */
-  .sidebar{width:260px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
-  .sidebar::-webkit-scrollbar{width:3px;}.sidebar::-webkit-scrollbar-thumb{background:var(--border);}
-  .sidebar-section{border-bottom:1px solid var(--border);padding:12px 14px;}
-  .sidebar-title{font-size:9px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
-  .upload-zone{border:1.5px dashed var(--border);border-radius:8px;padding:16px 10px;text-align:center;cursor:pointer;transition:all .2s;}
-  .upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(200,245,96,.04);}
-  .upload-zone-icon{font-size:20px;margin-bottom:4px;}
-  .upload-zone p{font-size:11px;color:var(--muted);line-height:1.5;}
-  .upload-zone p strong{color:var(--text);display:block;font-size:12px;}
-  #dxf-file-input{display:none;}
-  .param-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
-  .param-label{font-size:11px;color:var(--muted);font-family:var(--mono);}
-  .param-value{font-size:11px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:3px 8px;width:80px;text-align:right;font-family:var(--mono);outline:none;}
-  .param-value:focus{border-color:var(--accent);}
-  .legend{display:flex;flex-direction:column;gap:4px;}
-  .legend-item{display:flex;align-items:center;gap:7px;font-size:10px;font-family:var(--mono);}
-  .legend-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
-  .layer-toggles{display:flex;flex-direction:column;gap:5px;}
-  .layer-toggle{display:flex;align-items:center;gap:8px;font-size:11px;font-family:var(--mono);cursor:pointer;color:var(--muted);transition:color .15s;}
-  .layer-toggle.active{color:var(--text);}
-  .toggle-pill{width:26px;height:13px;background:var(--border);border-radius:7px;position:relative;transition:background .2s;flex-shrink:0;}
-  .layer-toggle.active .toggle-pill{background:var(--accent);}
-  .toggle-pill::after{content:'';position:absolute;width:9px;height:9px;background:white;border-radius:5px;top:2px;left:2px;transition:transform .2s;}
-  .layer-toggle.active .toggle-pill::after{transform:translateX(13px);}
-  /* Logistics controls */
-  .logistics-btn{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--panel);cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted);transition:all .15s;margin-bottom:5px;width:100%;}
-  .logistics-btn:hover{border-color:var(--accent2);color:var(--accent2);}
-  .logistics-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(96,180,245,.08);}
-  .logistics-btn .lb-icon{font-size:16px;}
-  /* Cost params */
-  .cost-note{font-size:9px;font-family:var(--mono);color:var(--muted);line-height:1.5;margin-top:4px;}
-  /* Viewport */
-  .viewport-wrap{flex:1;position:relative;background:#060809;overflow:hidden;}
-  #viewport{width:100%;height:100%;display:block;cursor:default;}
-  #viewport.placing{cursor:crosshair;}
-  .vp-overlay{position:absolute;pointer-events:none;}
-  .vp-hint{bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
-  .vp-stats{top:12px;left:12px;display:flex;gap:6px;}
-  .stat-chip{background:rgba(0,0,0,.75);border:1px solid var(--border);border-radius:5px;padding:4px 10px;font-family:var(--mono);font-size:10px;color:var(--text);}
-  .stat-chip span{color:var(--accent);font-weight:500;}
-  .stat-chip.cost-chip span{color:var(--warn);}
-  /* Tooltip */
-  #panel-tooltip{position:fixed;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:11px;pointer-events:none;display:none;z-index:100;min-width:200px;box-shadow:0 4px 20px rgba(0,0,0,.5);}
-  #panel-tooltip .tt-title{font-size:13px;color:var(--accent);font-weight:500;margin-bottom:7px;font-family:var(--display);}
-  #panel-tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;color:var(--muted);margin-bottom:3px;}
-  #panel-tooltip .tt-row span:last-child{color:var(--text);}
-  #panel-tooltip .tt-sep{height:1px;background:var(--border);margin:6px 0;}
-  #panel-tooltip .tt-cost{color:var(--warn) !important;}
-  /* Right panel */
-  .report-panel{width:290px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
-  .report-tabs{display:flex;border-bottom:1px solid var(--border);}
-  .report-tab{flex:1;padding:9px 4px;font-family:var(--mono);font-size:9px;text-align:center;cursor:pointer;color:var(--muted);border:none;background:transparent;letter-spacing:.05em;text-transform:uppercase;border-bottom:2px solid transparent;transition:all .15s;}
-  .report-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-  .report-tab:hover:not(.active){color:var(--text);}
-  .report-content{flex:1;overflow-y:auto;padding:12px;}
-  .report-content::-webkit-scrollbar{width:3px;}.report-content::-webkit-scrollbar-thumb{background:var(--border);}
-  .summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;}
-  .summary-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:9px 11px;}
-  .summary-card .sc-value{font-size:20px;font-weight:700;color:var(--accent);line-height:1;margin-bottom:2px;}
-  .summary-card .sc-label{font-size:9px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
-  .summary-card.full{grid-column:span 2;}
-  .summary-card.warn .sc-value{color:var(--warn);}
-  .summary-card.danger .sc-value{color:var(--danger);}
-  .summary-card.info .sc-value{color:var(--accent2);}
-  .schedule-section{margin-bottom:14px;}
-  .schedule-section-title{font-size:9px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
-  .schedule-section-title::after{content:'';flex:1;height:1px;background:var(--border);}
-  .schedule-table{width:100%;border-collapse:collapse;}
-  .schedule-table th{font-family:var(--mono);font-size:9px;color:var(--muted);text-align:left;padding:3px 5px;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);}
-  .schedule-table td{font-family:var(--mono);font-size:10px;padding:4px 5px;border-bottom:1px solid rgba(42,45,51,.4);vertical-align:middle;}
-  .schedule-table tr:hover td{background:var(--panel);}
-  .type-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;}
-  .cut-badge{display:inline-block;font-size:8px;background:rgba(245,90,90,.15);color:var(--danger);border:1px solid rgba(245,90,90,.3);border-radius:3px;padding:1px 3px;margin-left:3px;vertical-align:middle;}
-  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--muted);text-align:center;padding:20px;}
-  .empty-state-icon{font-size:32px;opacity:.4;}
-  .empty-state h3{font-size:14px;color:var(--text);}
-  .empty-state p{font-size:11px;line-height:1.6;font-family:var(--mono);}
-  .loading-overlay{position:absolute;inset:0;background:rgba(14,15,17,.88);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:50;}
-  .loading-overlay.show{display:flex;}
-  .spinner{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  .loading-text{font-family:var(--mono);font-size:11px;color:var(--muted);}
-  .custom-form{display:flex;flex-direction:column;gap:6px;}
-  .custom-form .form-row{display:flex;gap:5px;align-items:center;}
-  .custom-form label{font-size:10px;font-family:var(--mono);color:var(--muted);width:65px;flex-shrink:0;}
-  .custom-form input,.custom-form select{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:11px;padding:4px 7px;outline:none;}
-  .custom-form input:focus,.custom-form select:focus{border-color:var(--accent);}
-  .notification{position:fixed;bottom:18px;right:18px;background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:11px;color:var(--accent);z-index:200;transform:translateY(50px);opacity:0;transition:all .25s;}
-  .notification.show{transform:translateY(0);opacity:1;}
-  .place-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.8);border:1px solid var(--accent2);border-radius:8px;padding:10px 18px;font-family:var(--mono);font-size:12px;color:var(--accent2);pointer-events:none;display:none;z-index:30;}
-  .place-hint.show{display:block;}
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700;800&display=swap');
+:root{
+  --bg:#0e0f11;--surface:#15171a;--panel:#1c1f23;--border:#2a2d33;
+  --accent:#c8f560;--accent2:#60b4f5;--warn:#f5a623;--danger:#f55a5a;
+  --text:#e8eaed;--muted:#6b7280;--mono:'DM Mono',monospace;--display:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--display);background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+.topbar{height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;z-index:10;}
+.logo{font-weight:800;font-size:15px;letter-spacing:-.02em;color:var(--accent);}
+.logo span{color:var(--text);}
+.sep{width:1px;height:20px;background:var(--border);}
+.mode-tabs{display:flex;gap:2px;background:var(--panel);border-radius:6px;padding:3px;}
+.mode-tab{font-family:var(--mono);font-size:11px;padding:4px 11px;border:none;border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;}
+.mode-tab.active{background:var(--accent);color:#0e0f11;font-weight:500;}
+.mode-tab:hover:not(.active){color:var(--text);background:var(--border);}
+.topbar-r{margin-left:auto;display:flex;gap:6px;align-items:center;}
+.btn{font-family:var(--mono);font-size:11px;padding:5px 13px;border-radius:5px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;transition:all .15s;}
+.btn:hover{border-color:var(--accent);color:var(--accent);}
+.btn-primary{background:var(--accent);color:#0e0f11;border-color:var(--accent);font-weight:500;}
+.btn-primary:hover{opacity:.85;color:#0e0f11;}
+.main{flex:1;display:flex;overflow:hidden;}
+.sidebar{width:255px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+.sidebar::-webkit-scrollbar{width:3px;}.sidebar::-webkit-scrollbar-thumb{background:var(--border);}
+.ss{border-bottom:1px solid var(--border);padding:11px 13px;}
+.st{font-size:9px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.upload-zone{border:1.5px dashed var(--border);border-radius:8px;padding:14px 10px;text-align:center;cursor:pointer;transition:all .2s;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:rgba(200,245,96,.04);}
+.upload-zone p{font-size:11px;color:var(--muted);line-height:1.5;}
+.upload-zone p strong{color:var(--text);display:block;font-size:12px;}
+#dxf-input{display:none;}
+.pr{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+.pl{font-size:11px;color:var(--muted);font-family:var(--mono);}
+.pv{font-size:11px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:3px 7px;width:75px;text-align:right;font-family:var(--mono);outline:none;}
+.pv:focus{border-color:var(--accent);}
+.lbt{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--panel);cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted);transition:all .15s;margin-bottom:4px;width:100%;}
+.lbt:hover,.lbt.active{border-color:var(--accent2);color:var(--accent2);}
+.lbt.active{background:rgba(96,180,245,.08);}
+.layer-toggles{display:flex;flex-direction:column;gap:5px;}
+.layer-toggle{display:flex;align-items:center;gap:8px;font-size:11px;font-family:var(--mono);cursor:pointer;color:var(--muted);transition:color .15s;}
+.layer-toggle.active{color:var(--text);}
+.toggle-pill{width:26px;height:13px;background:var(--border);border-radius:7px;position:relative;transition:background .2s;flex-shrink:0;}
+.layer-toggle.active .toggle-pill{background:var(--accent);}
+.toggle-pill::after{content:'';position:absolute;width:9px;height:9px;background:white;border-radius:5px;top:2px;left:2px;transition:transform .2s;}
+.layer-toggle.active .toggle-pill::after{transform:translateX(13px);}
+.legend{display:flex;flex-direction:column;gap:4px;}
+.li{display:flex;align-items:center;gap:7px;font-size:10px;font-family:var(--mono);}
+.ls{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
+/* panel library */
+.panel-lib{display:flex;flex-direction:column;gap:3px;}
+.panel-lib-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--panel);font-family:var(--mono);font-size:10px;cursor:default;}
+.panel-lib-item .pi-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+.panel-lib-item .pi-id{color:var(--text);font-weight:500;flex:1;}
+.panel-lib-item .pi-cost{color:var(--warn);}
+/* custom panel modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:500;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;width:340px;}
+.modal h3{font-size:14px;margin-bottom:14px;color:var(--accent);}
+.modal .fr{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.modal label{font-size:10px;font-family:var(--mono);color:var(--muted);width:80px;flex-shrink:0;}
+.modal input,.modal select{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;outline:none;}
+.modal input:focus,.modal select:focus{border-color:var(--accent);}
+.modal-btns{display:flex;gap:8px;margin-top:14px;}
+/* viewport */
+.vw{flex:1;position:relative;background:#060809;overflow:hidden;}
+#cv{width:100%;height:100%;display:block;}
+#cv.placing{cursor:crosshair;}
+.vo{position:absolute;pointer-events:none;}
+.hint{bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);border:1px solid var(--border);border-radius:20px;padding:5px 13px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
+.stats{top:10px;left:10px;display:flex;gap:5px;}
+.chip{background:rgba(0,0,0,.8);border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-family:var(--mono);font-size:10px;color:var(--text);}
+.chip span{color:var(--accent);font-weight:500;}
+.chip.w span{color:var(--warn);}
+.chip.clickable{pointer-events:all;cursor:pointer;border-color:var(--warn);}
+.chip.clickable:hover{background:rgba(245,166,35,.1);}
+/* tooltip */
+#tt{position:fixed;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:11px;pointer-events:none;display:none;z-index:300;min-width:200px;box-shadow:0 4px 20px rgba(0,0,0,.5);}
+#tt .ttt{font-size:13px;color:var(--accent);font-weight:500;margin-bottom:7px;font-family:var(--display);}
+#tt .tr{display:flex;justify-content:space-between;gap:14px;color:var(--muted);margin-bottom:3px;}
+#tt .tr span:last-child{color:var(--text);}
+#tt .tsep{height:1px;background:var(--border);margin:5px 0;}
+#tt .tw{color:var(--warn)!important;}
+/* cost breakdown modal */
+.breakdown-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;width:480px;max-height:80vh;overflow-y:auto;z-index:600;display:none;box-shadow:0 8px 40px rgba(0,0,0,.6);}
+.breakdown-modal.show{display:block;}
+.breakdown-modal h2{font-size:16px;margin-bottom:4px;color:var(--accent);}
+.breakdown-modal .bd-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:14px;}
+.breakdown-modal table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.breakdown-modal th{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:3px 6px;border-bottom:1px solid var(--border);text-align:left;}
+.breakdown-modal td{padding:5px 6px;border-bottom:1px solid rgba(42,45,51,.4);}
+.breakdown-modal .bd-total{font-size:20px;font-weight:700;color:var(--warn);margin-top:12px;padding-top:10px;border-top:1px solid var(--border);}
+/* right panel */
+.rp{width:285px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.rtabs{display:flex;border-bottom:1px solid var(--border);}
+.rtab{flex:1;padding:8px 3px;font-family:var(--mono);font-size:9px;text-align:center;cursor:pointer;color:var(--muted);border:none;background:transparent;letter-spacing:.04em;text-transform:uppercase;border-bottom:2px solid transparent;transition:all .15s;}
+.rtab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.rc{flex:1;overflow-y:auto;padding:11px;}
+.rc::-webkit-scrollbar{width:3px;}.rc::-webkit-scrollbar-thumb{background:var(--border);}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;}
+.sc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:9px 10px;}
+.sc .sv{font-size:19px;font-weight:700;color:var(--accent);line-height:1;margin-bottom:2px;}
+.sc .sl{font-size:9px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.sc.full{grid-column:span 2;}
+.sc.w .sv{color:var(--warn);}
+.sc.d .sv{color:var(--danger);}
+.sc.i .sv{color:var(--accent2);}
+.sch-sec{margin-bottom:12px;}
+.sch-title{font-size:9px;font-family:var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:5px;}
+.sch-title::after{content:'';flex:1;height:1px;background:var(--border);}
+.sch-t{width:100%;border-collapse:collapse;}
+.sch-t th{font-family:var(--mono);font-size:9px;color:var(--muted);text-align:left;padding:3px 5px;border-bottom:1px solid var(--border);}
+.sch-t td{font-family:var(--mono);font-size:10px;padding:4px 5px;border-bottom:1px solid rgba(42,45,51,.4);}
+.sch-t tr:hover td{background:var(--panel);}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;}
+.cut-b{display:inline-block;font-size:8px;background:rgba(245,90,90,.15);color:var(--danger);border:1px solid rgba(245,90,90,.3);border-radius:3px;padding:1px 3px;margin-left:2px;}
+.empty-s{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--muted);text-align:center;padding:20px;}
+.lov{position:absolute;inset:0;background:rgba(14,15,17,.88);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:50;}
+.lov.show{display:flex;}
+.sp{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.82);border:1px solid var(--accent2);border-radius:8px;padding:9px 16px;font-family:var(--mono);font-size:11px;color:var(--accent2);pointer-events:none;display:none;z-index:30;}
+.ph.show{display:block;}
+.notif{position:fixed;bottom:16px;right:16px;background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:7px 13px;font-family:var(--mono);font-size:11px;color:var(--accent);z-index:700;transform:translateY(50px);opacity:0;transition:all .25s;}
+.notif.show{transform:translateY(0);opacity:1;}
 </style>
 </head>
 <body>
-
 <div class="topbar">
-  <div class="topbar-logo">apt<span>.</span> <span style="color:var(--muted);font-weight:400;font-size:12px">/ buildability</span></div>
-  <div class="topbar-sep"></div>
+  <div class="logo">apt<span>.</span> <span style="color:var(--muted);font-weight:400;font-size:12px">/ buildability</span></div>
+  <div class="sep"></div>
   <div class="mode-tabs">
     <button class="mode-tab active" data-mode="greedy">Greedy Fill</button>
     <button class="mode-tab" data-mode="min_variety">Min Variety</button>
   </div>
-  <div class="topbar-actions">
-    <button class="btn btn-sm" id="btn-reset">Reset</button>
-    <button class="btn btn-sm btn-primary" id="btn-analyse">Analyse</button>
-    <button class="btn btn-sm" id="btn-export">Export CSV</button>
+  <div class="topbar-r">
+    <button class="btn" id="btn-zoom">⊡ Zoom Extents</button>
+    <button class="btn" id="btn-reset">Reset</button>
+    <button class="btn btn-primary" id="btn-analyse">Analyse</button>
+    <button class="btn" id="btn-export">Export CSV</button>
   </div>
 </div>
 
 <div class="main">
-  <!-- Left sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">Floor Plan</div>
-      <div class="upload-zone" id="upload-zone">
-        <div class="upload-zone-icon">⊞</div>
-        <p><strong>Drop DXF here</strong>or click to upload<br><span style="font-size:10px">WALLS · DOORS · WINDOWS · ROOMS</span></p>
-      </div>
-      <input type="file" id="dxf-file-input" accept=".dxf">
-      <div style="margin-top:6px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center" id="file-status">No file · using demo plan</div>
+<!-- LEFT SIDEBAR -->
+<div class="sidebar">
+  <div class="ss">
+    <div class="st">Floor Plan</div>
+    <div class="upload-zone" id="upload-zone">
+      <div style="font-size:20px;margin-bottom:4px">⊞</div>
+      <p><strong>Drop DXF here</strong>or click to upload<br><span style="font-size:10px">WALLS · DOORS · WINDOWS · ROOMS</span></p>
     </div>
+    <input type="file" id="dxf-input" accept=".dxf">
+    <div style="margin-top:5px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center" id="file-status">No file · using demo plan</div>
+  </div>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">Parameters</div>
-      <div class="param-row"><span class="param-label">Wall height</span><input class="param-value" id="param-height" type="number" value="3000" step="100"></div>
-      <div class="param-row"><span class="param-label">Wall thickness</span><input class="param-value" id="param-thickness" type="number" value="200" step="50"></div>
-      <div class="param-row"><span class="param-label">Floor thickness</span><input class="param-value" id="param-floor-t" type="number" value="300" step="50"></div>
-      <div class="param-row"><span class="param-label">Delivery cost</span><input class="param-value" id="param-delivery" type="number" value="1.0" step="0.1"></div>
-      <div class="cost-note">Delivery factor: panels &gt;3000mm add 25% install time + cost premium. Smaller panels cost more $/lm (handling premium).</div>
-    </div>
+  <div class="ss">
+    <div class="st">Parameters</div>
+    <div class="pr"><span class="pl">Wall height</span><input class="pv" id="p-height" type="number" value="3000" step="100"></div>
+    <div class="pr"><span class="pl">Wall thickness</span><input class="pv" id="p-thick" type="number" value="200" step="50"></div>
+    <div class="pr"><span class="pl">Floor slab t</span><input class="pv" id="p-slab" type="number" value="300" step="50"></div>
+    <div class="pr"><span class="pl">Storeys</span><input class="pv" id="p-storeys" type="number" value="1" min="1" max="8" step="1"></div>
+    <div class="pr"><span class="pl">Delivery factor</span><input class="pv" id="p-delivery" type="number" value="1.0" step="0.1"></div>
+  </div>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">Logistics</div>
-      <button class="logistics-btn" id="btn-crane" data-placing="crane">
-        <span class="lb-icon">🏗</span><span>Place Crane</span>
-      </button>
-      <button class="logistics-btn" id="btn-truck" data-placing="truck">
-        <span class="lb-icon">🚛</span><span>Place Delivery Truck</span>
-      </button>
-      <button class="logistics-btn" id="btn-boundary" data-placing="boundary">
-        <span class="lb-icon">⬡</span><span>Draw Site Boundary</span>
-      </button>
-      <button class="logistics-btn" id="btn-clear-logistics" style="margin-top:8px;color:var(--muted)">
-        <span class="lb-icon">✕</span><span>Clear Logistics</span>
-      </button>
-    </div>
+  <div class="ss">
+    <div class="st">Panel Library</div>
+    <div class="panel-lib" id="panel-lib-list"></div>
+    <button class="btn" style="width:100%;margin-top:8px;font-size:10px" id="btn-add-panel">+ Add Custom Panel</button>
+  </div>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">View Layers</div>
-      <div class="layer-toggles">
-        <div class="layer-toggle active" data-layer="walls"><div class="toggle-pill"></div>Wall panels</div>
-        <div class="layer-toggle active" data-layer="floors"><div class="toggle-pill"></div>Floor panels</div>
-        <div class="layer-toggle active" data-layer="openings"><div class="toggle-pill"></div>Openings</div>
-        <div class="layer-toggle active" data-layer="junctions"><div class="toggle-pill"></div>Junctions</div>
-        <div class="layer-toggle active" data-layer="logistics"><div class="toggle-pill"></div>Logistics</div>
-        <div class="layer-toggle" data-layer="grid"><div class="toggle-pill"></div>Grid</div>
-      </div>
-    </div>
+  <div class="ss">
+    <div class="st">Logistics</div>
+    <button class="lbt" id="btn-crane"><span>🏗</span><span>Place Crane</span></button>
+    <button class="lbt" id="btn-truck"><span>🚛</span><span>Place Delivery Truck</span></button>
+    <button class="lbt" id="btn-boundary"><span>⬡</span><span>Draw Site Boundary</span></button>
+    <button class="lbt" id="btn-clear-log" style="margin-top:6px"><span>✕</span><span>Clear Logistics</span></button>
+  </div>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">Panel Legend</div>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW3600)"></div>W3.6 — $220/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW3000)"></div>W3.0 — $230/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW2400)"></div>W2.4 — $245/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW1800)"></div>W1.8 — $265/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW1200)"></div>W1.2 — $290/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cW600)"></div>W0.6 — $340/lm</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cCUT)"></div>Cut panel (+15%)</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:var(--cFLOOR)"></div>Floor panel</div>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-title">Add Custom Panel</div>
-      <div class="custom-form">
-        <div class="form-row"><label>Type</label><select id="custom-type"><option value="wall_panels">Wall</option><option value="floor_panels">Floor</option></select></div>
-        <div class="form-row"><label>ID</label><input id="custom-id" type="text" placeholder="e.g. W2700"></div>
-        <div class="form-row"><label>Length mm</label><input id="custom-length" type="number" placeholder="2700"></div>
-        <div class="form-row"><label>$/lm</label><input id="custom-cost" type="number" placeholder="250"></div>
-        <button class="btn" style="width:100%;margin-top:3px" id="btn-add-custom">+ Add Panel</button>
-      </div>
+  <div class="ss">
+    <div class="st">View Layers</div>
+    <div class="layer-toggles">
+      <div class="layer-toggle active" data-layer="walls"><div class="toggle-pill"></div>Wall panels</div>
+      <div class="layer-toggle active" data-layer="floors"><div class="toggle-pill"></div>Floor panels</div>
+      <div class="layer-toggle active" data-layer="openings"><div class="toggle-pill"></div>Openings</div>
+      <div class="layer-toggle active" data-layer="junctions"><div class="toggle-pill"></div>Junctions</div>
+      <div class="layer-toggle active" data-layer="logistics"><div class="toggle-pill"></div>Logistics</div>
+      <div class="layer-toggle" data-layer="grid"><div class="toggle-pill"></div>Grid</div>
     </div>
   </div>
 
-  <!-- 3D Viewport -->
-  <div class="viewport-wrap" id="viewport-wrap">
-    <canvas id="viewport"></canvas>
-    <div class="vp-overlay vp-stats" id="vp-stats" style="display:none">
-      <div class="stat-chip">Panels <span id="stat-panels">—</span></div>
-      <div class="stat-chip">Lifts <span id="stat-lifts">—</span></div>
-      <div class="stat-chip">Install <span id="stat-time">—</span>h</div>
-      <div class="stat-chip cost-chip">Cost <span id="stat-cost">—</span></div>
-    </div>
-    <div class="vp-overlay vp-hint">Orbit: L-drag &nbsp;·&nbsp; Pan: R-drag &nbsp;·&nbsp; Zoom: Scroll &nbsp;·&nbsp; Hover panel for details</div>
-    <div id="panel-tooltip">
-      <div class="tt-title" id="tt-title">—</div>
-      <div class="tt-row"><span>Length</span><span id="tt-length">—</span></div>
-      <div class="tt-row"><span>Type</span><span id="tt-type">—</span></div>
-      <div class="tt-row"><span>Crane lift</span><span id="tt-crane">—</span></div>
-      <div class="tt-row"><span>Install time</span><span id="tt-install">—</span></div>
-      <div class="tt-sep"></div>
-      <div class="tt-row"><span>Unit cost ($/lm)</span><span id="tt-rate" class="tt-cost">—</span></div>
-      <div class="tt-row"><span>Panel cost</span><span id="tt-cost" class="tt-cost">—</span></div>
-      <div class="tt-row"><span>Cut required</span><span id="tt-cut">—</span></div>
-      <div class="tt-row" id="tt-delivery-row" style="display:none"><span>Delivery premium</span><span id="tt-delivery" class="tt-cost">—</span></div>
-    </div>
-    <div class="place-hint" id="place-hint">Click on the ground plane to place</div>
-    <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div><div class="loading-text" id="loading-text">Nesting panels…</div></div>
-    <div class="loading-overlay show" id="empty-state" style="background:rgba(6,8,9,.94)">
-      <div class="empty-state"><div class="empty-state-icon">⊞</div><h3>Upload a DXF floor plan</h3><p>Or click <strong style="color:var(--accent)">Analyse</strong> to run the demo plan.</p></div>
-    </div>
+  <div class="ss">
+    <div class="st">Panel Legend</div>
+    <div class="legend" id="legend"></div>
   </div>
+</div>
 
-  <!-- Right panel -->
-  <div class="report-panel">
-    <div class="report-tabs">
-      <button class="report-tab active" data-rtab="summary">Summary</button>
-      <button class="report-tab" data-rtab="schedule">Schedule</button>
-      <button class="report-tab" data-rtab="cost">Cost</button>
-      <button class="report-tab" data-rtab="junctions">Junctions</button>
-    </div>
-    <div class="report-content" id="report-content">
-      <div class="empty-state" style="padding-top:50px"><div class="empty-state-icon" style="font-size:26px">📋</div><p>Run analysis to see<br>the buildability report</p></div>
+<!-- VIEWPORT -->
+<div class="vw" id="vw">
+  <canvas id="cv"></canvas>
+  <div class="vo stats" id="stats" style="display:none">
+    <div class="chip">Panels <span id="s-panels">—</span></div>
+    <div class="chip">Lifts <span id="s-lifts">—</span></div>
+    <div class="chip">Install <span id="s-time">—</span>h</div>
+    <div class="chip w clickable" id="cost-chip" title="Click for breakdown">Cost <span id="s-cost">—</span></div>
+  </div>
+  <div class="vo hint">Left-drag: Orbit &nbsp;·&nbsp; Right-drag: Pan &nbsp;·&nbsp; Scroll: Zoom &nbsp;·&nbsp; Hover: Details</div>
+  <div id="tt">
+    <div class="ttt" id="tt-title">—</div>
+    <div class="tr"><span>Length</span><span id="tt-len">—</span></div>
+    <div class="tr"><span>Type</span><span id="tt-type">—</span></div>
+    <div class="tr"><span>Crane lift</span><span id="tt-crane">—</span></div>
+    <div class="tr"><span>Install time</span><span id="tt-inst">—</span></div>
+    <div class="tsep"></div>
+    <div class="tr"><span>Rate ($/lm)</span><span id="tt-rate" class="tw">—</span></div>
+    <div class="tr"><span>Panel cost</span><span id="tt-cost" class="tw">—</span></div>
+    <div class="tr" id="tt-del-row" style="display:none"><span>Delivery +</span><span id="tt-del" class="tw">—</span></div>
+    <div class="tr"><span>Storey</span><span id="tt-storey">—</span></div>
+  </div>
+  <div class="ph" id="ph">Click ground plane to place</div>
+  <div class="lov" id="lov"><div class="sp"></div><div style="font-family:var(--mono);font-size:11px;color:var(--muted)">Nesting panels…</div></div>
+  <div class="lov show" id="empty-s" style="background:rgba(6,8,9,.94)">
+    <div class="empty-s"><div style="font-size:36px;opacity:.35">⊞</div><h3>Upload a DXF floor plan</h3><p style="font-family:var(--mono);font-size:11px">Or click <strong style="color:var(--accent)">Analyse</strong> to run the demo.</p></div>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="rp">
+  <div class="rtabs">
+    <button class="rtab active" data-rtab="summary">Summary</button>
+    <button class="rtab" data-rtab="schedule">Schedule</button>
+    <button class="rtab" data-rtab="cost">Cost</button>
+    <button class="rtab" data-rtab="junctions">Junctions</button>
+  </div>
+  <div class="rc" id="rc">
+    <div class="empty-s" style="padding-top:50px"><div style="font-size:26px;opacity:.3">📋</div><p>Run analysis to see the report</p></div>
+  </div>
+</div>
+</div>
+
+<!-- CUSTOM PANEL MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>Add Custom Panel</h3>
+    <div class="fr"><label>Type</label><select id="cp-type"><option value="wall">Wall</option><option value="floor">Floor</option></select></div>
+    <div class="fr"><label>ID</label><input id="cp-id" type="text" placeholder="e.g. W2700"></div>
+    <div class="fr"><label>Length (mm)</label><input id="cp-len" type="number" placeholder="2700"></div>
+    <div class="fr"><label>Width (mm)</label><input id="cp-wid" type="number" placeholder="4000" value="4000"></div>
+    <div class="fr"><label>$/lm</label><input id="cp-cost" type="number" placeholder="250"></div>
+    <div class="fr"><label>Install (min)</label><input id="cp-inst" type="number" placeholder="45"></div>
+    <div class="modal-btns">
+      <button class="btn btn-primary" id="cp-save">Add Panel</button>
+      <button class="btn" id="cp-cancel">Cancel</button>
     </div>
   </div>
 </div>
 
-<div class="notification" id="notification"></div>
+<!-- COST BREAKDOWN MODAL -->
+<div class="breakdown-modal" id="bd-modal">
+  <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+    <h2>Cost Breakdown</h2>
+    <button class="btn" id="bd-close" style="padding:3px 10px;font-size:10px">✕</button>
+  </div>
+  <div class="bd-sub">Supply cost only — excludes site prelims, connections, services</div>
+  <div id="bd-content"></div>
+</div>
+
+<div class="notif" id="notif"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 <script>
-// DEBUG: catch exact line before anything runs
-window.onerror = function(msg, src, line, col, err) {
-  const div = document.createElement('div');
-  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f55;color:#fff;padding:12px;z-index:9999;font:12px monospace;white-space:pre-wrap;';
-  div.textContent = 'ERROR at ' + src + ':' + line + ':' + col + '\n' + msg + '\n\n' + (err && err.stack ? err.stack : '');
-  document.body.appendChild(div);
-};
-</script>
-<script>
 'use strict';
 
-// ─── Cost model ───────────────────────────────────────────────────────────────
-// Base rate $/lm — smaller panels cost more (handling premium)
-// Panels >3000mm get +25% install time and delivery cost factor
-const PANEL_COST_RATE = {
-  W3600: 220, W3000: 230, W2400: 245,
-  W1800: 265, W1200: 290, W600: 340,
-  // floor panels
-  'F3600x4000': 180, 'F3000x4000': 190, 'F2400x4000': 200,
-  'F1800x4000': 220, 'F1200x4000': 250,
-  DEFAULT: 250,
+// ─── Panel library ────────────────────────────────────────────────────────────
+const WALL_PANELS = [
+  {id:'W3600',label:'W3.6',length:3600,width:200,crane_lift:true,install_min:55,rate:220},
+  {id:'W3000',label:'W3.0',length:3000,width:200,crane_lift:true,install_min:50,rate:230},
+  {id:'W2400',label:'W2.4',length:2400,width:200,crane_lift:true,install_min:45,rate:245},
+  {id:'W1800',label:'W1.8',length:1800,width:200,crane_lift:true,install_min:40,rate:265},
+  {id:'W1200',label:'W1.2',length:1200,width:200,crane_lift:true,install_min:35,rate:290},
+  {id:'W600', label:'W0.6',length:600, width:200,crane_lift:true,install_min:25,rate:340},
+];
+const FLOOR_PANELS = [
+  {id:'F3600x4000',label:'F3.6',length:3600,width:4000,crane_lift:true,install_min:60,rate:180},
+  {id:'F3000x4000',label:'F3.0',length:3000,width:4000,crane_lift:true,install_min:55,rate:190},
+  {id:'F2400x4000',label:'F2.4',length:2400,width:4000,crane_lift:true,install_min:50,rate:200},
+  {id:'F1800x4000',label:'F1.8',length:1800,width:4000,crane_lift:true,install_min:40,rate:220},
+  {id:'F1200x4000',label:'F1.2',length:1200,width:4000,crane_lift:true,install_min:35,rate:250},
+];
+const WALL_COLOURS = {
+  W3600:0xc8f560,W3000:0x60f5b4,W2400:0x60c8f5,
+  W1800:0xa060f5,W1200:0xf560c8,W600:0xf5a023,
+  CUT:0xf55a5a,FLOOR:0x1e3a5a,FLOOR_CUT:0x5a1e1e,
+  GROUND_SLAB:0x2a2a3a,
 };
-const LARGE_PANEL_THRESHOLD = 3000; // mm
-const LARGE_PANEL_INSTALL_PENALTY = 1.25;
-const LARGE_PANEL_DELIVERY_FACTOR = 1.15;
+const LARGE_THRESH = 3000;
 
-function panelCostRate(id) {
-  return PANEL_COST_RATE[id] || PANEL_COST_RATE.DEFAULT;
-}
-function panelCost(panel) {
-  const lenM = (panel.actual_length || panel.length) / 1000;
-  const rate = panelCostRate(panel.id);
-  let cost = lenM * rate;
-  if ((panel.actual_length || panel.length) > LARGE_PANEL_THRESHOLD) {
-    const deliveryFactor = parseFloat(document.getElementById('param-delivery').value) || 1.0;
-    cost *= LARGE_PANEL_DELIVERY_FACTOR * deliveryFactor;
+// Build legend + panel lib UI
+function buildLibraryUI() {
+  const ll = document.getElementById('legend');
+  const pl = document.getElementById('panel-lib-list');
+  ll.innerHTML=''; pl.innerHTML='';
+  const allPanels = [...WALL_PANELS,...FLOOR_PANELS];
+  for(const p of allPanels) {
+    const hex = WALL_COLOURS[p.id] || WALL_COLOURS[p.id.replace('x4000','')] || 0x888888;
+    const cssHex = '#'+hex.toString(16).padStart(6,'0');
+    ll.innerHTML += `<div class="li"><div class="ls" style="background:${cssHex}"></div>${p.label} — $${p.rate}/lm</div>`;
+    pl.innerHTML += `<div class="panel-lib-item">
+      <div class="pi-dot" style="background:${cssHex}"></div>
+      <span class="pi-id">${p.label} (${p.length}mm)</span>
+      <span class="pi-cost">$${p.rate}/lm</span>
+    </div>`;
   }
-  if (panel.is_cut) cost *= 1.15;
-  return cost;
+  ll.innerHTML += `<div class="li"><div class="ls" style="background:#f55a5a"></div>Cut panel (+15%)</div>`;
+  ll.innerHTML += `<div class="li"><div class="ls" style="background:#1e3a5a"></div>Floor panel</div>`;
 }
-function panelInstallMinutes(panel) {
-  let mins = panel.install_minutes || 45;
-  if ((panel.actual_length || panel.length) > LARGE_PANEL_THRESHOLD) {
-    mins *= LARGE_PANEL_INSTALL_PENALTY;
+buildLibraryUI();
+
+// ─── Cost helpers ─────────────────────────────────────────────────────────────
+function getRate(id) {
+  const p = [...WALL_PANELS,...FLOOR_PANELS].find(x=>x.id===id);
+  return p ? p.rate : 250;
+}
+function panelCost(p) {
+  const lenM = (p.actual_length||p.length)/1000;
+  let c = lenM * getRate(p.id);
+  if ((p.actual_length||p.length) > LARGE_THRESH) {
+    c *= 1.15 * (parseFloat(document.getElementById('p-delivery').value)||1);
   }
-  return Math.round(mins);
+  if (p.is_cut) c *= 1.15;
+  return c;
 }
-
-// ─── Safe Three.js constructors ──────────────────────────────────────────────
-// Mesh/LineSegments constructors with args call Object.assign internally in
-// this Three.js build, hitting sealed prototype properties. Construct empty first.
-function mkMesh(geo, mat) {
-  const m = new THREE.Mesh();
-  m.geometry = geo;
-  m.material = mat;
-  return m;
-}
-function mkLines(geo, mat) {
-  const ls = new THREE.LineSegments();
-  ls.geometry = geo;
-  ls.material = mat;
-  return ls;
-}
-function mkLineObj(geo, mat) {
-  const l = new THREE.Line();
-  l.geometry = geo;
-  l.material = mat;
-  return l;
-}
-
-// ─── Safe material factory (avoids Object.assign sealed-property bug) ───────────
-function mkLambert(hexColor, opacity) {
-  const m = new THREE.MeshLambertMaterial();
-  // Write directly to color components — bypasses Object.assign
-  m.color.r = ((hexColor >> 16) & 255) / 255;
-  m.color.g = ((hexColor >> 8)  & 255) / 255;
-  m.color.b = ( hexColor        & 255) / 255;
-  if (opacity !== undefined && opacity < 1) {
-    m.transparent = true;
-    m.opacity = opacity;
-  }
-  return m;
-}
-function mkBasic(hexColor) {
-  const m = new THREE.MeshBasicMaterial();
-  m.color.r = ((hexColor >> 16) & 255) / 255;
-  m.color.g = ((hexColor >> 8)  & 255) / 255;
-  m.color.b = ( hexColor        & 255) / 255;
-  return m;
-}
-function mkLine(hexColor, opacity) {
-  const m = new THREE.LineBasicMaterial();
-  m.color.r = ((hexColor >> 16) & 255) / 255;
-  m.color.g = ((hexColor >> 8)  & 255) / 255;
-  m.color.b = ( hexColor        & 255) / 255;
-  if (opacity !== undefined && opacity < 1) { m.transparent = true; m.opacity = opacity; }
-  return m;
-}
-
-// ─── Colours ──────────────────────────────────────────────────────────────────
-const PCOL = {
-  W3600:0xc8f560, W3000:0x60f5b4, W2400:0x60c8f5,
-  W1800:0xa060f5, W1200:0xf560c8, W600:0xf5a023,
-  CUT:0xf55a5a, FLOOR:0x1e3a5a, FLOOR_CUT:0x5a1e1e,
-  DOOR:0xf5a623, WINDOW:0x60b4f5,
-};
-function wallColour(panel) {
-  if (panel.is_cut) return PCOL.CUT;
-  return PCOL[panel.id.replace(/-/g,'')] || 0x888888;
-}
-function floorColour(panel) {
-  return panel.is_cut ? PCOL.FLOOR_CUT : PCOL.FLOOR;
+function panelInstMin(p) {
+  return Math.round((p.install_min||45) * ((p.actual_length||p.length)>LARGE_THRESH ? 1.25 : 1));
 }
 
 // ─── Demo data ────────────────────────────────────────────────────────────────
 const DEMO = {
-  wall_segments: [
+  wall_segments:[
     {start:[0,0],      end:[9600,0]},
     {start:[9600,0],   end:[9600,7200]},
     {start:[9600,7200],end:[0,7200]},
@@ -389,913 +353,806 @@ const DEMO = {
     {start:[5400,3600],end:[9600,3600]},
     {start:[3600,3600],end:[3600,7200]},
   ],
-  openings: [
-    {type:'door',   center:[5400,1800], width:900},
-    {type:'door',   center:[5400,5000], width:900},
-    {type:'door',   center:[3600,5000], width:900},
-    {type:'door',   center:[2400,3600], width:900},
-    {type:'door',   center:[1200,0],    width:900},
-    {type:'window', center:[3800,0],    width:1800},
-    {type:'window', center:[7500,0],    width:1800},
-    {type:'window', center:[9600,2000], width:2400},
-    {type:'window', center:[9600,5400], width:2400},
-    {type:'window', center:[1800,7200], width:1200},
-    {type:'window', center:[5500,7200], width:2400},
+  openings:[
+    {type:'door',   center:[5400,1800],width:900},
+    {type:'door',   center:[5400,5000],width:900},
+    {type:'door',   center:[3600,5000],width:900},
+    {type:'door',   center:[2400,3600],width:900},
+    {type:'door',   center:[1200,0],   width:900},
+    {type:'window', center:[3800,0],   width:1800},
+    {type:'window', center:[7500,0],   width:1800},
+    {type:'window', center:[9600,2000],width:2400},
+    {type:'window', center:[9600,5400],width:2400},
+    {type:'window', center:[1800,7200],width:1200},
+    {type:'window', center:[5500,7200],width:2400},
   ],
-  room_bboxes: [
-    {room_id:'Living',   bbox:[0,0,5400,3600]},
-    {room_id:'Kitchen',  bbox:[0,3600,3600,7200]},
-    {room_id:'Bathroom', bbox:[5400,0,9600,3600]},
-    {room_id:'Bed1',     bbox:[5400,3600,9600,7200]},
-    {room_id:'Bed2',     bbox:[3600,3600,5400,7200]},
+  room_bboxes:[
+    {room_id:'Living',  bbox:[0,0,5400,3600]},
+    {room_id:'Kitchen', bbox:[0,3600,3600,7200]},
+    {room_id:'Bathroom',bbox:[5400,0,9600,3600]},
+    {room_id:'Bed1',    bbox:[5400,3600,9600,7200]},
+    {room_id:'Bed2',    bbox:[3600,3600,5400,7200]},
   ]
 };
 
+// ─── Three.js factories (no-arg constructors avoid Object.assign sealed props) ─
+function mkMesh(geo,mat){ const m=new THREE.Mesh(); m.geometry=geo; m.material=mat; return m; }
+function mkLines(geo,mat){ const m=new THREE.LineSegments(); m.geometry=geo; m.material=mat; return m; }
+function mkLineObj(geo,mat){ const m=new THREE.Line(); m.geometry=geo; m.material=mat; return m; }
+function mkLambert(hex,opacity){
+  const m=new THREE.MeshLambertMaterial();
+  m.color.r=((hex>>16)&255)/255; m.color.g=((hex>>8)&255)/255; m.color.b=(hex&255)/255;
+  if(opacity!==undefined&&opacity<1){m.transparent=true;m.opacity=opacity;}
+  return m;
+}
+function mkBasic(hex,opacity){
+  const m=new THREE.MeshBasicMaterial();
+  m.color.r=((hex>>16)&255)/255; m.color.g=((hex>>8)&255)/255; m.color.b=(hex&255)/255;
+  if(opacity!==undefined&&opacity<1){m.transparent=true;m.opacity=opacity;m.depthWrite=false;}
+  return m;
+}
+function mkLineMat(hex,opacity){
+  const m=new THREE.LineBasicMaterial();
+  m.color.r=((hex>>16)&255)/255; m.color.g=((hex>>8)&255)/255; m.color.b=(hex&255)/255;
+  if(opacity!==undefined&&opacity<1){m.transparent=true;m.opacity=opacity;}
+  return m;
+}
+function mkEdges(geo,hex,opacity){
+  return mkLines(new THREE.EdgesGeometry(geo), mkLineMat(hex||0x000000,opacity||0.25));
+}
+function placeGroup(g,x,y,z,ry){
+  g.position.set(x,y,z);
+  if(ry) g.rotation.set(0,ry,0);
+  return g;
+}
+
 // ─── Three.js setup ───────────────────────────────────────────────────────────
-const canvas = document.getElementById('viewport');
-const wrap   = document.getElementById('viewport-wrap');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setClearColor(0x060809, 1);
+const cvEl = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({canvas: cvEl, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x060809,1);
 renderer.shadowMap.enabled = true;
 
 const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 1, 600000);
+const camera = new THREE.PerspectiveCamera(45,1,1,600000);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+const amb = new THREE.AmbientLight(0xffffff, 0.45); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffffff, 0.75);
-sun.position.set(20000, 30000, 15000);
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0x6080ff, 0.25);
-fill.position.set(-10000, 5000, -5000);
-scene.add(fill);
+sun.position.set(20000,30000,15000); sun.castShadow=true; scene.add(sun);
+const fill = new THREE.DirectionalLight(0x6080ff,0.25);
+fill.position.set(-10000,5000,-5000); scene.add(fill);
 
-const gridHelper = new THREE.GridHelper(60000, 60, 0x181c25, 0x181c25);
-scene.add(gridHelper);
-gridHelper.visible = false;
-
-function resizeRenderer() {
-  const w = wrap.clientWidth, h = wrap.clientHeight;
-  renderer.setSize(w, h);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+const grid = new THREE.GridHelper(80000,80);
+const vwEl = document.getElementById('vw');
+if(grid.material && grid.material.color){
+  grid.material.color.r=0.094; grid.material.color.g=0.106; grid.material.color.b=0.137;
 }
-resizeRenderer();
-window.addEventListener('resize', resizeRenderer);
+scene.add(grid); grid.visible=false;
 
-// ─── Orbit controls ───────────────────────────────────────────────────────────
-const orbitState = (() => {
-  let isOrbit=false, isPan=false;
-  let lastX=0, lastY=0;
-  let phi=0.85, theta=0.55, radius=22000;
-  const target = new THREE.Vector3(5000,0,4000);
-  const MIN_PHI=0.04, MAX_PHI=Math.PI/2-0.02;
+function resize(){
+  const w=vwEl.clientWidth,h=vwEl.clientHeight;
+  renderer.setSize(w,h);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+resize(); window.addEventListener('resize',resize);
 
-  function update() {
+// ─── Orbit/pan controls (L=orbit, R=pan) ─────────────────────────────────────
+const orbit={
+  phi:0.8,theta:0.5,radius:22000,
+  target:new THREE.Vector3(5000,0,4000),
+  MIN:0.04, MAX:Math.PI/2-0.02,
+  update(){
     camera.position.set(
-      target.x + radius*Math.sin(phi)*Math.cos(theta),
-      target.y + radius*Math.cos(phi),
-      target.z + radius*Math.sin(phi)*Math.sin(theta)
+      this.target.x+this.radius*Math.sin(this.phi)*Math.cos(this.theta),
+      this.target.y+this.radius*Math.cos(this.phi),
+      this.target.z+this.radius*Math.sin(this.phi)*Math.sin(this.theta)
     );
-    camera.lookAt(target);
+    camera.lookAt(this.target);
+  },
+  zoomToBox(box){
+    const c=new THREE.Vector3(); box.getCenter(c);
+    const s=new THREE.Vector3(); box.getSize(s);
+    this.target.set(c.x,0,c.z);
+    this.radius=Math.max(s.x,s.z)*1.5+2000;
+    this.phi=0.7; this.update();
   }
-  update();
+};
+orbit.update();
 
-  canvas.addEventListener('mousedown', e => {
-    if (placingMode) return;
-    if (e.button===0) isOrbit=true;
-    if (e.button===1||e.button===2) isPan=true;
-    lastX=e.clientX; lastY=e.clientY;
-    e.preventDefault();
-  });
-  canvas.addEventListener('contextmenu', e=>e.preventDefault());
-  window.addEventListener('mouseup', ()=>{isOrbit=false;isPan=false;});
-  window.addEventListener('mousemove', e=>{
-    const dx=e.clientX-lastX, dy=e.clientY-lastY;
-    lastX=e.clientX; lastY=e.clientY;
-    if (isOrbit) { theta-=dx*.005; phi=Math.max(MIN_PHI,Math.min(MAX_PHI,phi-dy*.005)); update(); }
-    if (isPan) {
-      const r=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),camera.position.clone().sub(target).normalize()).normalize();
-      const sc=radius*.0006;
-      target.addScaledVector(r,-dx*sc);
-      target.addScaledVector(new THREE.Vector3(0,1,0),dy*sc);
-      update();
-    }
-  });
-  canvas.addEventListener('wheel', e=>{
-    radius=Math.max(1500,Math.min(80000,radius+e.deltaY*3));
-    update(); e.preventDefault();
-  },{passive:false});
-  return {update, getRadius:()=>radius};
-})();
+let dragBtn=-1,lastX=0,lastY=0;
+cvEl.addEventListener('mousedown',e=>{
+  if(placingMode) return;
+  dragBtn=e.button; lastX=e.clientX; lastY=e.clientY; e.preventDefault();
+});
+cvEl.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('mouseup',()=>dragBtn=-1);
+window.addEventListener('mousemove',e=>{
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if(dragBtn===0){ // left = orbit
+    orbit.theta-=dx*.005;
+    orbit.phi=Math.max(orbit.MIN,Math.min(orbit.MAX,orbit.phi-dy*.005));
+    orbit.update();
+  } else if(dragBtn===2||dragBtn===1){ // right/middle = pan
+    const r=new THREE.Vector3().crossVectors(
+      new THREE.Vector3(0,1,0),
+      camera.position.clone().sub(orbit.target).normalize()
+    ).normalize();
+    const sc=orbit.radius*.0006;
+    orbit.target.addScaledVector(r,-dx*sc);
+    orbit.target.addScaledVector(new THREE.Vector3(0,1,0),dy*sc);
+    orbit.update();
+  }
+});
+cvEl.addEventListener('wheel',e=>{
+  orbit.radius=Math.max(1000,Math.min(100000,orbit.radius+e.deltaY*3));
+  orbit.update(); e.preventDefault();
+},{passive:false});
 
 // ─── Raycaster / hover tooltip ────────────────────────────────────────────────
-const raycaster = new THREE.Raycaster();
-const mouse2d   = new THREE.Vector2();
-const panelMeshes = [];
-const tooltip = document.getElementById('panel-tooltip');
-let hoveredMesh = null;
+const ray2d=new THREE.Vector2();
+const raycaster=new THREE.Raycaster();
+const gndPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+const panelMeshes=[];
+const ttEl=document.getElementById('tt');
+let hoveredMesh=null;
 
-function getCanvasXY(e) {
-  const r = canvas.getBoundingClientRect();
-  return [(e.clientX-r.left)/r.width*2-1, -((e.clientY-r.top)/r.height)*2+1];
+function cvXY(e){
+  const r=cvEl.getBoundingClientRect();
+  return [((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1];
+}
+function groundPt(e){
+  const[x,y]=cvXY(e); ray2d.x=x; ray2d.y=y;
+  raycaster.setFromCamera(ray2d,camera);
+  const v=new THREE.Vector3();
+  return raycaster.ray.intersectPlane(gndPlane,v) ? v : null;
 }
 
-canvas.addEventListener('mousemove', e => {
-  // Update tooltip position always
-  if (tooltip.style.display==='block') {
-    tooltip.style.left = (e.clientX+16)+'px';
-    tooltip.style.top  = Math.max(10,e.clientY-80)+'px';
+cvEl.addEventListener('mousemove',e=>{
+  if(ttEl.style.display==='block'){
+    ttEl.style.left=(e.clientX+16)+'px';
+    ttEl.style.top=Math.max(10,e.clientY-80)+'px';
   }
-
-  if (placingMode) { handlePlacingMove(e); return; }
-
-  [mouse2d.x, mouse2d.y] = getCanvasXY(e);
-  raycaster.setFromCamera(mouse2d, camera);
-  const hits = raycaster.intersectObjects(panelMeshes);
-  if (hits.length) {
-    const mesh = hits[0].object;
-    if (mesh !== hoveredMesh) {
-      hoveredMesh = mesh;
-      showTooltipForMesh(mesh, e);
-    }
+  if(placingMode){handlePlaceMove(e);return;}
+  const[x,y]=cvXY(e); ray2d.x=x; ray2d.y=y;
+  raycaster.setFromCamera(ray2d,camera);
+  const hits=raycaster.intersectObjects(panelMeshes);
+  if(hits.length){
+    const mesh=hits[0].object;
+    if(mesh!==hoveredMesh){hoveredMesh=mesh;showTT(mesh,e);}
   } else {
-    if (hoveredMesh) { hoveredMesh=null; tooltip.style.display='none'; }
+    hoveredMesh=null; ttEl.style.display='none';
   }
 });
-canvas.addEventListener('mouseleave', ()=>{ tooltip.style.display='none'; hoveredMesh=null; });
+cvEl.addEventListener('mouseleave',()=>{ttEl.style.display='none';hoveredMesh=null;});
 
-function showTooltipForMesh(mesh, e) {
-  const d = mesh.userData;
-  const lenM = ((d.actual_length||d.length)/1000).toFixed(2);
-  const instMin = panelInstallMinutes(d);
-  const cost = panelCost(d);
-  const rate = panelCostRate(d.id);
-  const large = (d.actual_length||d.length) > LARGE_PANEL_THRESHOLD;
-
-  document.getElementById('tt-title').textContent = d.label || d.id || (d.isFloor?'Floor Panel':'Wall Panel');
-  document.getElementById('tt-length').textContent = `${d.actual_length||d.length}mm (${lenM}m)`;
-  document.getElementById('tt-type').textContent = d.isFloor ? 'Floor panel' : (d.isOpening ? d.openingType+' panel' : 'Wall panel');
-  document.getElementById('tt-crane').textContent = d.crane_lift ? '✓ Yes' : '✗ No';
-  document.getElementById('tt-install').textContent = instMin + ' min' + (large ? ' ⚠ +25% (large)' : '');
-  document.getElementById('tt-rate').textContent = '$' + rate + '/lm';
-  document.getElementById('tt-cost').textContent = '$' + Math.round(cost);
-  document.getElementById('tt-cut').textContent = d.is_cut ? '⚠ Cut required' : 'Full panel';
-  const dr = document.getElementById('tt-delivery-row');
-  if (large) {
-    dr.style.display='flex';
-    document.getElementById('tt-delivery').textContent = '+' + Math.round((LARGE_PANEL_DELIVERY_FACTOR-1)*100) + '% delivery premium';
-  } else {
-    dr.style.display='none';
-  }
-  tooltip.style.display = 'block';
-  tooltip.style.left = (e.clientX+16)+'px';
-  tooltip.style.top  = Math.max(10,e.clientY-80)+'px';
+function showTT(mesh,e){
+  const d=mesh.userData;
+  const lenM=((d.actual_length||d.length)/1000).toFixed(2);
+  const im=panelInstMin(d);
+  const cost=panelCost(d);
+  const rate=getRate(d.id);
+  const large=(d.actual_length||d.length)>LARGE_THRESH;
+  document.getElementById('tt-title').textContent=d.label||d.id;
+  document.getElementById('tt-len').textContent=`${d.actual_length||d.length}mm (${lenM}m)`;
+  document.getElementById('tt-type').textContent=d.isFloor?'Floor panel':(d.isOpening?d.openingType+' frame':'Wall panel');
+  document.getElementById('tt-crane').textContent=d.crane_lift?'✓ Yes':'✗ No';
+  document.getElementById('tt-inst').textContent=im+'min'+(large?' ⚠ large':'');
+  document.getElementById('tt-rate').textContent='$'+rate+'/lm';
+  document.getElementById('tt-cost').textContent='$'+Math.round(cost);
+  const dr=document.getElementById('tt-del-row');
+  dr.style.display=large?'flex':'none';
+  if(large) document.getElementById('tt-del').textContent='+15% delivery';
+  document.getElementById('tt-storey').textContent='Level '+(d.storey||1);
+  ttEl.style.display='block';
+  ttEl.style.left=(e.clientX+16)+'px';
+  ttEl.style.top=Math.max(10,e.clientY-80)+'px';
 }
 
-// ─── Render loop ──────────────────────────────────────────────────────────────
-function animate() { requestAnimationFrame(animate); renderer.render(scene, camera); }
+function animate(){requestAnimationFrame(animate);renderer.render(scene,camera);}
 animate();
 
-// ─── Ground plane for placement raycasting ───────────────────────────────────
-const groundPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-function groundPoint(e) {
-  const [mx,my] = getCanvasXY(e);
-  raycaster.setFromCamera({x:mx,y:my}, camera);
-  const pt = new THREE.Vector3();
-  raycaster.ray.intersectPlane(groundPlane, pt);
-  return pt;
+// ─── Logistics ────────────────────────────────────────────────────────────────
+let placingMode=null;
+const logGrp=new THREE.Group(); logGrp.name='logistics'; scene.add(logGrp);
+let craneObj=null,truckObj=null;
+let bndPts=[],bndLine=null,bndClosing=false;
+let cranePos=null,truckPos=null;
+
+function mkCrane(x,z){
+  const g=new THREE.Group();
+  const tower=mkMesh(new THREE.CylinderGeometry(120,150,6000,8),mkLambert(0xf5a623));
+  tower.position.set(0,3000,0); g.add(tower);
+  const jib=mkMesh(new THREE.BoxGeometry(8000,80,80),mkLambert(0xf5a623));
+  jib.position.set(2000,6050,0); g.add(jib);
+  const cjib=mkMesh(new THREE.BoxGeometry(2500,80,80),mkLambert(0xf5a623));
+  cjib.position.set(-2250,6050,0); g.add(cjib);
+  g.position.set(x,0,z); cranePos={x,z}; return g;
 }
-
-// ─── Logistics placement ──────────────────────────────────────────────────────
-let placingMode = null; // 'crane'|'truck'|'boundary'
-const logisticsGroup = new THREE.Group(); logisticsGroup.name='logistics'; scene.add(logisticsGroup);
-let craneObj=null, truckObj=null;
-let boundaryPts=[], boundaryLine=null, boundaryClosing=false;
-const placeHint = document.getElementById('place-hint');
-
-function makeCrane(x, z) {
-  const g = new THREE.Group();
-  // Tower
-  const tower = mkMesh(new THREE.CylinderGeometry(120, 150,6000,8), mkLambert(0xf5a623));
-  tower.position.set(0,3000,0);
-  g.add(tower);
-  // Jib (horizontal arm)
-  const jib = mkMesh(new THREE.BoxGeometry(8000, 80,80), mkLambert(0xf5a623));
-  jib.position.set(2000,6050,0);
-  g.add(jib);
-  // Counter-jib
-  const cjib = mkMesh(new THREE.BoxGeometry(2500, 80,80), mkLambert(0xf5a623));
-  cjib.position.set(-2250,6050,0);
-  g.add(cjib);
-  // Label sprite
-  g.add(makeLabel('🏗 CRANE', 0, 6600, 0));
-  g.position.set(x, 0, z);
-  return g;
+function mkTruck(x,z){
+  const g=new THREE.Group();
+  const cab=mkMesh(new THREE.BoxGeometry(2000,1800,2400),mkLambert(0x4060a0));
+  cab.position.set(0,900,0); g.add(cab);
+  const trailer=mkMesh(new THREE.BoxGeometry(6000,1600,2400),mkLambert(0x304070));
+  trailer.position.set(4000,800,0); g.add(trailer);
+  g.position.set(x,0,z); truckPos={x,z}; return g;
 }
-
-function makeTruck(x, z) {
-  const g = new THREE.Group();
-  // Cab
-  const cab = mkMesh(new THREE.BoxGeometry(2000, 1800,2400), mkLambert(0x4060a0));
-  cab.position.set(0,900,0);
-  g.add(cab);
-  // Trailer
-  const trailer = mkMesh(new THREE.BoxGeometry(6000, 1600,2400), mkLambert(0x304070));
-  trailer.position.set(4000,800,0);
-  g.add(trailer);
-  g.add(makeLabel('🚛 TRUCK', 0, 2200, 0));
-  g.position.set(x, 0, z);
-  return g;
+function updateBnd(){
+  if(bndLine){logGrp.remove(bndLine);bndLine=null;}
+  if(bndPts.length<2) return;
+  const pts=bndPts.map(p=>new THREE.Vector3(p.x,10,p.z));
+  if(bndClosing&&bndPts.length>2) pts.push(pts[0].clone());
+  const geo=new THREE.BufferGeometry(); geo.setFromPoints(pts);
+  bndLine=mkLineObj(geo,mkLineMat(0xf5a623));
+  logGrp.add(bndLine);
 }
-
-function makeLabel(text, x, y, z) {
-  const c = document.createElement('canvas');
-  c.width=256; c.height=64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(0,0,256,64);
-  ctx.fillStyle='#c8f560'; ctx.font='bold 18px monospace';
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(text, 128, 32);
-  const tex = new THREE.CanvasTexture(c);
-  // Use a PlaneGeometry mesh instead of Sprite — avoids r128/r134 Sprite position issues
-  const plane = mkMesh(new THREE.PlaneGeometry(1800, 450),
-(() => { const m=new THREE.MeshBasicMaterial(); m.color.r=1;m.color.g=1;m.color.b=1; m.map=tex; m.transparent=true; m.side=THREE.DoubleSide; m.depthTest=false; return m; })()
-  );
-  const wrapper = new THREE.Group();
-  wrapper.position.set(x, y, z);
-  wrapper.add(plane);
-  return wrapper;
-}
-
-function updateBoundaryLine() {
-  if (boundaryLine) logisticsGroup.remove(boundaryLine);
-  if (boundaryPts.length < 2) return;
-  const pts = boundaryPts.map(p=>new THREE.Vector3(p.x,10,p.z));
-  if (boundaryClosing && boundaryPts.length>2) pts.push(pts[0].clone());
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  boundaryLine = mkLineObj(geo, mkLine(0xf5a623));
-  logisticsGroup.add(boundaryLine);
-}
-
-function handlePlacingMove(e) {
-  if (placingMode==='boundary' && boundaryPts.length>0) {
-    const pt = groundPoint(e);
-    if (!pt) return;
-    const first = boundaryPts[0];
-    const dist = Math.hypot(pt.x-first.x, pt.z-first.z);
-    boundaryClosing = dist < 600;
-    updateBoundaryLine();
+function handlePlaceMove(e){
+  if(placingMode==='boundary'&&bndPts.length>0){
+    const pt=groundPt(e); if(!pt) return;
+    bndClosing=Math.hypot(pt.x-bndPts[0].x,pt.z-bndPts[0].z)<800;
+    updateBnd();
   }
 }
-
-canvas.addEventListener('click', e => {
-  if (!placingMode) return;
-  const pt = groundPoint(e);
-  if (!pt) return;
-
-  if (placingMode==='crane') {
-    if (craneObj) logisticsGroup.remove(craneObj);
-    craneObj = makeCrane(pt.x, pt.z);
-    logisticsGroup.add(craneObj);
-    stopPlacing();
-    showNotification('Crane placed');
-  } else if (placingMode==='truck') {
-    if (truckObj) logisticsGroup.remove(truckObj);
-    truckObj = makeTruck(pt.x, pt.z);
-    logisticsGroup.add(truckObj);
-    stopPlacing();
-    showNotification('Truck placed');
-  } else if (placingMode==='boundary') {
-    if (boundaryClosing && boundaryPts.length>2) {
-      updateBoundaryLine();
-      stopPlacing();
-      showNotification('Site boundary set — '+ boundaryPts.length +' points');
-    } else {
-      boundaryPts.push({x:pt.x, z:pt.z});
-      updateBoundaryLine();
-    }
+cvEl.addEventListener('click',e=>{
+  if(!placingMode) return;
+  const pt=groundPt(e); if(!pt) return;
+  if(placingMode==='crane'){
+    if(craneObj) logGrp.remove(craneObj);
+    craneObj=mkCrane(pt.x,pt.z); logGrp.add(craneObj);
+    stopPlace(); notify('Crane placed'); updateLiftingReport();
+  } else if(placingMode==='truck'){
+    if(truckObj) logGrp.remove(truckObj);
+    truckObj=mkTruck(pt.x,pt.z); logGrp.add(truckObj);
+    stopPlace(); notify('Truck placed'); updateLiftingReport();
+  } else if(placingMode==='boundary'){
+    if(bndClosing&&bndPts.length>2){updateBnd();stopPlace();notify('Site boundary set');}
+    else{bndPts.push({x:pt.x,z:pt.z});updateBnd();}
   }
 });
-
-function startPlacing(mode) {
-  placingMode = mode;
-  canvas.classList.add('placing');
-  placeHint.classList.add('show');
-  placeHint.textContent = mode==='boundary'
-    ? 'Click to add boundary points · click near start to close'
-    : 'Click on the ground plane to place';
-  document.querySelectorAll('.logistics-btn').forEach(b=>b.classList.remove('active'));
+function startPlace(mode){
+  placingMode=mode; cvEl.style.cursor='crosshair';
+  document.getElementById('ph').classList.add('show');
+  document.getElementById('ph').textContent=
+    mode==='boundary'?'Click to add points · click near start to close':'Click on the ground to place';
+  document.querySelectorAll('.lbt').forEach(b=>b.classList.remove('active'));
   document.getElementById('btn-'+mode)?.classList.add('active');
 }
-function stopPlacing() {
-  placingMode = null;
-  canvas.classList.remove('placing');
-  placeHint.classList.remove('show');
-  document.querySelectorAll('.logistics-btn').forEach(b=>b.classList.remove('active'));
+function stopPlace(){
+  placingMode=null; cvEl.style.cursor='';
+  document.getElementById('ph').classList.remove('show');
+  document.querySelectorAll('.lbt').forEach(b=>b.classList.remove('active'));
+}
+
+// Lifting time estimate: average speed 0.1m/s lift, 60s attach/detach, travel from truck
+function updateLiftingReport(){
+  if(!currentResult||!cranePos||!truckPos) return;
+  const allPanels=currentResult.wall_segments.flatMap(s=>s.panels)
+    .concat(Object.values(currentResult.floor_tiles).flat());
+  const lifts=allPanels.filter(p=>p.crane_lift).length;
+  const storeys=parseInt(document.getElementById('p-storeys').value)||1;
+  const wallH=parseInt(document.getElementById('p-height').value)||3000;
+  const avgLiftHeight=(storeys*wallH/2)/1000; // m
+  const liftTimePerPanel=Math.round((avgLiftHeight/0.1)+60+30); // seconds
+  const travelToTruck=Math.round(Math.hypot(cranePos.x-truckPos.x,cranePos.z-truckPos.z)/1000*10); // ~10s/m
+  const totalLiftMin=Math.round(lifts*(liftTimePerPanel+travelToTruck)/60);
+  notify(`Crane+Truck: ${lifts} lifts · avg ${liftTimePerPanel+travelToTruck}s/lift · ~${totalLiftMin}min total`);
 }
 
 // ─── Scene building ───────────────────────────────────────────────────────────
-let sceneGroup = null;
-const layerVis = {walls:true,floors:true,openings:true,junctions:true,logistics:true,grid:false};
+let sceneGrp=null;
+const layerVis={walls:true,floors:true,openings:true,junctions:true,logistics:true,grid:false};
 
-function buildScene(result) {
-  if (sceneGroup) { scene.remove(sceneGroup); }
-  panelMeshes.length = 0;
-  sceneGroup = new THREE.Group();
+function buildScene(result){
+  if(sceneGrp){scene.remove(sceneGrp);}
+  panelMeshes.length=0;
+  sceneGrp=new THREE.Group();
 
-  const wallH  = parseInt(document.getElementById('param-height').value)    || 3000;
-  const wallT  = parseInt(document.getElementById('param-thickness').value)  || 200;
-  const floorT = parseInt(document.getElementById('param-floor-t').value)    || 300;
+  const wallH   =parseInt(document.getElementById('p-height').value)||3000;
+  const wallT   =parseInt(document.getElementById('p-thick').value)||200;
+  const slabT   =parseInt(document.getElementById('p-slab').value)||300;
+  const storeys =parseInt(document.getElementById('p-storeys').value)||1;
+  const storyStep=wallH+slabT;
 
-  const wallGroup   = new THREE.Group(); wallGroup.name='walls';
-  const floorGroup  = new THREE.Group(); floorGroup.name='floors';
-  const openGroup   = new THREE.Group(); openGroup.name='openings';
-  const junctGroup  = new THREE.Group(); junctGroup.name='junctions';
+  const wGrp=new THREE.Group(); wGrp.name='walls';
+  const fGrp=new THREE.Group(); fGrp.name='floors';
+  const oGrp=new THREE.Group(); oGrp.name='openings';
+  const jGrp=new THREE.Group(); jGrp.name='junctions';
 
-  // ── Wall panels ─────────────────────────────────────────────────────────
-  for (const seg of result.wall_segments) {
-    const sx=seg.start[0],sy=seg.start[1],ex=seg.end[0],ey=seg.end[1];
-    const segLen = Math.hypot(ex-sx,ey-sy);
-    const angle  = Math.atan2(ey-sy,ex-sx);
-
-    for (const panel of seg.panels) {
-      const len = panel.actual_length;
-      const col = wallColour(panel);
-      const geo = new THREE.BoxGeometry(len, wallH, wallT);
-      const mat = mkLambert(col, panel.is_cut ? 0.72 : 0.93);
-      const mesh = mkMesh(geo, mat);
-      const edges = mkLines(new THREE.EdgesGeometry(geo), mkLine(0x000000, 0.28));
-
-      const midT = (panel.position_mm + len/2) / segLen;
-      const px = sx+(ex-sx)*midT, pz = sy+(ey-sy)*midT;
-
-      // Flat group — mesh and edges are siblings, neither is child of the other
-      const g = new THREE.Group();
-      g.position.set(px, wallH/2, pz);
-      g.rotation.set(0, -angle, 0);
-      g.add(mesh);
-      g.add(edges);
-
-      mesh.userData = {...panel, isFloor:false, isOpening:false};
-      wallGroup.add(g);
-      panelMeshes.push(mesh);
+  // ── Ground concrete slab ──────────────────────────────────────────────────
+  // Bounding box from all room bboxes
+  let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+  for(const[,tiles] of Object.entries(result.floor_tiles)){
+    for(const t of tiles){
+      minX=Math.min(minX,t.x); minZ=Math.min(minZ,t.y);
+      maxX=Math.max(maxX,t.x+t.length); maxZ=Math.max(maxZ,t.y+t.width);
     }
   }
+  if(isFinite(minX)){
+    const sw=maxX-minX, sd=maxZ-minZ;
+    const slabGeo=new THREE.BoxGeometry(sw+wallT*2,slabT,sd+wallT*2);
+    const slabGrp=new THREE.Group();
+    slabGrp.position.set(minX+sw/2-wallT,-slabT*1.5,minZ+sd/2-wallT);
+    slabGrp.add(mkMesh(slabGeo,mkLambert(WALL_COLOURS.GROUND_SLAB,1)));
+    slabGrp.add(mkEdges(slabGeo,0x000000,0.15));
+    fGrp.add(slabGrp);
+  }
 
-  // ── Openings — rendered as wall panels with a hole ───────────────────────
-  // We render openings as coloured void panels: door panels reach 85% height,
-  // window panels are centred at 55% height and 50% height
-  for (const seg of result.wall_segments) {
-    const sx=seg.start[0],sy=seg.start[1],ex=seg.end[0],ey=seg.end[1];
-    const segLen=Math.hypot(ex-sx,ey-sy);
-    const angle=Math.atan2(ey-sy,ex-sx);
+  for(let storey=0;storey<storeys;storey++){
+    const yBase=storey*storyStep;
 
-    for (const op of (seg.openings||[])) {
-      const isDoor = op.type==='door';
-      const frameH = isDoor ? wallH*0.9 : wallH*0.45;
-      const frameY = isDoor ? frameH/2 : wallH*0.35 + frameH/2;
-      const col = isDoor ? PCOL.DOOR : PCOL.WINDOW;
-      const t = op.t_param || 0.5;
-      const mx = sx+(ex-sx)*t, mz = sy+(ey-sy)*t;
-      const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+    // ── Wall panels ─────────────────────────────────────────────────────────
+    for(const seg of result.wall_segments){
+      const sx=seg.start[0],sz=seg.start[1],ex=seg.end[0],ez=seg.end[1];
+      const segLen=Math.hypot(ex-sx,ez-sz);
+      const angle=Math.atan2(ez-sz,ex-sx);
 
-      // Helper: place a box in world space (rotated to wall angle) — NO child meshes
-      function addBox(w, h, d, opacity, offsetX, offsetY) {
-        const g = new THREE.Group();
-        const bGeo = new THREE.BoxGeometry(w, h, d);
-        const bMat = mkLambert(col, opacity); bMat.depthWrite=false;
-        const bMesh = mkMesh(bGeo, bMat);
-        g.add(bMesh);
-        // Edge lines as sibling in group, not child of mesh
-        const eMat = mkLine(col, Math.min(1,opacity*4));
-        g.add(mkLines(new THREE.EdgesGeometry(bGeo), eMat));
-        // Rotate group to wall angle, position in world space
-        g.rotation.set(0, -angle, 0);
-        g.position.set(
-          mx + cosA*offsetX - sinA*0,
-          offsetY,
-          mz + sinA*offsetX + cosA*0
-        );
-        return {group:g, mesh:bMesh};
-      }
-
-      // Main frame void
-      const {group:fGroup, mesh:fMesh} = addBox(op.width, frameH, wallT*0.55, 0.15, 0, frameY);
-      fMesh.userData = {
-        id: isDoor?'DOOR':'WINDOW',
-        label: isDoor ? `Door (${op.width}mm)` : `Window (${op.width}mm)`,
-        actual_length:op.width, length:op.width,
-        is_cut:false, crane_lift:false, install_minutes:isDoor?25:20,
-        isFloor:false, isOpening:true, openingType:op.type,
-      };
-      openGroup.add(fGroup);
-      panelMeshes.push(fMesh);
-
-      // Sill — separate group at world position
-      const sillY = isDoor ? 30 : frameY - frameH/2 - 30;
-      const {group:sGroup} = addBox(op.width, 55, wallT, 0.65, 0, sillY);
-      openGroup.add(sGroup);
-
-      // Lintel for windows only
-      if (!isDoor) {
-        const lintelY = frameY + frameH/2 + 30;
-        const {group:lGroup} = addBox(op.width, 55, wallT, 0.65, 0, lintelY);
-        openGroup.add(lGroup);
+      for(const panel of seg.panels){
+        const len=panel.actual_length;
+        const col=panel.is_cut?WALL_COLOURS.CUT:(WALL_COLOURS[panel.id]||0x888888);
+        const geo=new THREE.BoxGeometry(len,wallH,wallT);
+        const g=new THREE.Group();
+        g.add(mkMesh(geo,mkLambert(col,panel.is_cut?.72:.93)));
+        g.add(mkEdges(geo,0x000000,0.22));
+        const midT=(panel.position_mm+len/2)/segLen;
+        g.position.set(sx+(ex-sx)*midT,yBase+wallH/2,sz+(ez-sz)*midT);
+        g.rotation.set(0,-angle,0);
+        // Store ref on first mesh child for raycasting
+        g.children[0].userData={...panel,isFloor:false,isOpening:false,storey:storey+1};
+        wGrp.add(g);
+        panelMeshes.push(g.children[0]);
       }
     }
-  }
 
-  // ── Floor panels ─────────────────────────────────────────────────────────
-  for (const [roomId, tiles] of Object.entries(result.floor_tiles)) {
-    for (const tile of tiles) {
-      const col = floorColour(tile);
-      const geo = new THREE.BoxGeometry(tile.length, floorT, tile.width);
-      const mesh = mkMesh(geo, mkLambert(col, tile.is_cut ? 0.65 : 0.88));
-      const edges = mkLines(new THREE.EdgesGeometry(geo), mkLine(0x000000, 0.2));
+    // ── Openings (doors and windows with lintels/sills) ──────────────────────
+    for(const seg of result.wall_segments){
+      const sx=seg.start[0],sz=seg.start[1],ex=seg.end[0],ez=seg.end[1];
+      const segLen=Math.hypot(ex-sx,ez-sz);
+      const angle=Math.atan2(ez-sz,ex-sx);
 
-      const g = new THREE.Group();
-      g.position.set(tile.x+tile.length/2, -floorT/2, tile.y+tile.width/2);
-      g.add(mesh);
-      g.add(edges);
+      for(const op of (seg.openings||[])){
+        const isDoor=op.type==='door';
+        const col=isDoor?0xf5a623:0x60b4f5;
+        const frameH=isDoor?wallH*0.9:wallH*0.45;
+        const frameY=isDoor?frameH/2:wallH*0.35+frameH/2;
+        const t=op.t_param||0.5;
+        const mx=sx+(ex-sx)*t, mz=sz+(ez-sz)*t;
 
-      mesh.userData = {...tile, isFloor:true, isOpening:false};
-      floorGroup.add(g);
-      panelMeshes.push(mesh);
+        // Frame void (transparent backing)
+        const fGeo=new THREE.BoxGeometry(op.width,frameH,wallT*0.5);
+        const fg=new THREE.Group();
+        fg.add(mkMesh(fGeo,mkBasic(col,0.12)));
+        fg.add(mkEdges(fGeo,col,0.9));
+        fg.position.set(mx,yBase+frameY,mz);
+        fg.rotation.set(0,-angle,0);
+        fg.children[0].userData={id:isDoor?'DOOR':'WINDOW',label:isDoor?`Door ${op.width}mm`:`Window ${op.width}mm`,
+          actual_length:op.width,length:op.width,is_cut:false,crane_lift:false,
+          install_min:isDoor?25:20,isFloor:false,isOpening:true,openingType:op.type,storey:storey+1};
+        oGrp.add(fg);
+        panelMeshes.push(fg.children[0]);
+
+        // Lintel above opening (both doors and windows)
+        const lintelH=150, lintelGeo=new THREE.BoxGeometry(op.width+200,lintelH,wallT);
+        const lg=new THREE.Group();
+        lg.add(mkMesh(lintelGeo,mkLambert(col,0.75)));
+        lg.add(mkEdges(lintelGeo,col,0.6));
+        lg.position.set(mx,yBase+frameY+frameH/2+lintelH/2,mz);
+        lg.rotation.set(0,-angle,0);
+        oGrp.add(lg);
+
+        // Sill below windows (not doors)
+        if(!isDoor){
+          const sillH=100, sillGeo=new THREE.BoxGeometry(op.width+200,sillH,wallT*1.2);
+          const sg2=new THREE.Group();
+          sg2.add(mkMesh(sillGeo,mkLambert(col,0.75)));
+          sg2.add(mkEdges(sillGeo,col,0.6));
+          sg2.position.set(mx,yBase+frameY-frameH/2-sillH/2,mz);
+          sg2.rotation.set(0,-angle,0);
+          oGrp.add(sg2);
+        }
+      }
+    }
+
+    // ── Floor panels ────────────────────────────────────────────────────────
+    // Only tile between storeys (not above top storey)
+    if(storey<storeys-1||storeys===1){
+      for(const[,tiles] of Object.entries(result.floor_tiles)){
+        for(const tile of tiles){
+          const col=tile.is_cut?WALL_COLOURS.FLOOR_CUT:WALL_COLOURS.FLOOR;
+          // Correct floor panel orientation: align with longer room dimension
+          // tile.length is along X, tile.width is along Z
+          const tileLen=tile.length, tileWid=tile.width;
+          const geo=new THREE.BoxGeometry(tileLen,slabT,tileWid);
+          const g=new THREE.Group();
+          g.add(mkMesh(geo,mkLambert(col,tile.is_cut?.65:.9)));
+          g.add(mkEdges(geo,0x000000,0.18));
+          // Centre of panel in world space
+          g.position.set(tile.x+tileLen/2, yBase+wallH, tile.y+tileWid/2);
+          // No rotation needed — already aligned to room bbox axes
+          g.children[0].userData={...tile,actual_length:tileLen,isFloor:true,isOpening:false,storey:storey+1};
+          fGrp.add(g);
+          panelMeshes.push(g.children[0]);
+        }
+      }
+    }
+
+    // ── Junction markers ────────────────────────────────────────────────────
+    for(const j of result.junctions){
+      const col=j.type==='T_junction'?0xff5050:j.type==='L_corner'?0xffaa30:0xff40ff;
+      const geo=new THREE.CylinderGeometry(0,160,360,6);
+      const g=new THREE.Group();
+      g.add(mkMesh(geo,mkBasic(col)));
+      g.position.set(j.point[0],yBase+wallH+200,j.point[1]);
+      jGrp.add(g);
     }
   }
 
-  // ── Junction markers ──────────────────────────────────────────────────────
-  for (const j of result.junctions) {
-    const col = j.type==='T_junction'?0xff5050 : j.type==='L_corner'?0xffaa30 : 0xff40ff;
-    const geo = new THREE.CylinderGeometry(0,180,400,6);
-    const mat = mkBasic(col);
-    const mesh = mkMesh(geo, mat);
-    mesh.position.set(j.point[0], wallH+250, j.point[1]);
-    junctGroup.add(mesh);
-  }
+  // Apply layer visibility
+  wGrp.visible=layerVis.walls; fGrp.visible=layerVis.floors;
+  oGrp.visible=layerVis.openings; jGrp.visible=layerVis.junctions;
+  logGrp.visible=layerVis.logistics; grid.visible=layerVis.grid;
 
-  wallGroup.visible  = layerVis.walls;
-  floorGroup.visible = layerVis.floors;
-  openGroup.visible  = layerVis.openings;
-  junctGroup.visible = layerVis.junctions;
-  logisticsGroup.visible = layerVis.logistics;
-  gridHelper.visible = layerVis.grid;
-
-  sceneGroup.add(wallGroup, floorGroup, openGroup, junctGroup);
-  scene.add(sceneGroup);
+  sceneGrp.add(wGrp,fGrp,oGrp,jGrp);
+  scene.add(sceneGrp);
 }
 
-// ─── Report ───────────────────────────────────────────────────────────────────
-function renderReport(result) {
-  const r = result.report, s = r.summary;
-  document.getElementById('stat-panels').textContent = s.total_panels;
-  document.getElementById('stat-lifts').textContent  = s.total_crane_lifts;
-  document.getElementById('stat-time').textContent   = s.estimated_install_hours;
-  document.getElementById('stat-cost').textContent   = '$'+Math.round(s.total_cost||0).toLocaleString();
-  document.getElementById('vp-stats').style.display  = 'flex';
-
-  const content = document.getElementById('report-content');
-  if (activeRtab==='summary') {
-    content.innerHTML = `
-      <div class="summary-grid">
-        <div class="summary-card"><div class="sc-value">${s.total_wall_panels}</div><div class="sc-label">Wall panels</div></div>
-        <div class="summary-card info"><div class="sc-value">${s.total_floor_panels}</div><div class="sc-label">Floor panels</div></div>
-        <div class="summary-card warn"><div class="sc-value">${s.total_crane_lifts}</div><div class="sc-label">Crane lifts</div></div>
-        <div class="summary-card"><div class="sc-value">${s.estimated_install_hours}h</div><div class="sc-label">Est. install</div></div>
-        <div class="summary-card${s.cut_wall_panels>0?' danger':''}"><div class="sc-value">${s.cut_wall_panels}</div><div class="sc-label">Cut walls</div></div>
-        <div class="summary-card${s.cut_floor_panels>0?' danger':''}"><div class="sc-value">${s.cut_floor_panels}</div><div class="sc-label">Cut floors</div></div>
-        <div class="summary-card"><div class="sc-value">${s.wall_panel_types}</div><div class="sc-label">Panel types</div></div>
-        <div class="summary-card"><div class="sc-value">${s.junction_count}</div><div class="sc-label">Junctions</div></div>
-        <div class="summary-card full warn" style="padding:11px">
-          <div class="sc-label">Total estimated cost</div>
-          <div style="font-size:24px;font-weight:700;color:var(--warn);margin-top:3px">$${Math.round(s.total_cost||0).toLocaleString()}</div>
-        </div>
-        <div class="summary-card full" style="background:var(--panel)">
-          <div class="sc-label">Nesting mode</div>
-          <div style="font-size:12px;color:var(--accent);font-weight:600;margin-top:3px">${result.mode==='greedy'?'Greedy fill (longest-first)':'Minimise variety (global)'}</div>
-        </div>
-      </div>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8">
-        ${s.cut_wall_panels>0?`<div style="color:var(--warn)">⚠ ${s.cut_wall_panels} wall panel${s.cut_wall_panels>1?'s require':' requires'} site cutting</div>`:'<div style="color:var(--accent2)">✓ No wall panel cuts needed</div>'}
-        ${s.cut_floor_panels>0?`<div style="color:var(--warn)">⚠ ${s.cut_floor_panels} floor panel${s.cut_floor_panels>1?'s require':' requires'} cutting</div>`:'<div style="color:var(--accent2)">✓ No floor panel cuts needed</div>'}
-        ${s.large_panels>0?`<div style="color:var(--warn)">⚠ ${s.large_panels} panels &gt;3000mm — delivery premium applies</div>`:''}
-      </div>`;
-  }
-
-  if (activeRtab==='schedule') {
-    const wRows = r.wall_schedule.map(item=>{
-      const hexN = PCOL[item.id] || 0x888888;
-      const hex = '#'+hexN.toString(16).padStart(6,'0');
-      return `<tr>
-        <td><span class="type-dot" style="background:${hex}"></span>${item.label}${item.cut_count>0?`<span class="cut-badge">${item.cut_count}✂</span>`:''}</td>
-        <td style="text-align:right">${item.count}</td>
-        <td style="text-align:right">${item.crane_lifts}</td>
-        <td style="text-align:right">${Math.round(item.total_install_min/60*10)/10}h</td>
-      </tr>`;
-    }).join('');
-    const fRows = r.floor_schedule.map(item=>`<tr>
-      <td><span class="type-dot" style="background:#1e3a5a"></span>${item.label}${item.cut_count>0?`<span class="cut-badge">${item.cut_count}✂</span>`:''}</td>
-      <td style="text-align:right">${item.count}</td>
-      <td style="text-align:right">${item.crane_lifts}</td>
-      <td style="text-align:right">${Math.round(item.total_install_min/60*10)/10}h</td>
-    </tr>`).join('');
-    content.innerHTML = `
-      <div class="schedule-section"><div class="schedule-section-title">Wall Panels</div>
-        <table class="schedule-table"><thead><tr><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">Lifts</th><th style="text-align:right">Time</th></tr></thead><tbody>${wRows}</tbody></table></div>
-      <div class="schedule-section"><div class="schedule-section-title">Floor Panels</div>
-        <table class="schedule-table"><thead><tr><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">Lifts</th><th style="text-align:right">Time</th></tr></thead><tbody>${fRows}</tbody></table></div>`;
-  }
-
-  if (activeRtab==='cost') {
-    const cRows = r.wall_schedule.map(item=>{
-      const hexN=PCOL[item.id]||0x888888;
-      const hex='#'+hexN.toString(16).padStart(6,'0');
-      const rate = panelCostRate(item.id);
-      return `<tr>
-        <td><span class="type-dot" style="background:${hex}"></span>${item.label}</td>
-        <td style="text-align:right;color:var(--muted)">$${rate}/lm</td>
-        <td style="text-align:right">${item.count}</td>
-        <td style="text-align:right;color:var(--warn)">$${Math.round(item.total_cost||0).toLocaleString()}</td>
-      </tr>`;
-    }).join('');
-    const cfRows = r.floor_schedule.map(item=>{
-      const rate = panelCostRate(item.id);
-      return `<tr>
-        <td><span class="type-dot" style="background:#1e3a5a"></span>${item.label}</td>
-        <td style="text-align:right;color:var(--muted)">$${rate}/lm</td>
-        <td style="text-align:right">${item.count}</td>
-        <td style="text-align:right;color:var(--warn)">$${Math.round(item.total_cost||0).toLocaleString()}</td>
-      </tr>`;
-    }).join('');
-    content.innerHTML = `
-      <div class="summary-card full warn" style="margin-bottom:12px;padding:11px">
-        <div class="sc-label">Total panel cost (supply only)</div>
-        <div style="font-size:22px;font-weight:700;color:var(--warn);margin-top:2px">$${Math.round(s.total_cost||0).toLocaleString()}</div>
-        <div style="font-size:9px;color:var(--muted);font-family:var(--mono);margin-top:4px">Excludes site prelims, connections, services</div>
-      </div>
-      <div class="schedule-section"><div class="schedule-section-title">Wall Panel Costs</div>
-        <table class="schedule-table"><thead><tr><th>Type</th><th>Rate</th><th style="text-align:right">Qty</th><th style="text-align:right">Cost</th></tr></thead><tbody>${cRows}</tbody></table></div>
-      <div class="schedule-section"><div class="schedule-section-title">Floor Panel Costs</div>
-        <table class="schedule-table"><thead><tr><th>Type</th><th>Rate</th><th style="text-align:right">Qty</th><th style="text-align:right">Cost</th></tr></thead><tbody>${cfRows}</tbody></table></div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);padding-top:6px;line-height:1.7">
-        ※ Smaller panels carry a handling premium<br>
-        ※ Panels &gt;3000mm: +${Math.round((LARGE_PANEL_DELIVERY_FACTOR-1)*100)}% delivery premium<br>
-        ※ Cut panels: +15% waste allowance
-      </div>`;
-  }
-
-  if (activeRtab==='junctions') {
-    if (!result.junctions.length) { content.innerHTML='<div class="empty-state" style="padding-top:50px"><p>No junctions detected</p></div>'; return; }
-    const counts={};
-    for(const j of result.junctions) counts[j.type]=(counts[j.type]||0)+1;
-    const jRows = result.junctions.map(j=>{
-      const col=j.type==='T_junction'?'#f55a5a':j.type==='L_corner'?'#f5a623':'#a060f5';
-      const name=j.type==='T_junction'?'T-Junction':j.type==='L_corner'?'L Corner':'X Cross';
-      const note=j.type==='T_junction'?'stub trimmed':j.type==='L_corner'?'mitred':'pass-through';
-      return `<tr>
-        <td><span class="type-dot" style="background:${col}"></span>${name}</td>
-        <td style="font-size:9px;color:var(--muted)">(${Math.round(j.point[0])},${Math.round(j.point[1])})</td>
-        <td style="font-size:9px;color:var(--muted)">${note}</td>
-      </tr>`;
-    }).join('');
-    content.innerHTML=`
-      <div class="summary-grid" style="margin-bottom:10px">
-        ${Object.entries(counts).map(([t,c])=>{
-          const cls=t==='T_junction'?'danger':t==='L_corner'?'warn':'';
-          const n=t==='T_junction'?'T-Junctions':t==='L_corner'?'L Corners':'X Crosses';
-          return `<div class="summary-card ${cls}"><div class="sc-value">${c}</div><div class="sc-label">${n}</div></div>`;
-        }).join('')}
-      </div>
-      <div class="schedule-section"><div class="schedule-section-title">All Junctions</div>
-        <table class="schedule-table"><thead><tr><th>Type</th><th>Position</th><th>Treatment</th></tr></thead><tbody>${jRows}</tbody></table></div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:8px;line-height:1.7">
-        T-Junction: stub wall trimmed by ½ wall thickness<br>
-        L Corner: panels mitre to outer face<br>
-        X Cross: both walls pass through
-      </div>`;
-  }
+// ─── Nesting engine ───────────────────────────────────────────────────────────
+function dist2(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1]);}
+function projSeg(p,seg){
+  const dx=seg.end[0]-seg.start[0],dy=seg.end[1]-seg.start[1];
+  const l2=dx*dx+dy*dy; if(l2<1) return {t:0,foot:seg.start};
+  const t=Math.max(0,Math.min(1,((p[0]-seg.start[0])*dx+(p[1]-seg.start[1])*dy)/l2));
+  return {t,foot:[seg.start[0]+t*dx,seg.start[1]+t*dy]};
 }
-
-// ─── Engine simulation ────────────────────────────────────────────────────────
-const WALL_PANELS = [
-  {id:'W3600',label:'W3.6',length:3600,crane_lift:true,install_minutes:55},
-  {id:'W3000',label:'W3.0',length:3000,crane_lift:true,install_minutes:50},
-  {id:'W2400',label:'W2.4',length:2400,crane_lift:true,install_minutes:45},
-  {id:'W1800',label:'W1.8',length:1800,crane_lift:true,install_minutes:40},
-  {id:'W1200',label:'W1.2',length:1200,crane_lift:true,install_minutes:35},
-  {id:'W600', label:'W0.6',length:600, crane_lift:true,install_minutes:25},
-];
-const FLOOR_PANELS = [
-  {id:'F3600x4000',label:'F3.6×4.0',length:3600,width:4000,crane_lift:true,install_minutes:60},
-  {id:'F3000x4000',label:'F3.0×4.0',length:3000,width:4000,crane_lift:true,install_minutes:55},
-  {id:'F2400x4000',label:'F2.4×4.0',length:2400,width:4000,crane_lift:true,install_minutes:50},
-  {id:'F1800x4000',label:'F1.8×4.0',length:1800,width:4000,crane_lift:true,install_minutes:40},
-  {id:'F1200x4000',label:'F1.2×4.0',length:1200,width:4000,crane_lift:true,install_minutes:35},
-];
-
-function dist2d(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1]);}
-
-function projectOntoSeg(p, seg) {
-  const dx=seg.end[0]-seg.start[0], dy=seg.end[1]-seg.start[1];
-  const lenSq=dx*dx+dy*dy;
-  if(lenSq<1) return {t:0,foot:seg.start};
-  let t=((p[0]-seg.start[0])*dx+(p[1]-seg.start[1])*dy)/lenSq;
-  t=Math.max(0,Math.min(1,t));
-  return {t, foot:[seg.start[0]+t*dx, seg.start[1]+t*dy]};
-}
-
-function lineIntersect(s1,s2) {
-  const x1=s1.start[0],y1=s1.start[1],x2=s1.end[0],y2=s1.end[1];
-  const x3=s2.start[0],y3=s2.start[1],x4=s2.end[0],y4=s2.end[1];
+function lineX(s1,s2){
+  const[x1,y1,x2,y2]=[s1.start[0],s1.start[1],s1.end[0],s1.end[1]];
+  const[x3,y3,x4,y4]=[s2.start[0],s2.start[1],s2.end[0],s2.end[1]];
   const d=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
   if(Math.abs(d)<1e-6) return null;
   const t=((x1-x3)*(y3-y4)-(y1-y3)*(x3-x4))/d;
   const u=((x1-x3)*(y1-y2)-(y1-y3)*(x1-x2))/d;
-  return {pt:[x1+t*(x2-x1), y1+t*(y2-y1)], t, u};
+  return{pt:[x1+t*(x2-x1),y1+t*(y2-y1)],t,u};
 }
 
-function simulateEngine(data, mode) {
-  const WALL_T = 200;
-  const segments = data.wall_segments.map((raw,idx)=>({
-    idx, start:[...raw.start], end:[...raw.end],
-    length: dist2d(raw.start,raw.end),
-    openings:[], panels:[],
+function simulateEngine(data,mode){
+  const WALL_T=200;
+  const segs=data.wall_segments.map((r,i)=>({
+    idx:i,start:[...r.start],end:[...r.end],
+    length:dist2(r.start,r.end),openings:[],panels:[]
   }));
 
-  // ── Junction detection + wall trimming ────────────────────────────────
-  // For each pair of non-parallel walls: find intersection, classify, trim stubs
-  const junctions = [];
-  for(let i=0;i<segments.length;i++){
-    for(let j=i+1;j<segments.length;j++){
-      const si=segments[i], sj=segments[j];
+  // Junction detection + trimming
+  const junctions=[];
+  for(let i=0;i<segs.length;i++){
+    for(let j=i+1;j<segs.length;j++){
+      const si=segs[i],sj=segs[j];
       const ai=Math.atan2(si.end[1]-si.start[1],si.end[0]-si.start[0]);
       const aj=Math.atan2(sj.end[1]-sj.start[1],sj.end[0]-sj.start[0]);
-      let diff=Math.abs(ai-aj)*180/Math.PI % 180;
+      let diff=Math.abs(ai-aj)*180/Math.PI%180;
       if(diff<5||diff>175) continue;
-
-      const ix=lineIntersect(si,sj);
-      if(!ix) continue;
-      const {t,u} = ix;
-      // Must be within or very near both segments
+      const ix=lineX(si,sj); if(!ix) continue;
+      const{t,u}=ix;
       if(t<-0.02||t>1.02||u<-0.02||u>1.02) continue;
-
-      const iAtEnd=(t<0.04||t>0.96), jAtEnd=(u<0.04||u>0.96);
-      let jtype;
-      if(iAtEnd&&jAtEnd) jtype='L_corner';
-      else if(!iAtEnd&&jAtEnd||iAtEnd&&!jAtEnd) jtype='T_junction';
-      else jtype='X_cross';
-
+      const iEnd=(t<0.04||t>0.96),jEnd=(u<0.04||u>0.96);
+      let jtype=iEnd&&jEnd?'L_corner':(!iEnd&&jEnd||iEnd&&!jEnd)?'T_junction':'X_cross';
       junctions.push({type:jtype,point:ix.pt,seg_i:i,seg_j:j,t_i:t,t_j:u});
 
-      // Trim stub at T-junctions: stub end moves back by half wall thickness
-      if(jtype==='T_junction') {
-        const half=WALL_T/2;
-        // Determine which is stub (the one whose endpoint meets the other)
-        let stubSeg, stubT;
-        if(!iAtEnd&&jAtEnd) { stubSeg=sj; stubT=u; }
-        else { stubSeg=si; stubT=t; }
-
-        const dx=stubSeg.end[0]-stubSeg.start[0];
-        const dy=stubSeg.end[1]-stubSeg.start[1];
-        const len=dist2d(stubSeg.start,stubSeg.end);
-        if(len<1) continue;
-        const ux=dx/len, uy=dy/len;
-
-        // Which end of stub touches junction?
-        if(stubT>0.5) {
-          // junction at 'end' — pull end back
-          stubSeg.end=[stubSeg.end[0]-ux*half, stubSeg.end[1]-uy*half];
-        } else {
-          // junction at 'start' — push start forward
-          stubSeg.start=[stubSeg.start[0]+ux*half, stubSeg.start[1]+uy*half];
-        }
-        stubSeg.length = dist2d(stubSeg.start, stubSeg.end);
+      const half=WALL_T/2;
+      if(jtype==='T_junction'){
+        const[stub,stT]=(!iEnd&&jEnd)?[sj,u]:[si,t];
+        const len=dist2(stub.start,stub.end); if(len<1) continue;
+        const ux=(stub.end[0]-stub.start[0])/len,uy=(stub.end[1]-stub.start[1])/len;
+        if(stT>0.5){stub.end=[stub.end[0]-ux*half,stub.end[1]-uy*half];}
+        else{stub.start=[stub.start[0]+ux*half,stub.start[1]+uy*half];}
+        stub.length=dist2(stub.start,stub.end);
       }
-
-      // L-corner: trim both ends back by half thickness so they meet at face
-      if(jtype==='L_corner') {
-        const half=WALL_T/2;
-        for(const [seg,tVal] of [[si,t],[sj,u]]) {
-          const dx=seg.end[0]-seg.start[0], dy=seg.end[1]-seg.start[1];
-          const len=dist2d(seg.start,seg.end);
-          if(len<1) continue;
-          const ux=dx/len,uy=dy/len;
-          if(tVal>0.5){seg.end=[seg.end[0]-ux*half,seg.end[1]-uy*half];}
+      if(jtype==='L_corner'){
+        for(const[seg,tv] of [[si,t],[sj,u]]){
+          const len=dist2(seg.start,seg.end); if(len<1) continue;
+          const ux=(seg.end[0]-seg.start[0])/len,uy=(seg.end[1]-seg.start[1])/len;
+          if(tv>0.5){seg.end=[seg.end[0]-ux*half,seg.end[1]-uy*half];}
           else{seg.start=[seg.start[0]+ux*half,seg.start[1]+uy*half];}
-          seg.length=dist2d(seg.start,seg.end);
+          seg.length=dist2(seg.start,seg.end);
         }
       }
     }
   }
 
-  // ── Project openings onto walls ───────────────────────────────────────
-  for(const op of data.openings) {
-    let bestSeg=null,bestDist=Infinity,bestT=0;
-    for(const seg of segments){
-      const {t,foot}=projectOntoSeg(op.center,seg);
-      const d=dist2d(op.center,foot);
-      if(d<bestDist){bestDist=d;bestSeg=seg;bestT=t;}
+  // Project openings
+  for(const op of data.openings){
+    let best=null,bd=Infinity,bt=0;
+    for(const seg of segs){
+      const{t,foot}=projSeg(op.center,seg);
+      const d=dist2(op.center,foot);
+      if(d<bd){bd=d;best=seg;bt=t;}
     }
-    if(bestSeg&&bestDist<500){
-      bestSeg.openings.push({...op,t_param:bestT,wall_idx:bestSeg.idx});
-    }
+    if(best&&bd<500) best.openings.push({...op,t_param:bt,wall_idx:best.idx});
   }
 
-  // ── Solid span extraction ─────────────────────────────────────────────
-  function getSolidSpans(wallLen, openings) {
-    const gaps=openings.map(op=>{
-      const hw=op.width/2;
-      return [Math.max(0,op.t_param*wallLen-hw),Math.min(wallLen,op.t_param*wallLen+hw)];
+  // Solid spans
+  function spans(wallLen,openings){
+    const gaps=openings.map(o=>{
+      const hw=o.width/2;
+      return[Math.max(0,o.t_param*wallLen-hw),Math.min(wallLen,o.t_param*wallLen+hw)];
     }).sort((a,b)=>a[0]-b[0]);
     const merged=[];
     for(const g of gaps){
       if(merged.length&&g[0]<merged[merged.length-1][1])merged[merged.length-1][1]=Math.max(merged[merged.length-1][1],g[1]);
       else merged.push([...g]);
     }
-    const spans=[];let cur=0;
-    for(const[gs,ge]of merged){if(gs>cur+10)spans.push([cur,gs]);cur=ge;}
-    if(cur<wallLen-10)spans.push([cur,wallLen]);
-    return spans;
+    const out=[];let cur=0;
+    for(const[gs,ge] of merged){if(gs>cur+10)out.push([cur,gs]);cur=ge;}
+    if(cur<wallLen-10)out.push([cur,wallLen]);
+    return out;
   }
 
-  function makePanel(pdef, cursor, rem) {
-    const isCut = pdef.length > rem+50;
-    const actual = isCut ? rem : pdef.length;
-    return {...pdef, actual_length:Math.round(actual), position_mm:Math.round(cursor), is_cut:isCut};
+  function mkPanel(pdef,cursor,rem){
+    const isCut=pdef.length>rem+50;
+    return{...pdef,actual_length:Math.round(isCut?rem:pdef.length),position_mm:Math.round(cursor),is_cut:isCut};
   }
 
-  // ── Greedy: longest-first per span ───────────────────────────────────
-  function nestGreedy(wallLen, openings) {
-    const panels=[...WALL_PANELS].sort((a,b)=>b.length-a.length);
-    const result=[];
-    for(const[ss,se] of getSolidSpans(wallLen,openings)){
-      let cursor=ss;
-      while(cursor<se-50){
-        const rem=se-cursor;
+  function nestGreedy(wallLen,openings){
+    const ps=[...WALL_PANELS].sort((a,b)=>b.length-a.length);
+    const res=[];
+    for(const[ss,se] of spans(wallLen,openings)){
+      let cur=ss;
+      while(cur<se-50){
+        const rem=se-cur;
         let placed=false;
-        for(const p of panels){
-          if(p.length<=rem+50){result.push(makePanel(p,cursor,rem));cursor+=result[result.length-1].actual_length;placed=true;break;}
+        for(const p of ps){
+          if(p.length<=rem+50){const pan=mkPanel(p,cur,rem);res.push(pan);cur+=pan.actual_length;placed=true;break;}
         }
-        if(!placed){result.push(makePanel(panels[panels.length-1],cursor,rem));cursor=se;}
+        if(!placed){const p=ps[ps.length-1];const pan=mkPanel(p,cur,rem);res.push(pan);cur=se;}
       }
     }
-    return result;
+    return res;
   }
 
-  // ── Min variety: GLOBAL — pick one panel type that minimises
-  //    distinct types used across ALL wall spans simultaneously ──────────
-  function nestMinVariety(allSegments) {
-    // Gather all spans across all segments
-    const segSpans = allSegments.map(seg=>({
-      seg,
-      spans: getSolidSpans(seg.length, seg.openings)
-    }));
-
-    // Score each panel type: how many total cuts does it produce across all spans?
-    function scoreType(pdef) {
-      let totalCuts=0, totalPanels=0;
-      for(const {spans} of segSpans){
-        for(const[ss,se] of spans){
-          const spanLen=se-ss;
-          const nFull=Math.floor(spanLen/pdef.length);
-          const rem=spanLen-nFull*pdef.length;
-          totalPanels+=nFull+(rem>50?1:0);
-          if(rem>50) totalCuts++;
+  function nestMinVariety(allSegs){
+    // Global optimisation: score each panel type across all spans
+    function score(pdef){
+      let cuts=0,panels=0;
+      for(const seg of allSegs){
+        for(const[ss,se] of spans(seg.length,seg.openings)){
+          const sl=se-ss,nf=Math.floor(sl/pdef.length),rem=sl-nf*pdef.length;
+          panels+=nf+(rem>50?1:0); if(rem>50)cuts++;
         }
       }
-      return {cuts:totalCuts, panels:totalPanels};
+      return{cuts,panels};
     }
-
-    // Find the single panel type that gives fewest cuts (tie-break: fewer panels)
-    let bestPdef=WALL_PANELS[0], bestScore={cuts:9999,panels:9999};
+    let best=WALL_PANELS[0],bs={cuts:9999,panels:9999};
     for(const p of WALL_PANELS){
-      const sc=scoreType(p);
-      if(sc.cuts<bestScore.cuts||(sc.cuts===bestScore.cuts&&sc.panels<bestScore.panels)){
-        bestScore=sc; bestPdef=p;
-      }
+      const s=score(p);
+      if(s.cuts<bs.cuts||(s.cuts===bs.cuts&&s.panels<bs.panels)){bs=s;best=p;}
     }
-
-    // Apply that single type to all segments
-    for(const {seg,spans} of segSpans){
+    for(const seg of allSegs){
       seg.panels=[];
-      for(const[ss,se] of spans){
-        let cursor=ss;
-        while(cursor<se-50){
-          const rem=se-cursor;
-          seg.panels.push(makePanel(bestPdef,cursor,rem));
-          cursor+=seg.panels[seg.panels.length-1].actual_length;
+      for(const[ss,se] of spans(seg.length,seg.openings)){
+        let cur=ss;
+        while(cur<se-50){
+          const rem=se-cur;
+          const pan=mkPanel(best,cur,rem);
+          seg.panels.push(pan); cur+=pan.actual_length;
         }
       }
     }
   }
 
-  // Apply nesting
-  if(mode==='min_variety'){
-    nestMinVariety(segments);
-  } else {
-    for(const seg of segments) seg.panels=nestGreedy(seg.length,seg.openings);
-  }
+  if(mode==='min_variety') nestMinVariety(segs);
+  else for(const seg of segs) seg.panels=nestGreedy(seg.length,seg.openings);
 
-  // ── Floor tiling ──────────────────────────────────────────────────────
+  // Floor tiling — orient long panel dimension along longer room span
   const floor_tiles={};
   for(const room of data.room_bboxes){
-    const[minX,minY,maxX,maxY]=room.bbox;
-    const rW=maxX-minX,rH=maxY-minY;
+    const[x0,z0,x1,z1]=room.bbox;
+    const rW=x1-x0,rD=z1-z0;
     const p=FLOOR_PANELS[0];
     const tiles=[];
-    const longX=rW>=rH;
-    const spanLen=longX?rW:rH, spanWid=longX?rH:rW;
+    // Always use: panel.length along X, panel.width along Z
+    // If room is deeper than wide, rotate: swap length/width assignment
+    const rotated=rD>rW;
+    const spanL=rotated?rD:rW, spanW=rotated?rW:rD;
+    const panL=rotated?p.width:p.length, panW=rotated?p.length:p.width;
+
     let wCur=0;
-    while(wCur<spanWid-50){
-      const rw=Math.min(p.width,spanWid-wCur);
+    while(wCur<spanW-50){
+      const pw=Math.min(panW,spanW-wCur);
       let lCur=0;
-      while(lCur<spanLen-50){
-        const cl=Math.min(p.length,spanLen-lCur);
-        const isCut=(cl<p.length-50)||(rw<p.width-50);
-        const pdef={...p,id:p.id,label:p.label,length:Math.round(cl),width:Math.round(rw)};
+      while(lCur<spanL-50){
+        const pl=Math.min(panL,spanL-lCur);
+        const isCut=(pl<panL-50)||(pw<panW-50);
+        // Map back to world X,Z
+        const wx=rotated?(x0+wCur):(x0+lCur);
+        const wz=rotated?(z0+lCur):(z0+wCur);
+        const tileL=rotated?pw:pl;
+        const tileW=rotated?pl:pw;
         tiles.push({
-          ...pdef,actual_length:Math.round(cl),actual_width:Math.round(rw),
-          x:Math.round(longX?minX+lCur:minX+wCur),
-          y:Math.round(longX?minY+wCur:minY+lCur),
-          is_cut:isCut,crane_lift:p.crane_lift,install_minutes:p.install_minutes
+          id:p.id,label:p.label,length:Math.round(tileL),width:Math.round(tileW),
+          x:Math.round(wx),y:Math.round(wz),
+          actual_length:Math.round(tileL),actual_width:Math.round(tileW),
+          is_cut:isCut,crane_lift:p.crane_lift,install_min:p.install_min,rate:p.rate
         });
-        lCur+=cl;
+        lCur+=pl;
       }
-      wCur+=rw;
+      wCur+=pw;
     }
     floor_tiles[room.room_id]=tiles;
   }
 
-  // ── Build report ──────────────────────────────────────────────────────
-  const allWall=segments.flatMap(s=>s.panels);
-  const allFloor=Object.values(floor_tiles).flat();
-
-  const wallTC={}, floorTC={};
-  for(const p of allWall){
-    if(!wallTC[p.id])wallTC[p.id]={id:p.id,label:p.label,count:0,cut_count:0,total_install_min:0,crane_lifts:0,total_cost:0};
-    wallTC[p.id].count++;
-    if(p.is_cut)wallTC[p.id].cut_count++;
-    wallTC[p.id].total_install_min+=panelInstallMinutes(p);
-    if(p.crane_lift)wallTC[p.id].crane_lifts++;
-    wallTC[p.id].total_cost+=panelCost(p);
+  // Build report
+  const allW=segs.flatMap(s=>s.panels);
+  const allF=Object.values(floor_tiles).flat();
+  const wTC={},fTC={};
+  for(const p of allW){
+    if(!wTC[p.id])wTC[p.id]={id:p.id,label:p.label,count:0,cuts:0,install_min:0,lifts:0,cost:0};
+    wTC[p.id].count++;if(p.is_cut)wTC[p.id].cuts++;
+    wTC[p.id].install_min+=panelInstMin(p);if(p.crane_lift)wTC[p.id].lifts++;
+    wTC[p.id].cost+=panelCost(p);
   }
-  for(const p of allFloor){
-    if(!floorTC[p.id])floorTC[p.id]={id:p.id,label:p.label,count:0,cut_count:0,total_install_min:0,crane_lifts:0,total_cost:0};
-    floorTC[p.id].count++;
-    if(p.is_cut)floorTC[p.id].cut_count++;
-    floorTC[p.id].total_install_min+=panelInstallMinutes(p);
-    if(p.crane_lift)floorTC[p.id].crane_lifts++;
-    floorTC[p.id].total_cost+=panelCost(p);
+  for(const p of allF){
+    if(!fTC[p.id])fTC[p.id]={id:p.id,label:p.label,count:0,cuts:0,install_min:0,lifts:0,cost:0};
+    fTC[p.id].count++;if(p.is_cut)fTC[p.id].cuts++;
+    fTC[p.id].install_min+=panelInstMin(p);if(p.crane_lift)fTC[p.id].lifts++;
+    fTC[p.id].cost+=panelCost(p);
   }
+  const sumV=(obj,k)=>Object.values(obj).reduce((a,v)=>a+v[k],0);
+  const totalCost=sumV(wTC,'cost')+sumV(fTC,'cost');
+  const storeys=parseInt(document.getElementById('p-storeys').value)||1;
 
-  const totalCrane=Object.values(wallTC).reduce((a,v)=>a+v.crane_lifts,0)+Object.values(floorTC).reduce((a,v)=>a+v.crane_lifts,0);
-  const totalMin=Object.values(wallTC).reduce((a,v)=>a+v.total_install_min,0)+Object.values(floorTC).reduce((a,v)=>a+v.total_install_min,0);
-  const totalCost=Object.values(wallTC).reduce((a,v)=>a+v.total_cost,0)+Object.values(floorTC).reduce((a,v)=>a+v.total_cost,0);
-  const largePanels=[...allWall,...allFloor].filter(p=>(p.actual_length||p.length)>LARGE_PANEL_THRESHOLD).length;
-
-  return {
-    wall_segments:segments,
-    floor_tiles,
-    junctions,
-    mode,
+  return{
+    wall_segments:segs, floor_tiles, junctions, mode,
     report:{
       summary:{
-        total_wall_panels:allWall.length,
-        total_floor_panels:allFloor.length,
-        total_panels:allWall.length+allFloor.length,
-        wall_panel_types:Object.keys(wallTC).length,
-        total_crane_lifts:totalCrane,
-        estimated_install_hours:Math.round(totalMin/60*10)/10,
-        cut_wall_panels:allWall.filter(p=>p.is_cut).length,
-        cut_floor_panels:allFloor.filter(p=>p.is_cut).length,
-        junction_count:junctions.length,
-        total_cost:totalCost,
-        large_panels:largePanels,
+        total_wall_panels:allW.length*storeys,
+        total_floor_panels:allF.length*Math.max(storeys-1,1),
+        total_panels:(allW.length+allF.length)*storeys,
+        wall_types:Object.keys(wTC).length,
+        total_lifts:(sumV(wTC,'lifts')+sumV(fTC,'lifts'))*storeys,
+        install_hours:Math.round((sumV(wTC,'install_min')+sumV(fTC,'install_min'))*storeys/60*10)/10,
+        cut_walls:allW.filter(p=>p.is_cut).length*storeys,
+        cut_floors:allF.filter(p=>p.is_cut).length,
+        junctions:junctions.length,
+        total_cost:totalCost*storeys,
+        large_panels:[...allW,...allF].filter(p=>(p.actual_length||p.length)>LARGE_THRESH).length,
       },
-      wall_schedule:Object.values(wallTC).sort((a,b)=>a.id.localeCompare(b.id)),
-      floor_schedule:Object.values(floorTC).sort((a,b)=>a.id.localeCompare(b.id)),
+      wall_schedule:Object.values(wTC).sort((a,b)=>a.id.localeCompare(b.id)),
+      floor_schedule:Object.values(fTC).sort((a,b)=>a.id.localeCompare(b.id)),
     }
   };
 }
 
-// ─── Run analysis ─────────────────────────────────────────────────────────────
-let currentResult=null, currentMode='greedy', activeRtab='summary';
-let uploadedDxfContent=null;
+// ─── Report rendering ─────────────────────────────────────────────────────────
+let currentResult=null,currentMode='greedy',activeRtab='summary';
 
-async function runAnalysis() {
-  document.getElementById('empty-state').classList.remove('show');
-  document.getElementById('loading-overlay').classList.add('show');
-  document.getElementById('loading-text').textContent='Nesting panels…';
-  tooltip.style.display='none';
-  try {
+function renderReport(result){
+  const r=result.report,s=r.summary;
+  document.getElementById('s-panels').textContent=s.total_panels;
+  document.getElementById('s-lifts').textContent=s.total_lifts;
+  document.getElementById('s-time').textContent=s.install_hours;
+  document.getElementById('s-cost').textContent='$'+Math.round(s.total_cost).toLocaleString();
+  document.getElementById('stats').style.display='flex';
+  const rc=document.getElementById('rc');
+
+  if(activeRtab==='summary'){
+    rc.innerHTML=`
+    <div class="sg">
+      <div class="sc"><div class="sv">${s.total_wall_panels}</div><div class="sl">Wall panels</div></div>
+      <div class="sc i"><div class="sv">${s.total_floor_panels}</div><div class="sl">Floor panels</div></div>
+      <div class="sc w"><div class="sv">${s.total_lifts}</div><div class="sl">Crane lifts</div></div>
+      <div class="sc"><div class="sv">${s.install_hours}h</div><div class="sl">Est. install</div></div>
+      <div class="sc ${s.cut_walls>0?'d':''}"><div class="sv">${s.cut_walls}</div><div class="sl">Cut walls</div></div>
+      <div class="sc ${s.cut_floors>0?'d':''}"><div class="sv">${s.cut_floors}</div><div class="sl">Cut floors</div></div>
+      <div class="sc"><div class="sv">${s.wall_types}</div><div class="sl">Panel types</div></div>
+      <div class="sc"><div class="sv">${s.junctions}</div><div class="sl">Junctions</div></div>
+      <div class="sc full w" style="cursor:pointer" id="cost-card">
+        <div class="sl">Total estimated cost — click for breakdown</div>
+        <div style="font-size:22px;font-weight:700;color:var(--warn);margin-top:3px">$${Math.round(s.total_cost).toLocaleString()}</div>
+      </div>
+      <div class="sc full">
+        <div class="sl">Mode</div>
+        <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:2px">${result.mode==='greedy'?'Greedy fill':'Min variety (global)'}</div>
+      </div>
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8">
+      ${s.cut_walls>0?`<div style="color:var(--warn)">⚠ ${s.cut_walls} wall cuts</div>`:'<div style="color:var(--accent2)">✓ No wall cuts</div>'}
+      ${s.cut_floors>0?`<div style="color:var(--warn)">⚠ ${s.cut_floors} floor cuts</div>`:'<div style="color:var(--accent2)">✓ No floor cuts</div>'}
+      ${s.large_panels>0?`<div style="color:var(--warn)">⚠ ${s.large_panels} panels >3m — delivery premium</div>`:''}
+      ${(parseInt(document.getElementById('p-storeys').value)||1)>1?`<div style="color:var(--accent2)">✓ ${document.getElementById('p-storeys').value} storeys included</div>`:''}
+    </div>`;
+    document.getElementById('cost-card')?.addEventListener('click',showBreakdown);
+  }
+
+  if(activeRtab==='schedule'){
+    const wRows=r.wall_schedule.map(item=>{
+      const hex=WALL_COLOURS[item.id]||0x888888;
+      const css='#'+hex.toString(16).padStart(6,'0');
+      return `<tr><td><span class="dot" style="background:${css}"></span>${item.label}${item.cuts>0?`<span class="cut-b">${item.cuts}✂</span>`:''}</td><td style="text-align:right">${item.count}</td><td style="text-align:right">${item.lifts}</td><td style="text-align:right">${Math.round(item.install_min/60*10)/10}h</td></tr>`;
+    }).join('');
+    const fRows=r.floor_schedule.map(item=>`<tr><td><span class="dot" style="background:#1e3a5a"></span>${item.label}${item.cuts>0?`<span class="cut-b">${item.cuts}✂</span>`:''}</td><td style="text-align:right">${item.count}</td><td style="text-align:right">${item.lifts}</td><td style="text-align:right">${Math.round(item.install_min/60*10)/10}h</td></tr>`).join('');
+    rc.innerHTML=`
+    <div class="sch-sec"><div class="sch-title">Wall Panels</div>
+      <table class="sch-t"><thead><tr><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">Lifts</th><th style="text-align:right">Time</th></tr></thead><tbody>${wRows}</tbody></table></div>
+    <div class="sch-sec"><div class="sch-title">Floor Panels</div>
+      <table class="sch-t"><thead><tr><th>Type</th><th style="text-align:right">Qty</th><th style="text-align:right">Lifts</th><th style="text-align:right">Time</th></tr></thead><tbody>${fRows}</tbody></table></div>`;
+  }
+
+  if(activeRtab==='cost'){
+    const cRows=r.wall_schedule.map(item=>{
+      const hex=WALL_COLOURS[item.id]||0x888888;
+      const css='#'+hex.toString(16).padStart(6,'0');
+      return `<tr><td><span class="dot" style="background:${css}"></span>${item.label}</td><td>$${getRate(item.id)}/lm</td><td style="text-align:right">${item.count}</td><td style="text-align:right;color:var(--warn)">$${Math.round(item.cost).toLocaleString()}</td></tr>`;
+    }).join('');
+    const cfRows=r.floor_schedule.map(item=>`<tr><td><span class="dot" style="background:#1e3a5a"></span>${item.label}</td><td>$${getRate(item.id)}/lm</td><td style="text-align:right">${item.count}</td><td style="text-align:right;color:var(--warn)">$${Math.round(item.cost).toLocaleString()}</td></tr>`).join('');
+    rc.innerHTML=`
+    <div class="sc full w" style="margin-bottom:10px;cursor:pointer" id="cost-card2">
+      <div class="sl">Total (click for breakdown)</div>
+      <div style="font-size:20px;font-weight:700;color:var(--warn);margin-top:3px">$${Math.round(s.total_cost).toLocaleString()}</div>
+    </div>
+    <div class="sch-sec"><div class="sch-title">Wall Costs</div>
+      <table class="sch-t"><thead><tr><th>Type</th><th>Rate</th><th style="text-align:right">Qty</th><th style="text-align:right">Cost</th></tr></thead><tbody>${cRows}</tbody></table></div>
+    <div class="sch-sec"><div class="sch-title">Floor Costs</div>
+      <table class="sch-t"><thead><tr><th>Type</th><th>Rate</th><th style="text-align:right">Qty</th><th style="text-align:right">Cost</th></tr></thead><tbody>${cfRows}</tbody></table></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7;margin-top:6px">
+      ※ Smaller panels carry handling premium<br>
+      ※ Panels >3m: delivery premium<br>
+      ※ Cut panels: +15% waste allowance
+    </div>`;
+    document.getElementById('cost-card2')?.addEventListener('click',showBreakdown);
+  }
+
+  if(activeRtab==='junctions'){
+    if(!result.junctions.length){rc.innerHTML='<div class="empty-s"><p>No junctions detected</p></div>';return;}
+    const counts={};for(const j of result.junctions)counts[j.type]=(counts[j.type]||0)+1;
+    const rows=result.junctions.map(j=>{
+      const col=j.type==='T_junction'?'#f55a5a':j.type==='L_corner'?'#f5a623':'#a060f5';
+      const name=j.type==='T_junction'?'T-Jcn':j.type==='L_corner'?'L-Cor':'X-Crs';
+      const note=j.type==='T_junction'?'stub trimmed':j.type==='L_corner'?'both trimmed':'pass-through';
+      return `<tr><td><span class="dot" style="background:${col}"></span>${name}</td><td style="font-size:9px;color:var(--muted)">(${Math.round(j.point[0])},${Math.round(j.point[1])})</td><td style="font-size:9px;color:var(--muted)">${note}</td></tr>`;
+    }).join('');
+    rc.innerHTML=`
+    <div class="sg" style="margin-bottom:10px">
+      ${Object.entries(counts).map(([t,c])=>`<div class="sc ${t==='T_junction'?'d':t==='L_corner'?'w':''}"><div class="sv">${c}</div><div class="sl">${t==='T_junction'?'T-Junctions':t==='L_corner'?'L Corners':'X Crosses'}</div></div>`).join('')}
+    </div>
+    <div class="sch-sec"><div class="sch-title">All Junctions</div>
+      <table class="sch-t"><thead><tr><th>Type</th><th>Position</th><th>Treatment</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+}
+
+// Cost breakdown modal
+function showBreakdown(){
+  if(!currentResult) return;
+  const r=currentResult.report,s=r.summary;
+  const storeys=parseInt(document.getElementById('p-storeys').value)||1;
+  let html=`<table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit cost</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+  for(const item of r.wall_schedule){
+    const rate=getRate(item.id);
+    const unitCost=`$${rate}/lm × ${((item.cost/item.count)/rate).toFixed(1)}m`;
+    html+=`<tr><td>${item.label} wall panels ×${storeys} storeys</td><td style="text-align:right">${item.count*storeys}</td><td style="text-align:right;color:var(--muted)">$${rate}/lm</td><td style="text-align:right;color:var(--warn)">$${Math.round(item.cost*storeys).toLocaleString()}</td></tr>`;
+  }
+  for(const item of r.floor_schedule){
+    html+=`<tr><td>${item.label} floor panels</td><td style="text-align:right">${item.count}</td><td style="text-align:right;color:var(--muted)">$${getRate(item.id)}/lm</td><td style="text-align:right;color:var(--warn)">$${Math.round(item.cost).toLocaleString()}</td></tr>`;
+  }
+  html+=`</tbody></table>`;
+  html+=`<div class="bd-total">Total $${Math.round(s.total_cost).toLocaleString()}</div>`;
+  html+=`<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:8px">Excludes: prelims, installation labour, connections, services, site establishment</div>`;
+  document.getElementById('bd-content').innerHTML=html;
+  document.getElementById('bd-modal').classList.add('show');
+}
+document.getElementById('bd-close').addEventListener('click',()=>document.getElementById('bd-modal').classList.remove('show'));
+
+// ─── Run analysis ─────────────────────────────────────────────────────────────
+let uploadedDxf=null;
+async function runAnalysis(){
+  document.getElementById('empty-s').classList.remove('show');
+  document.getElementById('lov').classList.add('show');
+  ttEl.style.display='none';
+  try{
     let result;
-    if(uploadedDxfContent){
+    if(uploadedDxf){
       const fd=new FormData();
-      fd.append('dxf_file',new Blob([uploadedDxfContent],{type:'application/octet-stream'}),'plan.dxf');
+      fd.append('dxf_file',new Blob([uploadedDxf],{type:'application/octet-stream'}),'plan.dxf');
       fd.append('mode',currentMode);
       const resp=await fetch('/api/nest',{method:'POST',body:fd});
-      if(!resp.ok) throw new Error('Server error '+resp.status);
+      if(!resp.ok) throw new Error('Server '+resp.status);
       result=await resp.json();
       if(result.error) throw new Error(result.error);
     } else {
@@ -1304,11 +1161,12 @@ async function runAnalysis() {
     currentResult=result;
     buildScene(result);
     renderReport(result);
-    document.getElementById('loading-overlay').classList.remove('show');
-    showNotification('Analysis complete');
-  } catch(e) {
-    document.getElementById('loading-overlay').classList.remove('show');
-    showNotification('Error: '+e.message,true);
+    document.getElementById('lov').classList.remove('show');
+    updateLiftingReport();
+    notify('Analysis complete');
+  }catch(e){
+    document.getElementById('lov').classList.remove('show');
+    notify('Error: '+e.message,true);
     console.error(e);
   }
 }
@@ -1319,102 +1177,112 @@ document.querySelectorAll('.mode-tab').forEach(t=>t.addEventListener('click',()=
   t.classList.add('active'); currentMode=t.dataset.mode;
   if(currentResult) runAnalysis();
 }));
-
-document.querySelectorAll('.report-tab').forEach(t=>t.addEventListener('click',()=>{
-  document.querySelectorAll('.report-tab').forEach(x=>x.classList.remove('active'));
+document.querySelectorAll('.rtab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.rtab').forEach(x=>x.classList.remove('active'));
   t.classList.add('active'); activeRtab=t.dataset.rtab;
   if(currentResult) renderReport(currentResult);
 }));
-
 document.querySelectorAll('.layer-toggle').forEach(tog=>tog.addEventListener('click',()=>{
   tog.classList.toggle('active');
   const layer=tog.dataset.layer;
   layerVis[layer]=tog.classList.contains('active');
-  if(sceneGroup){
-    const grp=sceneGroup.children.find(c=>c.name===layer);
-    if(grp) grp.visible=layerVis[layer];
+  if(sceneGrp){
+    const g=sceneGrp.children.find(c=>c.name===layer);
+    if(g) g.visible=layerVis[layer];
   }
-  if(layer==='grid') gridHelper.visible=layerVis.grid;
-  if(layer==='logistics') logisticsGroup.visible=layerVis.logistics;
+  if(layer==='grid') grid.visible=layerVis.grid;
+  if(layer==='logistics') logGrp.visible=layerVis.logistics;
 }));
 
-// Logistics buttons
 ['crane','truck','boundary'].forEach(type=>{
   document.getElementById('btn-'+type).addEventListener('click',()=>{
-    if(placingMode===type){stopPlacing();}
-    else{startPlacing(type);}
+    if(placingMode===type) stopPlace(); else startPlace(type);
   });
 });
-document.getElementById('btn-clear-logistics').addEventListener('click',()=>{
-  // .clear() doesn't exist in r128 — remove children manually
-  while(logisticsGroup.children.length) logisticsGroup.remove(logisticsGroup.children[0]);
-  craneObj=null;truckObj=null;boundaryPts=[];boundaryLine=null;
-  showNotification('Logistics cleared');
+document.getElementById('btn-clear-log').addEventListener('click',()=>{
+  while(logGrp.children.length) logGrp.remove(logGrp.children[0]);
+  craneObj=null;truckObj=null;bndPts=[];bndLine=null;cranePos=null;truckPos=null;
+  notify('Logistics cleared');
 });
+document.getElementById('btn-zoom').addEventListener('click',()=>{
+  if(!sceneGrp) return;
+  const box=new THREE.Box3().setFromObject(sceneGrp);
+  orbit.zoomToBox(box);
+});
+document.getElementById('cost-chip').addEventListener('click',showBreakdown);
 
-// File upload
-const uploadZone=document.getElementById('upload-zone');
-const fileInput=document.getElementById('dxf-file-input');
-uploadZone.addEventListener('click',()=>fileInput.click());
-uploadZone.addEventListener('dragover',e=>{e.preventDefault();uploadZone.classList.add('drag');});
-uploadZone.addEventListener('dragleave',()=>uploadZone.classList.remove('drag'));
-uploadZone.addEventListener('drop',e=>{e.preventDefault();uploadZone.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)loadDxf(f);});
-fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadDxf(f);});
-function loadDxf(file){
+const uz=document.getElementById('upload-zone');
+const fi=document.getElementById('dxf-input');
+uz.addEventListener('click',()=>fi.click());
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag');});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)loadDxf(f);});
+fi.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadDxf(f);});
+function loadDxf(f){
   const r=new FileReader();
-  r.onload=ev=>{uploadedDxfContent=ev.target.result;document.getElementById('file-status').textContent='✓ '+file.name;showNotification('Loaded: '+file.name);};
-  r.readAsText(file);
+  r.onload=ev=>{uploadedDxf=ev.target.result;document.getElementById('file-status').textContent='✓ '+f.name;notify('Loaded: '+f.name);};
+  r.readAsText(f);
 }
 
 document.getElementById('btn-analyse').addEventListener('click',runAnalysis);
 document.getElementById('btn-reset').addEventListener('click',()=>{
-  uploadedDxfContent=null;currentResult=null;
+  uploadedDxf=null;currentResult=null;
   document.getElementById('file-status').textContent='No file · using demo plan';
-  if(sceneGroup){scene.remove(sceneGroup);sceneGroup=null;}
+  if(sceneGrp){scene.remove(sceneGrp);sceneGrp=null;}
   panelMeshes.length=0;
-  document.getElementById('vp-stats').style.display='none';
-  document.getElementById('report-content').innerHTML='<div class="empty-state" style="padding-top:50px"><div class="empty-state-icon" style="font-size:26px">📋</div><p>Run analysis to see<br>the buildability report</p></div>';
-  document.getElementById('empty-state').classList.add('show');
-  tooltip.style.display='none';fileInput.value='';
+  document.getElementById('stats').style.display='none';
+  document.getElementById('rc').innerHTML='<div class="empty-s" style="padding-top:50px"><div style="font-size:26px;opacity:.3">📋</div><p>Run analysis to see the report</p></div>';
+  document.getElementById('empty-s').classList.add('show');
+  ttEl.style.display='none';fi.value='';
 });
-
 document.getElementById('btn-export').addEventListener('click',()=>{
-  if(!currentResult){showNotification('Run analysis first',true);return;}
+  if(!currentResult){notify('Run analysis first',true);return;}
   const r=currentResult.report,s=r.summary;
-  let csv='Apt. Buildability Report\n\nSUMMARY\n';
-  csv+=`Total panels,${s.total_panels}\nCrane lifts,${s.total_crane_lifts}\nInstall hours,${s.estimated_install_hours}\nTotal cost,$${Math.round(s.total_cost||0)}\nCut walls,${s.cut_wall_panels}\nCut floors,${s.cut_floor_panels}\n\nWALL SCHEDULE\nType,Qty,Cost,Install hrs,Crane lifts,Cuts\n`;
-  for(const p of r.wall_schedule) csv+=`${p.label},${p.count},$${Math.round(p.total_cost||0)},${(p.total_install_min/60).toFixed(1)},${p.crane_lifts},${p.cut_count}\n`;
-  csv+='\nFLOOR SCHEDULE\nType,Qty,Cost,Install hrs,Crane lifts,Cuts\n';
-  for(const p of r.floor_schedule) csv+=`${p.label},${p.count},$${Math.round(p.total_cost||0)},${(p.total_install_min/60).toFixed(1)},${p.crane_lifts},${p.cut_count}\n`;
-  const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='buildability_report.csv';a.click();
-  showNotification('Report exported');
+  let csv='Apt Buildability Report\n\nSUMMARY\n';
+  csv+=`Total panels,${s.total_panels}\nCrane lifts,${s.total_lifts}\nInstall hours,${s.install_hours}\nTotal cost,$${Math.round(s.total_cost)}\n\nWALL SCHEDULE\nType,Qty,Cost,Install hrs,Lifts,Cuts\n`;
+  for(const p of r.wall_schedule) csv+=`${p.label},${p.count},$${Math.round(p.cost)},${(p.install_min/60).toFixed(1)},${p.lifts},${p.cuts}\n`;
+  csv+='\nFLOOR SCHEDULE\nType,Qty,Cost,Install hrs,Lifts,Cuts\n';
+  for(const p of r.floor_schedule) csv+=`${p.label},${p.count},$${Math.round(p.cost)},${(p.install_min/60).toFixed(1)},${p.lifts},${p.cuts}\n`;
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='buildability.csv';a.click();
+  notify('Report exported');
 });
 
-document.getElementById('btn-add-custom').addEventListener('click',async()=>{
-  const id=document.getElementById('custom-id').value.trim();
-  const len=parseInt(document.getElementById('custom-length').value);
-  const type=document.getElementById('custom-type').value;
-  const cost=parseInt(document.getElementById('custom-cost').value)||250;
-  if(!id||!len){showNotification('ID and length required',true);return;}
-  PANEL_COST_RATE[id]=cost;
-  WALL_PANELS.push({id,label:id,length:len,crane_lift:true,install_minutes:45});
-  showNotification('Custom panel added: '+id);
-  ['custom-id','custom-length','custom-cost'].forEach(k=>document.getElementById(k).value='');
+// Custom panel modal
+document.getElementById('btn-add-panel').addEventListener('click',()=>document.getElementById('modal-overlay').classList.add('show'));
+document.getElementById('cp-cancel').addEventListener('click',()=>document.getElementById('modal-overlay').classList.remove('show'));
+document.getElementById('cp-save').addEventListener('click',async()=>{
+  const id=document.getElementById('cp-id').value.trim();
+  const len=parseInt(document.getElementById('cp-len').value);
+  const wid=parseInt(document.getElementById('cp-wid').value)||4000;
+  const type=document.getElementById('cp-type').value;
+  const cost=parseInt(document.getElementById('cp-cost').value)||250;
+  const inst=parseInt(document.getElementById('cp-inst').value)||45;
+  if(!id||!len){notify('ID and length required',true);return;}
+  const panel={id,label:id,length:len,width:wid,crane_lift:true,install_min:inst,rate:cost};
+  if(type==='wall') WALL_PANELS.push(panel);
+  else FLOOR_PANELS.push(panel);
+  WALL_COLOURS[id]=0x88aacc;
+  buildLibraryUI();
+  document.getElementById('modal-overlay').classList.remove('show');
+  notify('Custom panel added: '+id);
+  ['cp-id','cp-len','cp-wid','cp-cost','cp-inst'].forEach(k=>document.getElementById(k).value='');
+  // Also try to persist to server
+  try{
+    await fetch('/api/building-system',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({panel_type:type==='wall'?'wall_panels':'floor_panels',panel})});
+  }catch(e){}
 });
 
-// Notifications
 let notifT;
-function showNotification(msg,isErr=false){
-  const n=document.getElementById('notification');
-  n.textContent=msg;n.style.borderColor=isErr?'var(--danger)':'var(--accent)';
-  n.style.color=isErr?'var(--danger)':'var(--accent)';
+function notify(msg,err=false){
+  const n=document.getElementById('notif');
+  n.textContent=msg;n.style.borderColor=err?'var(--danger)':'var(--accent)';
+  n.style.color=err?'var(--danger)':'var(--accent)';
   n.classList.add('show');clearTimeout(notifT);
-  notifT=setTimeout(()=>n.classList.remove('show'),2800);
+  notifT=setTimeout(()=>n.classList.remove('show'),3000);
 }
 
-// Auto-run demo
-window.addEventListener('load',()=>setTimeout(runAnalysis,400));
+window.addEventListener('load',()=>setTimeout(runAnalysis,300));
 </script>
 </body>
 </html>
