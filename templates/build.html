@@ -181,6 +181,8 @@ body{font-family:var(--display);background:var(--bg);color:var(--text);height:10
     <button class="lbt" id="btn-crane"><span>🏗</span><span>Place Crane</span></button>
     <button class="lbt" id="btn-truck"><span>🚛</span><span>Place Delivery Truck</span></button>
     <button class="lbt" id="btn-boundary"><span>⬡</span><span>Draw Site Boundary</span></button>
+    <button class="lbt" id="btn-optimise-crane" style="border-color:var(--accent);color:var(--accent)"><span>◎</span><span>Optimise Crane Position</span></button>
+    <button class="lbt" id="btn-simulate" style="border-color:var(--accent2);color:var(--accent2)"><span>▶</span><span>Simulate Installation</span></button>
     <button class="lbt" id="btn-clear-log" style="margin-top:6px"><span>✕</span><span>Clear Logistics</span></button>
   </div>
 
@@ -211,7 +213,7 @@ body{font-family:var(--display);background:var(--bg);color:var(--text);height:10
     <div class="chip">Install <span id="s-time">—</span>h</div>
     <div class="chip w clickable" id="cost-chip" title="Click for breakdown">Cost <span id="s-cost">—</span></div>
   </div>
-  <div class="vo hint">Left-drag: Orbit &nbsp;·&nbsp; Right-drag: Pan &nbsp;·&nbsp; Scroll: Zoom &nbsp;·&nbsp; Hover: Details</div>
+  <div class="vo hint">Left-drag: Orbit &nbsp;·&nbsp; Right-drag: Pan &nbsp;·&nbsp; Scroll: Zoom &nbsp;·&nbsp; Click wall: Edit &nbsp;·&nbsp; Hover: Details</div>
   <div id="tt">
     <div class="ttt" id="tt-title">—</div>
     <div class="tr"><span>Length</span><span id="tt-len">—</span></div>
@@ -235,6 +237,7 @@ body{font-family:var(--display);background:var(--bg);color:var(--text);height:10
 <div class="rp">
   <div class="rtabs">
     <button class="rtab active" data-rtab="summary">Summary</button>
+    <button class="rtab" data-rtab="assess">Assess</button>
     <button class="rtab" data-rtab="schedule">Schedule</button>
     <button class="rtab" data-rtab="cost">Cost</button>
     <button class="rtab" data-rtab="junctions">Junctions</button>
@@ -272,6 +275,16 @@ body{font-family:var(--display);background:var(--bg);color:var(--text);height:10
   <div id="bd-content"></div>
 </div>
 
+<!-- WALL EDITOR MODAL -->
+<div class="breakdown-modal" id="we-modal" style="width:420px">
+  <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">
+    <h2 id="we-title">Wall Editor</h2>
+    <button class="btn" id="we-close" style="padding:3px 10px;font-size:10px">✕</button>
+  </div>
+  <div class="bd-sub">Adjust this wall's length or override its panel configuration</div>
+  <div id="we-content"></div>
+</div>
+
 <div class="notif" id="notif"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
@@ -301,6 +314,9 @@ const WALL_COLOURS = {
   GROUND_SLAB:0x2a2a3a,
 };
 const LARGE_THRESH = 3000;
+// Preferred panel sizes — the optimiser favours these and snap suggestions use only these.
+const PREFERRED_IDS = new Set(['W3600','W3000','W2400','W1800']);
+const PREFERRED_LENS = [3600,3000,2400,1800];
 
 // Build legend + panel lib UI
 function buildLibraryUI() {
@@ -560,13 +576,21 @@ let bndPts=[],bndLine=null,bndClosing=false;
 let cranePos=null,truckPos=null;
 
 function mkCrane(x,z){
+  const storeys=parseInt(document.getElementById('p-storeys').value)||1;
+  const wallH=parseInt(document.getElementById('p-height').value)||3000;
+  const slabT=parseInt(document.getElementById('p-slab').value)||300;
+  // Crane must clear the building: tower height = building height + 4m clearance
+  const towerH=storeys*(wallH+slabT)+4000;
   const g=new THREE.Group();
-  const tower=mkMesh(new THREE.CylinderGeometry(120,150,6000,8),mkLambert(0xf5a623));
-  tower.position.set(0,3000,0); g.add(tower);
-  const jib=mkMesh(new THREE.BoxGeometry(8000,80,80),mkLambert(0xf5a623));
-  jib.position.set(2000,6050,0); g.add(jib);
-  const cjib=mkMesh(new THREE.BoxGeometry(2500,80,80),mkLambert(0xf5a623));
-  cjib.position.set(-2250,6050,0); g.add(cjib);
+  const tower=mkMesh(new THREE.CylinderGeometry(120,150,towerH,8),mkLambert(0xf5a623));
+  tower.position.set(0,towerH/2,0); g.add(tower);
+  const jib=mkMesh(new THREE.BoxGeometry(9000,90,90),mkLambert(0xf5a623));
+  jib.position.set(2500,towerH+50,0); g.add(jib);
+  const cjib=mkMesh(new THREE.BoxGeometry(3000,90,90),mkLambert(0xf5a623));
+  cjib.position.set(-2500,towerH+50,0); g.add(cjib);
+  // hook line
+  const hook=mkMesh(new THREE.CylinderGeometry(20,20,towerH*0.4,6),mkLambert(0xffcc40));
+  hook.position.set(5000,towerH-towerH*0.2,0); g.add(hook);
   g.position.set(x,0,z); cranePos={x,z}; return g;
 }
 function mkTruck(x,z){
@@ -594,19 +618,31 @@ function handlePlaceMove(e){
   }
 }
 cvEl.addEventListener('click',e=>{
-  if(!placingMode) return;
-  const pt=groundPt(e); if(!pt) return;
-  if(placingMode==='crane'){
-    if(craneObj) logGrp.remove(craneObj);
-    craneObj=mkCrane(pt.x,pt.z); logGrp.add(craneObj);
-    stopPlace(); notify('Crane placed'); updateLiftingReport();
-  } else if(placingMode==='truck'){
-    if(truckObj) logGrp.remove(truckObj);
-    truckObj=mkTruck(pt.x,pt.z); logGrp.add(truckObj);
-    stopPlace(); notify('Truck placed'); updateLiftingReport();
-  } else if(placingMode==='boundary'){
-    if(bndClosing&&bndPts.length>2){updateBnd();stopPlace();notify('Site boundary set');}
-    else{bndPts.push({x:pt.x,z:pt.z});updateBnd();}
+  if(placingMode){
+    const pt=groundPt(e); if(!pt) return;
+    if(placingMode==='crane'){
+      if(craneObj) logGrp.remove(craneObj);
+      craneObj=mkCrane(pt.x,pt.z); logGrp.add(craneObj);
+      stopPlace(); notify('Crane placed'); updateLiftingReport();
+    } else if(placingMode==='truck'){
+      if(truckObj) logGrp.remove(truckObj);
+      truckObj=mkTruck(pt.x,pt.z); logGrp.add(truckObj);
+      stopPlace(); notify('Truck placed'); updateLiftingReport();
+    } else if(placingMode==='boundary'){
+      if(bndClosing&&bndPts.length>2){updateBnd();stopPlace();notify('Site boundary set');}
+      else{bndPts.push({x:pt.x,z:pt.z});updateBnd();}
+    }
+    return;
+  }
+  // Not placing — check for wall click to open editor
+  const[x,y]=cvXY(e); ray2d.x=x; ray2d.y=y;
+  raycaster.setFromCamera(ray2d,camera);
+  const hits=raycaster.intersectObjects(panelMeshes);
+  if(hits.length){
+    const d=hits[0].object.userData;
+    if(!d.isFloor&&!d.isOpening&&d.seg_idx!==undefined){
+      openWallEditor(d.seg_idx);
+    }
   }
 });
 function startPlace(mode){
@@ -624,18 +660,226 @@ function stopPlace(){
 }
 
 // Lifting time estimate: average speed 0.1m/s lift, 60s attach/detach, travel from truck
-function updateLiftingReport(){
-  if(!currentResult||!cranePos||!truckPos) return;
+// Estimate panel weight (kg) from dimensions — ~25kg per m2 of CLT-ish panel @ wall
+function panelWeightKg(p,wallH){
+  const lenM=(p.actual_length||p.length)/1000;
+  if(p.isFloor||p.width>1000){ // floor cassette
+    return Math.round(lenM*(p.width/1000)*40); // ~40kg/m2 floor
+  }
+  return Math.round(lenM*(wallH/1000)*30); // ~30kg/m2 wall
+}
+
+// Crane class sizing from max lift moment (tonne-metres = capacity × radius)
+function craneClassFor(momentTM, hookHeight){
+  // Simplified tower-crane classes by max load-moment (tm) and under-hook height
+  const classes=[
+    {name:'Self-erecting (e.g. 1.6t)', maxTM:25,  maxH:25, costPerLift:35},
+    {name:'Mid tower (e.g. 4t)',        maxTM:80,  maxH:45, costPerLift:55},
+    {name:'Large tower (e.g. 8t)',      maxTM:160, maxH:70, costPerLift:85},
+    {name:'Heavy tower (e.g. 12t+)',    maxTM:300, maxH:100,costPerLift:130},
+  ];
+  for(const c of classes){ if(momentTM<=c.maxTM && hookHeight<=c.maxH) return c; }
+  return {name:'Specialist crane required',maxTM:999,maxH:999,costPerLift:200};
+}
+
+function computeCraneStats(cx,cz){
   const allPanels=currentResult.wall_segments.flatMap(s=>s.panels)
     .concat(Object.values(currentResult.floor_tiles).flat());
-  const lifts=allPanels.filter(p=>p.crane_lift).length;
+  const lifts=allPanels.filter(p=>p.crane_lift);
   const storeys=parseInt(document.getElementById('p-storeys').value)||1;
   const wallH=parseInt(document.getElementById('p-height').value)||3000;
-  const avgLiftHeight=(storeys*wallH/2)/1000; // m
-  const liftTimePerPanel=Math.round((avgLiftHeight/0.1)+60+30); // seconds
-  const travelToTruck=Math.round(Math.hypot(cranePos.x-truckPos.x,cranePos.z-truckPos.z)/1000*10); // ~10s/m
-  const totalLiftMin=Math.round(lifts*(liftTimePerPanel+travelToTruck)/60);
-  notify(`Crane+Truck: ${lifts} lifts · avg ${liftTimePerPanel+travelToTruck}s/lift · ~${totalLiftMin}min total`);
+  const slabT=parseInt(document.getElementById('p-slab').value)||300;
+
+  // Required under-hook height: top storey + clearance
+  const buildingH=storeys*(wallH+slabT)/1000;
+  const hookHeight=buildingH+3; // 3m clearance above topmost panel
+
+  // Max lift moment = heaviest panel weight (t) × its radius from crane (m)
+  let maxMoment=0, maxRadius=0, totalWeight=0;
+  // Use panel positions: approximate each panel at its wall midpoint
+  for(const seg of currentResult.wall_segments){
+    const mx=(seg.start[0]+seg.end[0])/2, mz=(seg.start[1]+seg.end[1])/2;
+    const radius=Math.hypot(mx-cx,mz-cz)/1000;
+    maxRadius=Math.max(maxRadius,radius);
+    for(const p of seg.panels){
+      const wt=panelWeightKg(p,wallH)/1000; // tonnes
+      totalWeight+=wt;
+      maxMoment=Math.max(maxMoment,wt*radius);
+    }
+  }
+  // floor panels
+  for(const[,tiles] of Object.entries(currentResult.floor_tiles)){
+    for(const t of tiles){
+      const mx=t.x+t.length/2, mz=t.y+t.width/2;
+      const radius=Math.hypot(mx-cx,mz-cz)/1000;
+      maxRadius=Math.max(maxRadius,radius);
+      const wt=panelWeightKg(t,wallH)/1000;
+      maxMoment=Math.max(maxMoment,wt*radius);
+    }
+  }
+  maxMoment*=storeys>1?1:1; // moment is per-panel, storeys don't increase single lift
+  const craneClass=craneClassFor(maxMoment,hookHeight);
+  return {lifts:lifts.length*storeys, maxRadius, maxMoment, hookHeight, buildingH, craneClass, totalWeight};
+}
+
+function updateLiftingReport(){
+  if(!currentResult||!cranePos) return;
+  const st=computeCraneStats(cranePos.x,cranePos.z);
+  const storeys=parseInt(document.getElementById('p-storeys').value)||1;
+  let msg=`Crane: ${st.craneClass.name} · hook ${st.hookHeight.toFixed(0)}m · max reach ${st.maxRadius.toFixed(1)}m · moment ${st.maxMoment.toFixed(0)}tm`;
+  if(truckPos){
+    const lifts=st.lifts;
+    const wallH=parseInt(document.getElementById('p-height').value)||3000;
+    const avgLiftH=(storeys*wallH/2)/1000;
+    const liftTime=Math.round((avgLiftH/0.1)+90);
+    const travel=Math.round(Math.hypot(cranePos.x-truckPos.x,cranePos.z-truckPos.z)/1000*10);
+    const totalMin=Math.round(lifts*(liftTime+travel)/60);
+    const liftCost=lifts*st.craneClass.costPerLift;
+    msg+=` · ${lifts} lifts · ~${totalMin}min · ~$${liftCost.toLocaleString()} crane`;
+  }
+  notify(msg);
+}
+
+// Recommend best crane position within site boundary (or near building) to
+// minimise required crane class (= minimise max load moment).
+function optimiseCranePosition(){
+  if(!currentResult){notify('Run analysis first',true);return;}
+  // Candidate positions: grid over boundary bbox, or around building if no boundary
+  let cands=[];
+  if(bndPts.length>=3){
+    let bx0=Infinity,bz0=Infinity,bx1=-Infinity,bz1=-Infinity;
+    for(const p of bndPts){bx0=Math.min(bx0,p.x);bz0=Math.min(bz0,p.z);bx1=Math.max(bx1,p.x);bz1=Math.max(bz1,p.z);}
+    const N=8;
+    for(let i=0;i<=N;i++)for(let j=0;j<=N;j++){
+      const x=bx0+(bx1-bx0)*i/N, z=bz0+(bz1-bz0)*j/N;
+      if(pointInPoly(x,z,bndPts)) cands.push({x,z});
+    }
+  } else {
+    // ring around building bbox
+    let bx0=Infinity,bz0=Infinity,bx1=-Infinity,bz1=-Infinity;
+    for(const s of currentResult.wall_segments){
+      bx0=Math.min(bx0,s.start[0],s.end[0]);bz0=Math.min(bz0,s.start[1],s.end[1]);
+      bx1=Math.max(bx1,s.start[0],s.end[0]);bz1=Math.max(bz1,s.start[1],s.end[1]);
+    }
+    const cx=(bx0+bx1)/2,cz=(bz0+bz1)/2,m=4000;
+    for(let a=0;a<360;a+=30){
+      const r=Math.max(bx1-bx0,bz1-bz0)/2+m;
+      cands.push({x:cx+r*Math.cos(a*Math.PI/180),z:cz+r*Math.sin(a*Math.PI/180)});
+    }
+    cands.push({x:cx,z:cz}); // also try centre (internal crane)
+  }
+  let best=null,bestMoment=Infinity,bestClass=null;
+  for(const c of cands){
+    const st=computeCraneStats(c.x,c.z);
+    // rank by crane class cost first, then moment
+    const rank=st.craneClass.costPerLift*1000+st.maxMoment;
+    if(rank<bestMoment){bestMoment=rank;best=c;bestClass=st;}
+  }
+  if(best){
+    if(craneObj) logGrp.remove(craneObj);
+    craneObj=mkCrane(best.x,best.z); logGrp.add(craneObj);
+    cranePos={x:best.x,z:best.z};
+    notify(`Optimal crane: ${bestClass.craneClass.name} · moment ${bestClass.maxMoment.toFixed(0)}tm · reach ${bestClass.maxRadius.toFixed(1)}m`);
+  }
+}
+function pointInPoly(x,z,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i].x,zi=poly[i].z,xj=poly[j].x,zj=poly[j].z;
+    if(((zi>z)!==(zj>z))&&(x<(xj-xi)*(z-zi)/(zj-zi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+// ─── Installation simulator ───────────────────────────────────────────────────
+// Animates wall panels rising into place storey-by-storey. Each panel starts
+// at the crane hook position (or ground) and lerps to its final transform.
+let simRunning=false;
+function simulateInstall(){
+  if(!currentResult){notify('Run analysis first',true);return;}
+  if(simRunning){notify('Simulation already running');return;}
+  if(!sceneGrp){notify('Run analysis first',true);return;}
+  simRunning=true;
+
+  // Collect all wall panel groups from the walls layer, with their final state
+  const wGrp=sceneGrp.children.find(c=>c.name==='walls');
+  const fGrp=sceneGrp.children.find(c=>c.name==='floors');
+  const oGrp=sceneGrp.children.find(c=>c.name==='openings');
+  if(!wGrp){simRunning=false;return;}
+
+  // Build a lift list: each panel group with its final Y and a storey order
+  const wallH=parseInt(document.getElementById('p-height').value)||3000;
+  const slabT=parseInt(document.getElementById('p-slab').value)||300;
+  const storyStep=wallH+slabT;
+
+  // Hook start position (crane top or default high point)
+  const hookX=cranePos?cranePos.x:0;
+  const hookZ=cranePos?cranePos.z:0;
+
+  // Hide all wall + opening groups, record their targets
+  const lifts=[];
+  for(const g of wGrp.children){
+    const finalY=g.position.y;
+    const storey=Math.floor(finalY/storyStep);
+    lifts.push({g, finalY, finalX:g.position.x, finalZ:g.position.z, storey, type:'wall'});
+  }
+  // openings ride with their storey too
+  for(const g of (oGrp?oGrp.children:[])){
+    const finalY=g.position.y;
+    const storey=Math.floor(finalY/storyStep);
+    lifts.push({g, finalY, finalX:g.position.x, finalZ:g.position.z, storey, type:'open'});
+  }
+  // Sort: storey ascending, so lower floors build first
+  lifts.sort((a,b)=>a.storey-b.storey);
+
+  // Set all to hidden / start position
+  for(const L of lifts){
+    L.g.visible=false;
+    L.started=false; L.done=false;
+  }
+  // Floors visible immediately (slab + cassettes per storey appear with storey)
+  notify('Installing '+lifts.length+' panels…');
+
+  let idx=0;
+  const PANEL_MS=140; // ms between panel starts
+  const RISE_MS=600;  // ms for a panel to travel into place
+
+  function startNext(){
+    if(idx>=lifts.length){
+      simRunning=false;
+      notify('Installation complete · '+lifts.length+' panels placed');
+      return;
+    }
+    const L=lifts[idx]; idx++;
+    L.g.visible=true;
+    L.started=true;
+    L.t0=performance.now();
+    // start position: above hook, then it lerps down/over to final
+    L.startX=hookX; L.startZ=hookZ; L.startY=L.finalY+8000;
+    setTimeout(startNext, PANEL_MS);
+  }
+
+  function animateLifts(){
+    if(!simRunning && idx>=lifts.length) return;
+    const now=performance.now();
+    let anyMoving=false;
+    for(const L of lifts){
+      if(!L.started||L.done) continue;
+      const e=Math.min(1,(now-L.t0)/RISE_MS);
+      const ease=1-Math.pow(1-e,3); // ease-out cubic
+      L.g.position.set(
+        L.startX+(L.finalX-L.startX)*ease,
+        L.startY+(L.finalY-L.startY)*ease,
+        L.startZ+(L.finalZ-L.startZ)*ease
+      );
+      if(e>=1){L.done=true;L.g.position.set(L.finalX,L.finalY,L.finalZ);}
+      else anyMoving=true;
+    }
+    if(anyMoving||idx<lifts.length) requestAnimationFrame(animateLifts);
+  }
+
+  startNext();
+  animateLifts();
 }
 
 // ─── Scene building ───────────────────────────────────────────────────────────
@@ -697,7 +941,7 @@ function buildScene(result){
         g.position.set(sx+(ex-sx)*midT,yBase+wallH/2,sz+(ez-sz)*midT);
         g.rotation.set(0,-angle,0);
         // Store ref on first mesh child for raycasting
-        g.children[0].userData={...panel,isFloor:false,isOpening:false,storey:storey+1};
+        g.children[0].userData={...panel,isFloor:false,isOpening:false,storey:storey+1,seg_idx:seg.idx};
         wGrp.add(g);
         panelMeshes.push(g.children[0]);
       }
@@ -814,11 +1058,20 @@ function lineX(s1,s2){
 }
 
 function simulateEngine(data,mode){
-  const WALL_T=200;
-  const segs=data.wall_segments.map((r,i)=>({
-    idx:i,start:[...r.start],end:[...r.end],
-    length:dist2(r.start,r.end),openings:[],panels:[]
-  }));
+  const WALL_T=parseInt(document.getElementById('p-thick').value)||200;
+  // Apply user wall-length overrides (from wall editor): scale end point along
+  // the wall's own direction to hit the new target length.
+  const segs=data.wall_segments.map((r,i)=>{
+    let s=[...r.start], e=[...r.end];
+    if(wallOverrides[i]!==undefined){
+      const cur=dist2(s,e);
+      if(cur>1){
+        const ux=(e[0]-s[0])/cur, uy=(e[1]-s[1])/cur, tgt=wallOverrides[i];
+        e=[s[0]+ux*tgt, s[1]+uy*tgt];
+      }
+    }
+    return {idx:i,start:s,end:e,length:dist2(s,e),openings:[],panels:[]};
+  });
 
   // Junction detection + trimming
   const junctions=[];
@@ -846,13 +1099,15 @@ function simulateEngine(data,mode){
         stub.length=dist2(stub.start,stub.end);
       }
       if(jtype==='L_corner'){
-        for(const[seg,tv] of [[si,t],[sj,u]]){
-          const len=dist2(seg.start,seg.end); if(len<1) continue;
-          const ux=(seg.end[0]-seg.start[0])/len,uy=(seg.end[1]-seg.start[1])/len;
-          if(tv>0.5){seg.end=[seg.end[0]-ux*half,seg.end[1]-uy*half];}
-          else{seg.start=[seg.start[0]+ux*half,seg.start[1]+uy*half];}
-          seg.length=dist2(seg.start,seg.end);
-        }
+        // Longer wall runs full to the corner (its thickness fills the corner
+        // square); shorter wall butts into its face (trim back by half thickness).
+        // This eliminates the gap that trimming BOTH walls would leave.
+        const[butt,buttT]=(si.length>=sj.length)?[sj,u]:[si,t];
+        const len=dist2(butt.start,butt.end); if(len<1) continue;
+        const ux=(butt.end[0]-butt.start[0])/len,uy=(butt.end[1]-butt.start[1])/len;
+        if(buttT>0.5){butt.end=[butt.end[0]-ux*half,butt.end[1]-uy*half];}
+        else{butt.start=[butt.start[0]+ux*half,butt.start[1]+uy*half];}
+        butt.length=dist2(butt.start,butt.end);
       }
     }
   }
@@ -885,44 +1140,79 @@ function simulateEngine(data,mode){
     return out;
   }
 
-  function mkPanel(pdef,cursor,rem){
-    const isCut=pdef.length>rem+50;
-    return{...pdef,actual_length:Math.round(isCut?rem:pdef.length),position_mm:Math.round(cursor),is_cut:isCut};
+  function mkPanel(pdef,cursor,usedLen,isCut){
+    return{...pdef,actual_length:Math.round(usedLen),position_mm:Math.round(cursor),is_cut:isCut};
   }
 
-  function nestGreedy(wallLen,openings){
-    const ps=[...WALL_PANELS].sort((a,b)=>b.length-a.length);
+  // Cost score for the optimiser — lower is better. Encodes the design intent:
+  // prefer 3600/3000/2400/1800, avoid cuts, avoid heaps of small panels.
+  function panelScore(pdef,usedLen,isCut){
+    const lenM=usedLen/1000;
+    let c=lenM*pdef.rate;
+    if(pdef.length>LARGE_THRESH) c*=1.15;            // delivery premium
+    if(isCut){ c*=1.15; c+=200; }                     // waste + cutting labour
+    if(!PREFERRED_IDS.has(pdef.id)) c+=80;            // discourage W1200/W600 spam
+    return c;
+  }
+
+  // DP: minimum-cost tiling of one solid span. Steps of 50mm.
+  function nestSpanDP(spanLen,cursorStart){
+    const step=50;
+    const N=Math.round(spanLen/step);
+    const INF=Infinity;
+    const cost=new Array(N+1).fill(INF); cost[0]=0;
+    const choice=new Array(N+1).fill(null);
+    for(let i=0;i<=N;i++){
+      if(cost[i]===INF) continue;
+      const remAfter=(N-i)*step;
+      for(const p of WALL_PANELS){
+        const ls=Math.round(p.length/step);
+        if(i+ls<=N){
+          const c=cost[i]+panelScore(p,p.length,false);
+          if(c<cost[i+ls]){cost[i+ls]=c;choice[i+ls]=[i,p,p.length,false];}
+        } else {
+          const used=remAfter;
+          if(used>50){
+            const c=cost[i]+panelScore(p,used,true);
+            if(c<cost[N]){cost[N]=c;choice[N]=[i,p,used,true];}
+          }
+        }
+      }
+    }
+    const seq=[]; let k=N;
+    while(k>0&&choice[k]){const[prev,p,used,isCut]=choice[k];seq.push([p,used,isCut]);k=prev;}
+    seq.reverse();
+    const res=[]; let cur=cursorStart;
+    for(const[p,used,isCut] of seq){res.push(mkPanel(p,cur,used,isCut));cur+=used;}
+    return res;
+  }
+
+  function nestCostOptimised(wallLen,openings){
     const res=[];
     for(const[ss,se] of spans(wallLen,openings)){
-      let cur=ss;
-      while(cur<se-50){
-        const rem=se-cur;
-        let placed=false;
-        for(const p of ps){
-          if(p.length<=rem+50){const pan=mkPanel(p,cur,rem);res.push(pan);cur+=pan.actual_length;placed=true;break;}
-        }
-        if(!placed){const p=ps[ps.length-1];const pan=mkPanel(p,cur,rem);res.push(pan);cur=se;}
-      }
+      res.push(...nestSpanDP(se-ss,ss));
     }
     return res;
   }
 
+  // Min-variety: global single-type from preferred panels, tie-broken by cost.
   function nestMinVariety(allSegs){
-    // Global optimisation: score each panel type across all spans
     function score(pdef){
-      let cuts=0,panels=0;
+      let cost=0;
       for(const seg of allSegs){
         for(const[ss,se] of spans(seg.length,seg.openings)){
           const sl=se-ss,nf=Math.floor(sl/pdef.length),rem=sl-nf*pdef.length;
-          panels+=nf+(rem>50?1:0); if(rem>50)cuts++;
+          for(let n=0;n<nf;n++) cost+=panelScore(pdef,pdef.length,false);
+          if(rem>50) cost+=panelScore(pdef,rem,true);
         }
       }
-      return{cuts,panels};
+      return cost;
     }
-    let best=WALL_PANELS[0],bs={cuts:9999,panels:9999};
+    let best=WALL_PANELS[0],bc=Infinity;
     for(const p of WALL_PANELS){
-      const s=score(p);
-      if(s.cuts<bs.cuts||(s.cuts===bs.cuts&&s.panels<bs.panels)){bs=s;best=p;}
+      if(!PREFERRED_IDS.has(p.id)) continue;
+      const c=score(p);
+      if(c<bc){bc=c;best=p;}
     }
     for(const seg of allSegs){
       seg.panels=[];
@@ -930,15 +1220,53 @@ function simulateEngine(data,mode){
         let cur=ss;
         while(cur<se-50){
           const rem=se-cur;
-          const pan=mkPanel(best,cur,rem);
-          seg.panels.push(pan); cur+=pan.actual_length;
+          const isCut=best.length>rem+50;
+          const used=isCut?rem:best.length;
+          seg.panels.push(mkPanel(best,cur,used,isCut));
+          cur+=used;
         }
       }
     }
   }
 
   if(mode==='min_variety') nestMinVariety(segs);
-  else for(const seg of segs) seg.panels=nestGreedy(seg.length,seg.openings);
+  else for(const seg of segs) seg.panels=nestCostOptimised(seg.length,seg.openings);
+
+  // ── Wall-snap suggestions: nearest length adjustment that tiles cleanly ──────
+  function canTileExact(spanLen){
+    const STEP=50, TOL=50;
+    const N=Math.round((spanLen+TOL)/STEP), target=Math.round(spanLen/STEP);
+    const reach=new Set([0]); let frontier=[0];
+    while(frontier.length){
+      const nf=[];
+      for(const i of frontier){
+        for(const L of PREFERRED_LENS){
+          const ni=i+Math.round(L/STEP);
+          if(ni<=N&&!reach.has(ni)){reach.add(ni);nf.push(ni);}
+        }
+      }
+      frontier=nf;
+    }
+    for(const k of reach){ if(Math.abs(k-target)*STEP<=TOL) return true; }
+    return false;
+  }
+  function suggestSnap(spanLen,maxAdjust){
+    maxAdjust=maxAdjust||900;
+    if(canTileExact(spanLen)) return {delta:0,target:spanLen};
+    for(let delta=50;delta<=maxAdjust;delta+=50){
+      for(const d of [delta,-delta]){
+        const cand=spanLen+d;
+        if(cand<1800) continue;
+        if(canTileExact(cand)) return {delta:d,target:cand};
+      }
+    }
+    return null;
+  }
+  for(const seg of segs){
+    const hasCut=seg.panels.some(p=>p.is_cut);
+    const hasSmall=seg.panels.some(p=>!PREFERRED_IDS.has(p.id));
+    seg.snap=(hasCut||hasSmall)?suggestSnap(seg.length):{delta:0,target:seg.length};
+  }
 
   // Floor tiling — orient long panel dimension along longer room span
   const floor_tiles={};
@@ -997,6 +1325,69 @@ function simulateEngine(data,mode){
   const sumV=(obj,k)=>Object.values(obj).reduce((a,v)=>a+v[k],0);
   const totalCost=sumV(wTC,'cost')+sumV(fTC,'cost');
   const storeys=parseInt(document.getElementById('p-storeys').value)||1;
+  const wallH=parseInt(document.getElementById('p-height').value)||3000;
+
+  // ── System compatibility score ────────────────────────────────────────────
+  // % of wall length covered by preferred full panels (no cuts, no small panels)
+  let prefLen=0, totalLen=0, cutLen=0, smallLen=0;
+  for(const p of allW){
+    const L=p.actual_length||p.length;
+    totalLen+=L;
+    if(p.is_cut) cutLen+=L;
+    else if(!PREFERRED_IDS.has(p.id)) smallLen+=L;
+    else prefLen+=L;
+  }
+  const compatScore=totalLen>0?Math.round(prefLen/totalLen*100):100;
+  const wallsNeedingSnap=segs.filter(s=>s.snap&&s.snap.delta!==0).length;
+
+  // ── Indicative engineering assessment (NOT FOR CONSTRUCTION) ───────────────
+  const engChecks=[];
+  // 1. Panel slenderness: height/thickness ratio
+  const slenderness=wallH/WALL_T;
+  engChecks.push({
+    label:'Panel slenderness (h/t)',
+    value:slenderness.toFixed(1),
+    status:slenderness<=20?'ok':slenderness<=30?'warn':'fail',
+    note:slenderness<=20?'Within typical limits':slenderness<=30?'Check buckling with engineer':'Exceeds typical h/t — engineering required'
+  });
+  // 2. Max unbraced wall run (longest wall without a perpendicular return)
+  let maxRun=0;
+  for(const s of segs) maxRun=Math.max(maxRun,s.length);
+  engChecks.push({
+    label:'Longest wall run',
+    value:(maxRun/1000).toFixed(1)+'m',
+    status:maxRun<=6000?'ok':maxRun<=9000?'warn':'fail',
+    note:maxRun<=6000?'Adequate lateral restraint likely':maxRun<=9000?'Consider intermediate bracing':'Long unbraced run — bracing required'
+  });
+  // 3. Storey count vs system (prefab mid-rise typically to ~8 storeys)
+  engChecks.push({
+    label:'Storey count',
+    value:storeys+' storey'+(storeys>1?'s':''),
+    status:storeys<=6?'ok':storeys<=8?'warn':'fail',
+    note:storeys<=6?'Within typical prefab mid-rise range':storeys<=8?'Upper limit — verify load path':'Exceeds typical prefab range'
+  });
+  // 4. Floor span check (max floor panel length)
+  let maxFloorSpan=0;
+  for(const t of allF) maxFloorSpan=Math.max(maxFloorSpan,t.actual_length||t.length);
+  engChecks.push({
+    label:'Max floor cassette span',
+    value:(maxFloorSpan/1000).toFixed(1)+'m',
+    status:maxFloorSpan<=4200?'ok':maxFloorSpan<=6000?'warn':'fail',
+    note:maxFloorSpan<=4200?'Typical cassette span OK':maxFloorSpan<=6000?'Deeper cassette / camber check':'Span exceeds typical cassette'
+  });
+  // 5. Lateral stability — ratio of walls in each direction
+  let nsLen=0,ewLen=0;
+  for(const s of segs){
+    const ang=Math.abs(Math.atan2(s.end[1]-s.start[1],s.end[0]-s.start[0])*180/Math.PI)%180;
+    if(ang<45||ang>135) ewLen+=s.length; else nsLen+=s.length;
+  }
+  const balance=Math.min(nsLen,ewLen)/Math.max(nsLen,ewLen||1);
+  engChecks.push({
+    label:'Bracing balance (N-S vs E-W)',
+    value:Math.round(balance*100)+'%',
+    status:balance>=0.5?'ok':balance>=0.3?'warn':'fail',
+    note:balance>=0.5?'Walls reasonably balanced both axes':balance>=0.3?'One axis lighter — check stability':'Strong directional imbalance — bracing review'
+  });
 
   return{
     wall_segments:segs, floor_tiles, junctions, mode,
@@ -1013,7 +1404,10 @@ function simulateEngine(data,mode){
         junctions:junctions.length,
         total_cost:totalCost*storeys,
         large_panels:[...allW,...allF].filter(p=>(p.actual_length||p.length)>LARGE_THRESH).length,
+        compat_score:compatScore,
+        walls_needing_snap:wallsNeedingSnap,
       },
+      eng_checks:engChecks,
       wall_schedule:Object.values(wTC).sort((a,b)=>a.id.localeCompare(b.id)),
       floor_schedule:Object.values(fTC).sort((a,b)=>a.id.localeCompare(b.id)),
     }
@@ -1033,7 +1427,14 @@ function renderReport(result){
   const rc=document.getElementById('rc');
 
   if(activeRtab==='summary'){
+    const compatColor=s.compat_score>=85?'var(--accent)':s.compat_score>=65?'var(--warn)':'var(--danger)';
     rc.innerHTML=`
+    <div class="sc full" style="margin-bottom:8px;text-align:center;padding:14px">
+      <div class="sl">System Compatibility</div>
+      <div style="font-size:34px;font-weight:800;color:${compatColor};line-height:1;margin:4px 0">${s.compat_score}%</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted)">of wall length uses preferred full panels</div>
+      ${s.walls_needing_snap>0?`<div style="font-family:var(--mono);font-size:10px;color:var(--warn);margin-top:6px">${s.walls_needing_snap} wall${s.walls_needing_snap>1?'s':''} could snap to remove customs → see Assess tab</div>`:'<div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-top:6px">✓ All walls tile cleanly</div>'}
+    </div>
     <div class="sg">
       <div class="sc"><div class="sv">${s.total_wall_panels}</div><div class="sl">Wall panels</div></div>
       <div class="sc i"><div class="sv">${s.total_floor_panels}</div><div class="sl">Floor panels</div></div>
@@ -1049,16 +1450,50 @@ function renderReport(result){
       </div>
       <div class="sc full">
         <div class="sl">Mode</div>
-        <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:2px">${result.mode==='greedy'?'Greedy fill':'Min variety (global)'}</div>
+        <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:2px">${result.mode==='greedy'?'Cost-optimised fill':'Min variety (global)'}</div>
       </div>
-    </div>
-    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8">
-      ${s.cut_walls>0?`<div style="color:var(--warn)">⚠ ${s.cut_walls} wall cuts</div>`:'<div style="color:var(--accent2)">✓ No wall cuts</div>'}
-      ${s.cut_floors>0?`<div style="color:var(--warn)">⚠ ${s.cut_floors} floor cuts</div>`:'<div style="color:var(--accent2)">✓ No floor cuts</div>'}
-      ${s.large_panels>0?`<div style="color:var(--warn)">⚠ ${s.large_panels} panels >3m — delivery premium</div>`:''}
-      ${(parseInt(document.getElementById('p-storeys').value)||1)>1?`<div style="color:var(--accent2)">✓ ${document.getElementById('p-storeys').value} storeys included</div>`:''}
     </div>`;
     document.getElementById('cost-card')?.addEventListener('click',showBreakdown);
+  }
+
+  if(activeRtab==='assess'){
+    // Snap suggestions
+    const snapWalls=result.wall_segments.filter(s=>s.snap&&s.snap.delta!==0);
+    let snapHtml='';
+    if(snapWalls.length){
+      snapHtml=snapWalls.map(seg=>{
+        const sign=seg.snap.delta>0?'+':'';
+        return `<tr><td>Wall ${seg.idx}</td><td>${Math.round(seg.length)}mm</td>
+          <td style="color:var(--accent)">${sign}${seg.snap.delta}mm</td>
+          <td style="color:var(--accent2)">${seg.snap.target}mm</td></tr>`;
+      }).join('');
+    }
+    const ec=result.report.eng_checks||[];
+    const statusColor=st=>st==='ok'?'var(--accent)':st==='warn'?'var(--warn)':'var(--danger)';
+    const statusIcon=st=>st==='ok'?'✓':st==='warn'?'⚠':'✗';
+    rc.innerHTML=`
+    <div class="sch-sec">
+      <div class="sch-title">Wall-Snap Suggestions</div>
+      ${snapWalls.length?`
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:6px">Adjusting these wall lengths removes cut/custom panels:</div>
+        <table class="sch-t"><thead><tr><th>Wall</th><th>Current</th><th>Adjust</th><th>Target</th></tr></thead><tbody>${snapHtml}</tbody></table>`
+        :'<div style="font-family:var(--mono);font-size:10px;color:var(--accent2)">✓ All walls already tile cleanly with preferred panels</div>'}
+    </div>
+    <div class="sch-sec">
+      <div class="sch-title">Indicative Engineering Assessment</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--danger);margin-bottom:8px;padding:5px 7px;border:1px solid rgba(245,90,90,.3);border-radius:5px;background:rgba(245,90,90,.06)">⚠ INDICATIVE ONLY — NOT FOR CONSTRUCTION. Rule-of-thumb checks to flag issues early. A qualified structural engineer must verify all aspects.</div>
+      ${ec.map(c=>`
+        <div style="display:flex;align-items:start;gap:8px;padding:7px 0;border-bottom:1px solid rgba(42,45,51,.4)">
+          <div style="color:${statusColor(c.status)};font-size:13px;flex-shrink:0">${statusIcon(c.status)}</div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px">
+              <span style="color:var(--text)">${c.label}</span>
+              <span style="color:${statusColor(c.status)};font-weight:500">${c.value}</span>
+            </div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px">${c.note}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
   }
 
   if(activeRtab==='schedule'){
@@ -1118,6 +1553,62 @@ function renderReport(result){
 }
 
 // Cost breakdown modal
+// ─── Wall editor ──────────────────────────────────────────────────────────────
+const wallOverrides={};  // seg_idx -> target length mm
+
+function openWallEditor(segIdx){
+  if(!currentResult) return;
+  const seg=currentResult.wall_segments.find(s=>s.idx===segIdx);
+  if(!seg) return;
+  const curLen=Math.round(seg.length);
+  const overridden=wallOverrides[segIdx]!==undefined;
+  const snap=seg.snap;
+
+  const panelRows=seg.panels.map(p=>{
+    const hex=p.is_cut?0xf55a5a:(WALL_COLOURS[p.id]||0x888888);
+    const css='#'+hex.toString(16).padStart(6,'0');
+    return `<tr><td><span class="dot" style="background:${css}"></span>${p.label}</td>
+      <td>${p.actual_length}mm</td><td>${p.is_cut?'<span style="color:var(--danger)">cut</span>':'full'}</td></tr>`;
+  }).join('');
+
+  let snapHtml='';
+  if(snap&&snap.delta!==0){
+    const sign=snap.delta>0?'+':'';
+    snapHtml=`<div style="margin:10px 0;padding:8px 10px;border:1px solid var(--accent2);border-radius:6px;background:rgba(96,180,245,.06)">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--accent2)">💡 Snap suggestion: adjust ${sign}${snap.delta}mm → ${snap.target}mm to tile cleanly with no cuts</div>
+      <button class="btn" id="we-apply-snap" style="margin-top:6px;font-size:10px;border-color:var(--accent2);color:var(--accent2)">Apply snap (${snap.target}mm)</button>
+    </div>`;
+  } else if(snap&&snap.delta===0){
+    snapHtml=`<div style="margin:10px 0;font-family:var(--mono);font-size:10px;color:var(--accent)">✓ This wall already tiles cleanly</div>`;
+  }
+
+  document.getElementById('we-title').textContent='Wall '+segIdx;
+  document.getElementById('we-content').innerHTML=`
+    <div class="fr" style="margin:10px 0"><label style="width:110px">Wall length (mm)</label>
+      <input id="we-len" type="number" value="${overridden?wallOverrides[segIdx]:curLen}" step="50" style="flex:1">
+      <button class="btn btn-primary" id="we-apply" style="font-size:10px">Apply</button>
+    </div>
+    ${overridden?`<div style="font-family:var(--mono);font-size:9px;color:var(--warn)">⚠ Overridden from original ${Math.round(dist2(DEMO.wall_segments[segIdx]?DEMO.wall_segments[segIdx].start:[0,0],DEMO.wall_segments[segIdx]?DEMO.wall_segments[segIdx].end:[0,0]))||curLen}mm — <a href="#" id="we-reset" style="color:var(--accent2)">reset</a></div>`:''}
+    ${snapHtml}
+    <div class="sch-title" style="margin-top:12px">Current panel configuration</div>
+    <table class="sch-t"><thead><tr><th>Panel</th><th>Length</th><th>Status</th></tr></thead><tbody>${panelRows}</tbody></table>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:8px">Changing length re-runs the nesting for the whole plan (junctions may shift).</div>
+  `;
+  document.getElementById('we-modal').classList.add('show');
+
+  document.getElementById('we-apply').addEventListener('click',()=>{
+    const v=parseInt(document.getElementById('we-len').value);
+    if(v&&v>=600){wallOverrides[segIdx]=v;document.getElementById('we-modal').classList.remove('show');runAnalysis();notify('Wall '+segIdx+' set to '+v+'mm');}
+  });
+  document.getElementById('we-apply-snap')?.addEventListener('click',()=>{
+    wallOverrides[segIdx]=snap.target;document.getElementById('we-modal').classList.remove('show');runAnalysis();notify('Snapped wall '+segIdx+' to '+snap.target+'mm');
+  });
+  document.getElementById('we-reset')?.addEventListener('click',ev=>{
+    ev.preventDefault();delete wallOverrides[segIdx];document.getElementById('we-modal').classList.remove('show');runAnalysis();notify('Wall '+segIdx+' reset');
+  });
+}
+document.getElementById('we-close').addEventListener('click',()=>document.getElementById('we-modal').classList.remove('show'));
+
 function showBreakdown(){
   if(!currentResult) return;
   const r=currentResult.report,s=r.summary;
@@ -1199,6 +1690,8 @@ document.querySelectorAll('.layer-toggle').forEach(tog=>tog.addEventListener('cl
     if(placingMode===type) stopPlace(); else startPlace(type);
   });
 });
+document.getElementById('btn-optimise-crane').addEventListener('click',optimiseCranePosition);
+document.getElementById('btn-simulate').addEventListener('click',simulateInstall);
 document.getElementById('btn-clear-log').addEventListener('click',()=>{
   while(logGrp.children.length) logGrp.remove(logGrp.children[0]);
   craneObj=null;truckObj=null;bndPts=[];bndLine=null;cranePos=null;truckPos=null;
