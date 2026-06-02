@@ -51,9 +51,10 @@ NSW_HOB = "https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Planning
 VIC_PARCEL = "https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/VicPlan_PropertyAndParcel/MapServer/4"
 VIC_ZONE = "https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/Vicplan_PlanningSchemeZones/MapServer/0"
 
-NOMINATIM = "https://nominatim.openstreetmap.org/search"
-# Replace the contact below with your own (Nominatim usage policy requires it).
-USER_AGENT = "FORMWORK-massing/1.0 (apt-compliance-plugin; contact: you@example.com)"
+PHOTON = "https://photon.komoot.io/api/"
+# Australia bounding box (minLon,minLat,maxLon,maxLat) to bias + constrain results.
+AU_BBOX = "112.9,-43.7,153.7,-10.0"
+USER_AGENT = "FORMWORK-massing/1.0 (apt-compliance-plugin)"
 
 HTTP_TIMEOUT = 20
 FLOOR_TO_FLOOR_M = 3.1  # used to convert a height-of-building limit into storeys
@@ -244,18 +245,28 @@ def _parcel_metrics(feature):
 # Geocoding (keyless, AU-filtered). Swap for a keyed provider in production.
 # ----------------------------------------------------------------------------
 def geocode(q):
-    data = _get(NOMINATIM, {
-        "q": q, "format": "jsonv2", "countrycodes": "au",
-        "limit": 1, "addressdetails": 1,
-    })
-    if not data:
+    """Forward geocode via Photon (Komoot). Keyless and tolerant of server/cloud
+    traffic, unlike the public Nominatim endpoint which 403s datacentre IPs.
+    For production AU-grade rooftop accuracy, swap in a G-NAF-backed provider
+    (Geoscape, or a self-hosted Addressr) — Photon uses OpenStreetMap data and
+    may return a street/locality point for addresses OSM doesn't have exactly."""
+    data = _get(PHOTON, {"q": q, "limit": 5, "lang": "en", "bbox": AU_BBOX})
+    feats = (data or {}).get("features") or []
+    au = [f for f in feats if (f.get("properties") or {}).get("countrycode") == "AU"]
+    feats = au or feats
+    if not feats:
         return None
-    top = data[0]
-    state = (top.get("address") or {}).get("state", "")
+    f = feats[0]
+    lon, lat = f["geometry"]["coordinates"][:2]
+    p = f.get("properties", {})
+    state = p.get("state", "")
+    hn, st = p.get("housenumber"), (p.get("street") or p.get("name"))
+    line1 = (hn + " " + st) if (hn and st) else (st or p.get("name") or "")
+    label = ", ".join(b for b in [line1, p.get("city") or p.get("district"), state, p.get("postcode")] if b) or q
     return {
-        "lat": float(top["lat"]),
-        "lon": float(top["lon"]),
-        "label": top.get("display_name", q),
+        "lat": float(lat),
+        "lon": float(lon),
+        "label": label,
         "state": "VIC" if "Victoria" in state else ("NSW" if "New South Wales" in state else state),
     }
 
