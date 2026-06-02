@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FORMWORK — Mid-Rise Feasibility & Massing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#0e1014; --panel:#161a20; --panel2:#1c222b; --line:#2a313c; --line2:#39434f;
+    --ink:#e9eef5; --muted:#8a96a8; --muted2:#5d6877; --accent:#5b9dff; --accent2:#3c6fd0;
+    --b1:#36c2a6; --b2:#f2b441; --b3:#ef6a5b; --core:#7b8696; --corr:#3a4351;
+    --good:#3ec07f; --warn:#f2b441; --bad:#ef6a5b;
+    --r:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Hanken Grotesk',sans-serif; font-size:13px; line-height:1.45;
+    overflow:hidden;
+    background-image:radial-gradient(circle at 18% 12%, rgba(91,157,255,.06), transparent 42%),
+                     radial-gradient(circle at 92% 88%, rgba(54,194,166,.05), transparent 40%);
+  }
+  .app{display:grid; grid-template-columns:316px 1fr 320px; grid-template-rows:46px 1fr; height:100vh}
+  /* ── top bar ── */
+  header{
+    grid-column:1/4; display:flex; align-items:center; gap:14px; padding:0 16px;
+    border-bottom:1px solid var(--line); background:linear-gradient(180deg,#171c23,#13171d);
+  }
+  .logo{font-weight:700; letter-spacing:.16em; font-size:14px}
+  .logo b{color:var(--accent)}
+  .tag{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); letter-spacing:.04em}
+  header .spacer{flex:1}
+  .jx{display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden}
+  .jx button{background:transparent; border:0; color:var(--muted); padding:6px 14px; font:inherit; font-size:12px; cursor:pointer; letter-spacing:.05em}
+  .jx button.on{background:var(--accent); color:#08121f; font-weight:600}
+  /* ── panels ── */
+  .panel{overflow-y:auto; background:var(--panel); padding:14px 14px 40px}
+  .panel.left{border-right:1px solid var(--line)}
+  .panel.right{border-left:1px solid var(--line)}
+  .panel::-webkit-scrollbar{width:9px}
+  .panel::-webkit-scrollbar-thumb{background:var(--line); border-radius:6px}
+  .grp{margin-bottom:16px}
+  .grp h3{font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-bottom:9px; font-weight:600; display:flex; align-items:center; gap:7px}
+  .grp h3::before{content:''; width:5px; height:5px; background:var(--accent); border-radius:1px}
+  .field{margin-bottom:9px}
+  .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:3px}
+  .field .val{font-family:'JetBrains Mono',monospace; color:var(--ink); float:right; font-size:11px}
+  input[type=text],input[type=number]{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:6px; padding:7px 9px; font:inherit; font-family:'JetBrains Mono',monospace; font-size:12px;
+  }
+  input:focus{outline:none; border-color:var(--accent)}
+  input[type=range]{width:100%; -webkit-appearance:none; height:3px; background:var(--line2); border-radius:2px; margin-top:6px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); cursor:pointer; border:2px solid var(--bg)}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px}
+  .lot{display:grid; grid-template-columns:1fr 1fr auto; gap:6px; margin-bottom:6px; align-items:center}
+  .lot .x{background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:5px; cursor:pointer; width:26px; height:30px}
+  .lot .x:hover{color:var(--bad); border-color:var(--bad)}
+  .btn{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink); padding:8px; border-radius:6px; cursor:pointer; font:inherit; font-size:12px}
+  .btn:hover{border-color:var(--accent); color:var(--accent)}
+  .btn.add{border-style:dashed; color:var(--muted)}
+  .btn.primary{background:var(--accent); color:#08121f; font-weight:700; border-color:var(--accent); letter-spacing:.04em}
+  .btn.primary:hover{background:#74acff; color:#08121f}
+  .mixbar{height:10px; border-radius:6px; overflow:hidden; display:flex; margin:8px 0 4px; border:1px solid var(--line)}
+  .mixbar i{height:100%}
+  .seg{display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:11px; margin-bottom:4px}
+  .sw{width:10px; height:10px; border-radius:2px; display:inline-block}
+  /* ── viewport ── */
+  .view{position:relative; background:#0b0d11; overflow:hidden}
+  #gl{position:absolute; inset:0}
+  #plan{position:absolute; inset:0; display:none}
+  .vtabs{position:absolute; top:12px; left:50%; transform:translateX(-50%); display:flex; gap:4px; background:rgba(20,24,30,.85); border:1px solid var(--line); border-radius:8px; padding:4px; backdrop-filter:blur(8px); z-index:5}
+  .vtabs button{background:transparent; border:0; color:var(--muted); padding:6px 14px; border-radius:5px; cursor:pointer; font:inherit; font-size:12px}
+  .vtabs button.on{background:var(--accent); color:#08121f; font-weight:600}
+  .vtabs button.tog{border:1px solid var(--line2); color:var(--muted2); margin-left:2px}
+  .vtabs button.tog.on{background:rgba(91,157,255,.18); border-color:var(--accent); color:var(--accent); font-weight:500}
+  .vhint{position:absolute; bottom:12px; left:14px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted2); z-index:5; line-height:1.5}
+  .planpick{position:absolute; top:12px; right:14px; display:none; gap:4px; z-index:5}
+  .planpick button{background:rgba(20,24,30,.85); border:1px solid var(--line); color:var(--muted); padding:6px 11px; border-radius:6px; cursor:pointer; font:inherit; font-size:11px; backdrop-filter:blur(8px)}
+  .planpick button.on{color:var(--accent); border-color:var(--accent)}
+  .legend{position:absolute; bottom:12px; right:14px; display:flex; gap:12px; z-index:5; background:rgba(20,24,30,.8); padding:6px 11px; border-radius:7px; border:1px solid var(--line); backdrop-filter:blur(8px); font-family:'JetBrains Mono',monospace; font-size:10.5px}
+  /* ── metrics ── */
+  .metric{background:var(--panel2); border:1px solid var(--line); border-radius:var(--r); padding:11px 12px; margin-bottom:8px}
+  .metric .k{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  .metric .v{font-family:'JetBrains Mono',monospace; font-size:23px; font-weight:700; margin-top:2px; letter-spacing:-.01em}
+  .metric .v small{font-size:12px; color:var(--muted); font-weight:400}
+  .mgrid{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .mgrid .metric{margin:0}
+  .mgrid .v{font-size:18px}
+  .kv{display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--line); font-size:12px}
+  .kv:last-child{border:0}
+  .kv span:last-child{font-family:'JetBrains Mono',monospace}
+  table.sched{width:100%; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:10.5px; margin-top:4px}
+  table.sched th{text-align:right; color:var(--muted); font-weight:500; padding:4px 5px; border-bottom:1px solid var(--line2); font-size:9.5px; letter-spacing:.04em}
+  table.sched th:first-child,table.sched td:first-child{text-align:left}
+  table.sched td{text-align:right; padding:4px 5px; border-bottom:1px solid var(--line)}
+  table.sched tr.sb td{color:var(--accent)}
+  .warns{margin-top:4px}
+  .warn-item{display:flex; gap:8px; align-items:flex-start; background:rgba(242,180,65,.08); border:1px solid rgba(242,180,65,.25); border-radius:6px; padding:7px 9px; margin-bottom:6px; font-size:11.5px; line-height:1.4}
+  .warn-item.bad{background:rgba(239,106,91,.08); border-color:rgba(239,106,91,.3)}
+  .warn-item.ok{background:rgba(62,192,127,.07); border-color:rgba(62,192,127,.25)}
+  .warn-item b{color:var(--warn)} .warn-item.bad b{color:var(--bad)} .warn-item.ok b{color:var(--good)}
+  .exp{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .exp button{background:var(--panel2); border:1px solid var(--line2); color:var(--ink); padding:10px; border-radius:6px; cursor:pointer; font:inherit; display:flex; flex-direction:column; align-items:center; gap:2px}
+  .exp button:hover{border-color:var(--accent); color:var(--accent)}
+  .exp button b{font-family:'JetBrains Mono',monospace; font-size:14px; letter-spacing:.06em}
+  .exp button span{font-size:10px; color:var(--muted)}
+  .note{font-size:10.5px; color:var(--muted2); line-height:1.5; margin-top:6px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo"><b>◢</b> FORM<b>WORK</b></div>
+    <div class="tag">mid-rise feasibility · 600&#8202;mm grid</div>
+    <div class="spacer"></div>
+    <div class="jx" id="jx">
+      <button data-j="VIC" class="on">VIC</button>
+      <button data-j="NSW">NSW</button>
+    </div>
+  </header>
+
+  <!-- ───────────── LEFT: INPUTS ───────────── -->
+  <aside class="panel left">
+    <div class="grp">
+      <h3>Site</h3>
+      <div class="field">
+        <label>Address (VIC / NSW)</label>
+        <input type="text" id="addr" value="120 Sydney Road, Brunswick VIC">
+      </div>
+      <button class="btn primary" id="locate" style="margin-bottom:8px">⌖ Locate real site</button>
+      <div class="note" id="siteStatus">Fetches the title boundary, planning zone and neighbouring lots from the VIC / NSW cadastre via your backend.</div>
+      <div class="field"><label>Lots <span class="val" id="lotsum"></span></label></div>
+      <div id="lots"></div>
+      <button class="btn add" id="addlot">+ merge adjacent lot</button>
+      <div class="note">Frontage × depth per lot, in metres. A located site fills these from its oriented boundary; merged lots add frontage (side-by-side); depth = deepest lot.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Setbacks &amp; envelope</h3>
+      <div class="row2">
+        <div class="field"><label>Front (street) <span class="val" id="vfront">5.0</span></label><input type="range" id="front" min="0" max="12" step="0.6" value="5.4"></div>
+        <div class="field"><label>Rear <span class="val" id="vrear">4.8</span></label><input type="range" id="rear" min="0" max="12" step="0.6" value="4.8"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Side (each) <span class="val" id="vside">3.0</span></label><input type="range" id="side" min="0" max="9" step="0.6" value="3.0"></div>
+        <div class="field"><label>Upper inset <span class="val" id="vupper">3.0</span></label><input type="range" id="upper" min="0" max="9" step="0.6" value="3.0"></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>Form</h3>
+      <div class="field"><label>Storeys <span class="val" id="vstoreys">6</span></label><input type="range" id="storeys" min="2" max="10" step="1" value="6"></div>
+      <div class="field"><label>Floor-to-floor (mm) <span class="val" id="vf2f">3000</span></label><input type="range" id="f2f" min="2400" max="4200" step="600" value="3000"></div>
+      <div class="field"><label>Ground dig-in (mm) <span class="val" id="vdig">0</span></label><input type="range" id="dig" min="0" max="4200" step="600" value="0"></div>
+      <div class="row2">
+        <div class="field"><label>Corridor (mm) <span class="val" id="vcorr">1800</span></label><input type="range" id="corr" min="1200" max="3000" step="600" value="1800"></div>
+        <div class="field"><label>Core length (m) <span class="val" id="vcore">6.0</span></label><input type="range" id="core" min="3.6" max="10.8" step="0.6" value="6.0"></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>Apartment mix</h3>
+      <div class="mixbar" id="mixbar"><i style="background:var(--b1);width:30%"></i><i style="background:var(--b2);width:50%"></i><i style="background:var(--b3);width:20%"></i></div>
+      <div class="row3" style="margin-top:6px">
+        <div class="field"><label>1&#8202;bed&#8201;%</label><input type="number" id="m1" value="30" min="0" max="100"></div>
+        <div class="field"><label>2&#8202;bed&#8201;%</label><input type="number" id="m2" value="50" min="0" max="100"></div>
+        <div class="field"><label>3&#8202;bed&#8201;%</label><input type="number" id="m3" value="20" min="0" max="100"></div>
+      </div>
+      <h3 style="margin-top:12px">Target NLA per unit (m²)</h3>
+      <div class="row3">
+        <div class="field"><label>1&#8202;bed</label><input type="number" id="a1" value="50"></div>
+        <div class="field"><label>2&#8202;bed</label><input type="number" id="a2" value="70"></div>
+        <div class="field"><label>3&#8202;bed</label><input type="number" id="a3" value="90"></div>
+      </div>
+      <div class="note">ADG minimum internal areas. Apartment depth is clamped 6–10&#8202;m for daylight; frontages snap to the 600&#8202;mm grid.</div>
+    </div>
+
+    <button class="btn primary" id="regen" style="margin-top:4px">⟳ Generate massing</button>
+  </aside>
+
+  <!-- ───────────── CENTRE: VIEWPORT ───────────── -->
+  <main class="view">
+    <div class="vtabs">
+      <button id="t3d" class="on">3D massing</button>
+      <button id="t2d">Floor plan</button>
+      <button id="tEnv" class="tog">Envelope</button>
+      <button id="tCtx" class="tog on">Context</button>
+    </div>
+    <div class="planpick" id="planpick">
+      <button data-lvl="typ" class="on">Typical</button>
+      <button data-lvl="sb">Setback level</button>
+    </div>
+    <div id="gl"></div>
+    <canvas id="plan"></canvas>
+    <div class="vhint" id="vhint">drag&#8201;·&#8201;orbit&nbsp;&nbsp;scroll&#8201;·&#8201;zoom&nbsp;&nbsp;right-drag&#8201;·&#8201;pan</div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--b1)"></i> 1B</span>
+      <span><i class="sw" style="background:var(--b2)"></i> 2B</span>
+      <span><i class="sw" style="background:var(--b3)"></i> 3B</span>
+      <span><i class="sw" style="background:var(--core)"></i> core</span>
+    </div>
+  </main>
+
+  <!-- ───────────── RIGHT: METRICS ───────────── -->
+  <aside class="panel right">
+    <div class="grp">
+      <h3>Yield</h3>
+      <div class="metric"><div class="k">Total apartments</div><div class="v" id="mTotal">—</div></div>
+      <div class="mgrid">
+        <div class="metric"><div class="k">Plot ratio (FSR)</div><div class="v" id="mFsr">—</div></div>
+        <div class="metric"><div class="k">Site coverage</div><div class="v" id="mCov">—<small>%</small></div></div>
+        <div class="metric"><div class="k">GFA</div><div class="v" id="mGfa">—<small>m²</small></div></div>
+        <div class="metric"><div class="k">Efficiency</div><div class="v" id="mEff">—<small>%</small></div></div>
+      </div>
+    </div>
+
+    <div class="grp">
+      <h3>Achieved mix</h3>
+      <div id="mixOut"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Level schedule</h3>
+      <table class="sched" id="sched"><thead><tr><th>Lvl</th><th>RL (m)</th><th>1B</th><th>2B</th><th>3B</th><th>GFA</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="grp">
+      <h3>Compliance flags</h3>
+      <div class="warns" id="warns"></div>
+    </div>
+
+    <div class="grp">
+      <h3>Export</h3>
+      <div class="exp">
+        <button id="exDxf"><b>DXF</b><span>2D plans + 3D mass</span></button>
+        <button id="exIfc"><b>IFC</b><span>storeys + unit spaces</span></button>
+      </div>
+      <div class="note">DXF in millimetres on the 600&#8202;mm grid. IFC4 carries one <i>IfcSpace</i> per apartment (typed, with a brief property set) ready for the sketch-design stage.</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   FORMWORK — feasibility massing engine
+   Units: metres internally. Everything snaps to the 0.6 m grid.
+═══════════════════════════════════════════════════════════════════ */
+const GRID = 0.6;
+const snap  = v => Math.round(v / GRID) * GRID;
+const floorG= v => Math.floor(v / GRID + 1e-6) * GRID;
+const APTCOL = {b1:'#36c2a6', b2:'#f2b441', b3:'#ef6a5b'};
+let JUR = 'VIC';
+
+/* ---- state: lots ---- */
+let lots = [{f:30, d:38}];
+function renderLots(){
+  const c = document.getElementById('lots'); c.innerHTML='';
+  lots.forEach((l,i)=>{
+    const row=document.createElement('div'); row.className='lot';
+    row.innerHTML=`<input type="number" value="${l.f}" step="0.6" data-i="${i}" data-k="f">
+                   <input type="number" value="${l.d}" step="0.6" data-i="${i}" data-k="d">
+                   <button class="x" data-i="${i}" ${lots.length<2?'disabled style="opacity:.3;cursor:default"':''}>×</button>`;
+    c.appendChild(row);
+  });
+  c.querySelectorAll('input').forEach(inp=>inp.oninput=e=>{
+    lots[+e.target.dataset.i][e.target.dataset.k]=Math.max(0,+e.target.value||0); updateLotSum();
+  });
+  c.querySelectorAll('.x').forEach(b=>b.onclick=e=>{ if(lots.length<2)return; lots.splice(+e.target.dataset.i,1); renderLots(); updateLotSum(); });
+  updateLotSum();
+}
+function updateLotSum(){
+  const f = lots.reduce((s,l)=>s+l.f,0), d = Math.max(...lots.map(l=>l.d));
+  document.getElementById('lotsum').textContent = `${f.toFixed(1)} × ${d.toFixed(1)} m · ${(f*d).toFixed(0)} m²`;
+}
+document.getElementById('addlot').onclick=()=>{ lots.push({f:15,d:lots[0].d}); renderLots(); };
+
+/* ---- generic slider wiring ---- */
+function bind(id,outId,fmt){ const el=document.getElementById(id),o=document.getElementById(outId);
+  const f=()=>o.textContent=fmt?fmt(+el.value):el.value; el.oninput=f; f(); }
+bind('front','vfront',v=>v.toFixed(1)); bind('rear','vrear',v=>v.toFixed(1));
+bind('side','vside',v=>v.toFixed(1)); bind('upper','vupper',v=>v.toFixed(1));
+bind('storeys','vstoreys'); bind('f2f','vf2f'); bind('dig','vdig');
+bind('corr','vcorr'); bind('core','vcore',v=>v.toFixed(1));
+function syncMix(){ const m1=+m1i.value||0,m2=+m2i.value||0,m3=+m3i.value||0,t=Math.max(1,m1+m2+m3);
+  const b=document.getElementById('mixbar'); b.children[0].style.width=100*m1/t+'%'; b.children[1].style.width=100*m2/t+'%'; b.children[2].style.width=100*m3/t+'%'; }
+const m1i=document.getElementById('m1'),m2i=document.getElementById('m2'),m3i=document.getElementById('m3');
+// keep the three mix fields summing to exactly 100: clamp the edited one, split the
+// remainder across the other two in proportion to their current values.
+function normalizeMix(changed){
+  const ids=['m1','m2','m3']; const els={m1:m1i,m2:m2i,m3:m3i};
+  let v=Math.round(Math.max(0,Math.min(100,+els[changed].value||0))); els[changed].value=v;
+  const others=ids.filter(id=>id!==changed);
+  let oa=Math.max(0,+els[others[0]].value||0), ob=Math.max(0,+els[others[1]].value||0);
+  const rem=100-v, sum=oa+ob;
+  if(sum<=0){ els[others[0]].value=Math.round(rem/2); els[others[1]].value=rem-Math.round(rem/2); }
+  else { const a=Math.round(rem*oa/sum); els[others[0]].value=a; els[others[1]].value=rem-a; }
+  syncMix();
+}
+[m1i,m2i,m3i].forEach(e=>{ e.oninput=()=>normalizeMix(e.id); });
+document.getElementById('jx').onclick=e=>{ if(e.target.dataset.j){ JUR=e.target.dataset.j;
+  document.querySelectorAll('#jx button').forEach(b=>b.classList.toggle('on',b.dataset.j===JUR));
+  /* jurisdiction defaults: NSW tends to deeper street setbacks in mid-rise contexts */
+  if(JUR==='NSW'){front.value=6.0;} else {front.value=5.4;} bind('front','vfront',v=>v.toFixed(1)); generate(); } };
+
+/* ════════════════════ SITE INTELLIGENCE (backend) ════════════════════ */
+// Where the Flask blueprint lives. Same-origin when served by your app;
+// override for local dev, e.g. ?api=http://localhost:5050 or set window.FORMWORK_API.
+const API_BASE = (new URLSearchParams(location.search).get('api'))
+  || window.FORMWORK_API || '';
+let siteGeo = null;   // {poly:[[x,y]...], context:[[[x,y]...]...]} in engine metres
+
+function setSiteStatus(msg, kind){ const el=document.getElementById('siteStatus');
+  el.textContent=msg; el.style.color = kind==='err'?'var(--bad)':kind==='ok'?'var(--good)':'var(--muted2)'; }
+
+const snapTo = v => Math.round(v/GRID)*GRID;
+
+// project lon/lat -> local metres, rotate so the lot's long axis is +x, drop to origin
+function siteTransform(parcel, context, centroid, angleDeg){
+  const [lon0,lat0]=centroid, k=Math.cos(lat0*Math.PI/180), a=-angleDeg*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+  const toLocal=([lon,lat])=>{ const x=(lon-lon0)*111320*k, y=(lat-lat0)*110540; return [x*ca-y*sa, x*sa+y*ca]; };
+  const ring=g=>{ const t=g.type, c=g.coordinates; if(!c)return [];
+    if(t==='Polygon')return c[0]; if(t==='MultiPolygon')return c.reduce((m,p)=>p[0].length>m.length?p[0]:m,[]); return []; };
+  const site=ring(parcel.geometry).map(toLocal);
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  site.forEach(([x,y])=>{minx=Math.min(minx,x);miny=Math.min(miny,y);maxx=Math.max(maxx,x);maxy=Math.max(maxy,y);});
+  const shift=([x,y])=>[x-minx,y-miny];
+  const ctx=(context&&context.features||[]).map(f=>ring(f.geometry).map(toLocal).map(shift))
+    .filter(p=>p.length>2);
+  return { poly:site.map(shift), context:ctx, F:snapTo(maxx-minx), D:snapTo(maxy-miny) };
+}
+
+async function locateSite(){
+  const q=document.getElementById('addr').value.trim(); if(!q)return;
+  setSiteStatus('Locating…');
+  try{
+    const r=await fetch(`${API_BASE}/api/site/resolve?q=`+encodeURIComponent(q));
+    if(!r.ok){ const j=await r.json().catch(()=>({})); throw new Error(j.error||r.status); }
+    const d=await r.json();
+    if(!d.parcel||!d.metrics) throw new Error('no parcel boundary at that address');
+    // jurisdiction
+    JUR=d.state==='VIC'?'VIC':'NSW';
+    document.querySelectorAll('#jx button').forEach(b=>b.classList.toggle('on',b.dataset.j===JUR));
+    // boundary -> engine frame + lots
+    siteGeo=siteTransform(d.parcel, d.context, d.metrics.centroid, d.metrics.orientation_deg);
+    lots=[{f:Math.max(GRID,siteGeo.F), d:Math.max(GRID,siteGeo.D)}]; renderLots();
+    // zone-driven setbacks + storeys
+    if(d.zone&&d.zone.setbacks){ const s=d.zone.setbacks;
+      const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null){ el.value=snapTo(v);} };
+      set('front',s.front); set('rear',s.rear); set('side',s.side); set('upper',s.upper);
+      if(d.zone.suggested_storeys) document.getElementById('storeys').value=Math.min(6,Math.max(2,d.zone.suggested_storeys));
+      ['front','rear','side','upper'].forEach(id=>bind(id,'v'+id,v=>v.toFixed(1)));
+      bind('storeys','vstoreys');
+    }
+    const z=d.zone||{}, parts=[`${d.state}`];
+    if(z.zone) parts.push(`zone ${z.zone}`);
+    if(z.fsr) parts.push(`FSR ${z.fsr}`);
+    if(z.height_limit_m) parts.push(`H≤${z.height_limit_m}m`);
+    parts.push(`${siteGeo.F.toFixed(1)}×${siteGeo.D.toFixed(1)}m`);
+    setSiteStatus('✓ '+parts.join(' · ')+(z.disclaimer?'  — setbacks are zone defaults, verify against the DCP.':''),'ok');
+    generate();
+  }catch(err){
+    siteGeo=null;
+    setSiteStatus('Couldn’t locate: '+err.message+'. Check the backend is running and reachable.','err');
+  }
+}
+document.getElementById('locate').onclick=locateSite;
+document.getElementById('addr').addEventListener('keydown',e=>{ if(e.key==='Enter')locateSite(); });
+
+/* ════════════════════════════ ENGINE ════════════════════════════ */
+function params(){
+  return {
+    front:+front.value, rear:+rear.value, side:+side.value, upper:+upper.value,
+    storeys:+storeys.value, f2f:+f2f.value/1000, dig:+dig.value/1000,
+    corr:+corr.value/1000, coreLen:+core.value,
+    mix:{b1:+m1i.value||0,b2:+m2i.value||0,b3:+m3i.value||0},
+    area:{b1:+document.getElementById('a1').value,b2:+document.getElementById('a2').value,b3:+document.getElementById('a3').value},
+    minD:6.0, maxD:10.0, unitsPerCore:8
+  };
+}
+
+// tile one row of given clear length; advances global counters toward target shares
+function tileRow(len, depth, area, shares, counts, frame, vOff, level){
+  const fr = t => snap(Math.min(12, Math.max(3, area[t]/depth)));
+  const units=[]; let u=0;
+  while(true){
+    const total = counts.b1+counts.b2+counts.b3;
+    // rank types by deficit vs target share, prefer the most under-represented that fits
+    const order = ['b1','b2','b3'].sort((a,b)=>{
+      const da=(total?counts[a]/total:0)-shares[a], db=(total?counts[b]/total:0)-shares[b]; return da-db; });
+    let placed=null;
+    for(const t of order){ if(shares[t]<=0) continue; if(u+fr(t) <= len+1e-6){ placed=t; break; } }
+    if(!placed){ // try any that fits ignoring share priority
+      for(const t of ['b1','b2','b3']){ if(u+fr(t)<=len+1e-6 && shares[t]>0){ placed=t; break; } }
+    }
+    if(!placed) break;
+    const w=fr(placed);
+    units.push(mapRect(frame, u, vOff, w, depth, {type:placed, level}));
+    counts[placed]++; u+=w;
+  }
+  return units;
+}
+
+// map a local (u along length, v across depth, du,dv) rect into world XY for a frame
+function mapRect(frame, u, v, du, dv, meta){
+  let x,y,wx,wy;
+  if(frame.alongX){ x=frame.x0+u; y=frame.y0+v; wx=du; wy=dv; }
+  else            { x=frame.x0+v; y=frame.y0+u; wx=dv; wy=du; }
+  return Object.assign({x,y,wx,wy}, meta);
+}
+
+function buildFrame(bx0,by0,bx1,by1){
+  let W=floorG(bx1-bx0), D=floorG(by1-by0);
+  bx1=bx0+W; by1=by0+D;
+  const alongX = W>=D;
+  return {x0:bx0,y0:by0,x1:bx1,y1:by1, len:alongX?W:D, depth:alongX?D:W, alongX};
+}
+
+function layoutLevel(frame, P, shares, counts, level, isSB){
+  // Hold the corridor at its briefed width; pull the plate back for daylight.
+  // Extra envelope depth becomes setback/landscape, NOT an absurdly wide corridor.
+  const corr=P.corr; let aptD, double, rows, usedDepth;
+  if((frame.depth-corr)/2 >= P.minD){
+    double=true; aptD=floorG(Math.min(P.maxD,(frame.depth-corr)/2));
+    usedDepth=2*aptD+corr; rows=[0, aptD+corr];
+  } else {
+    double=false; aptD=floorG(Math.min(P.maxD, frame.depth-corr));
+    usedDepth=aptD+corr; rows=[0];
+  }
+  // effective plate, centred across the depth axis of the envelope
+  const dv0=Math.max(0,(frame.depth-usedDepth)/2);
+  const eff={ alongX:frame.alongX, len:frame.len, depth:usedDepth,
+    x0:frame.x0+(frame.alongX?0:dv0), y0:frame.y0+(frame.alongX?dv0:0),
+    x1:frame.x1-(frame.alongX?0:dv0), y1:frame.y1-(frame.alongX?dv0:0) };
+  const pulled = usedDepth < frame.depth-1e-6;
+  // cores along the length of the effective plate (blade cores spanning depth)
+  const coreCount = Math.max(1, Math.ceil(eff.len/45));
+  const cores=[], coreSpots=[];
+  for(let i=0;i<coreCount;i++){
+    const c=snap((eff.len*(i+1)/(coreCount+1)) - P.coreLen/2);
+    coreSpots.push([c, c+P.coreLen]);
+    cores.push(mapRect(eff, c, 0, P.coreLen, eff.depth, {kind:'core'}));
+  }
+  coreSpots.sort((a,b)=>a[0]-b[0]);
+  const free=[]; let cur=0;
+  for(const [a,b] of coreSpots){ if(a-cur>0.6) free.push([cur,a]); cur=Math.max(cur,b); }
+  if(eff.len-cur>0.6) free.push([cur,eff.len]);
+  let units=[];
+  for(const [a,b] of free){
+    for(const r of rows){
+      const sub=tileRow(b-a, aptD, P.area, shares, counts, eff, r, level);
+      sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; });
+      units=units.concat(sub);
+    }
+  }
+  // corridor rect (full effective length, between the two unit rows)
+  const corrRect = mapRect(eff, 0, aptD, eff.len, corr, {kind:'corridor'});
+  return {units, cores, corrRect, aptD, corr, coreCount, double,
+    frame:eff, envelope:frame, pulled, level, isSB};
+}
+
+function generate(){
+  const P=params();
+  const F=lots.reduce((s,l)=>s+l.f,0), D=Math.max(...lots.map(l=>l.d));
+  const siteArea=F*D;
+  // buildable rect (axis-aligned; front = min-Y street edge)
+  let bx0=P.side, by0=P.front, bx1=F-P.side, by1=D-P.rear;
+  const warns=[];
+  if(bx1-bx0<3 || by1-by0<3){
+    renderEmpty('Setbacks exceed the site — no buildable envelope.'); return;
+  }
+  const shares={b1:P.mix.b1,b2:P.mix.b2,b3:P.mix.b3};
+  const ms=shares.b1+shares.b2+shares.b3||1; shares.b1/=ms;shares.b2/=ms;shares.b3/=ms;
+  const counts={b1:0,b2:0,b3:0};
+
+  const typFrame=buildFrame(bx0,by0,bx1,by1);
+  const sbFrame =buildFrame(bx0+P.upper,by0+P.upper,bx1-P.upper,by1-P.upper);
+
+  const nTyp=Math.max(0,P.storeys-1);
+  // accumulate true mix across all floors; geometry per floor uses its effective (pulled-back) plate
+  const levels=[];
+  let gfa=0, nla=0;
+  for(let s=0;s<P.storeys;s++){
+    const isSB = (s===P.storeys-1) && P.storeys>1 && (sbFrame.x1>sbFrame.x0 && sbFrame.y1>sbFrame.y0);
+    const fr = isSB? sbFrame : typFrame;
+    const lvl=layoutLevel(fr,P,shares,counts,s,isSB);
+    const z = s*P.f2f - P.dig;
+    const E=lvl.frame;                       // effective plate (after daylight pull-back)
+    const fArea=(E.x1-E.x0)*(E.y1-E.y0);
+    gfa+=fArea;
+    lvl.units.forEach(u=>nla+=u.wx*u.wy);
+    levels.push(Object.assign(lvl,{z, h:P.f2f, fArea}));   // keep lvl.frame = eff
+  }
+  const total=counts.b1+counts.b2+counts.b3;
+  let typU=0; levels.forEach(l=>{ if(!l.isSB) typU+=l.units.length; });
+  const upf = nTyp? Math.round(typU/nTyp) : (levels[0]?levels[0].units.length:0);
+
+  // metrics
+  const groundArea=levels[0]?levels[0].fArea:0;          // effective ground plate
+  const fsr=gfa/siteArea, cov=100*groundArea/siteArea, eff=gfa? 100*nla/gfa:0;
+  const upc = upf/Math.max(1, levels[0]?levels[0].coreCount:1);
+
+  // warnings
+  if(P.storeys>6) warns.push(['warn','Above mid-rise',`${P.storeys} storeys exceeds the 6-storey mid-rise target.`]);
+  if(levels.some(l=>l.pulled)) warns.push(['warn','Plate pulled back',`Envelope deeper than 2×${P.maxD} m + corridor; plate held to ${(levels[0].double?2:1)*levels[0].aptD+P.corr|0} m for daylight and the remainder left as setback. Consider a light court to use the full envelope.`]);
+  if(levels[0] && !levels[0].double) warns.push(['warn','Single-loaded',`Plate too shallow to double-load — corridor serves one side only.`]);
+  if(upc>P.unitsPerCore) warns.push(['bad','Core overload',`≈${upf} apts/floor on ${levels[0].coreCount} core(s) = ${upc.toFixed(1)}/core (>${P.unitsPerCore}). Add a core.`]);
+  // mix deviation
+  ['b1','b2','b3'].forEach(t=>{ const got=total?counts[t]/total:0; if(Math.abs(got-shares[t])>0.12 && shares[t]>0)
+    warns.push(['warn','Mix drift',`${t.replace('b','')}-bed landed at ${(got*100).toFixed(0)}% vs ${(shares[t]*100).toFixed(0)}% target (grid/geometry constraint).`]); });
+  if(total>0 && warns.filter(w=>w[0]==='bad').length===0) warns.unshift(['ok','Feasible',`${total} apartments fit the envelope on the 600 mm grid.`]);
+
+  const model={P,F,D,siteArea,typFrame,sbFrame,levels,counts,total,upf,upc,
+    metrics:{fsr,cov,eff,gfa,nla,groundArea,height:P.storeys*P.f2f}, warns, site:siteGeo};
+  lastModel=model;
+  paintMetrics(model); build3D(model); paintPlan(model);
+  return model;
+}
+
+/* ════════════════════════ METRICS UI ════════════════════════ */
+function paintMetrics(m){
+  document.getElementById('mTotal').textContent=m.total;
+  document.getElementById('mFsr').textContent=m.metrics.fsr.toFixed(2)+':1';
+  document.getElementById('mCov').innerHTML=m.metrics.cov.toFixed(0)+'<small>%</small>';
+  document.getElementById('mGfa').innerHTML=Math.round(m.metrics.gfa).toLocaleString()+'<small>m²</small>';
+  document.getElementById('mEff').innerHTML=m.metrics.eff.toFixed(0)+'<small>%</small>';
+  // mix
+  const mo=document.getElementById('mixOut'); mo.innerHTML='';
+  const names={b1:'1 bed',b2:'2 bed',b3:'3 bed'};
+  ['b1','b2','b3'].forEach(t=>{
+    const n=m.counts[t], pct=m.total?Math.round(100*n/m.total):0;
+    const d=document.createElement('div'); d.className='seg';
+    d.innerHTML=`<i class="sw" style="background:${APTCOL[t]}"></i> ${names[t]} <span style="margin-left:auto">${n} · ${pct}%</span>`;
+    mo.appendChild(d);
+  });
+  // schedule
+  const tb=document.querySelector('#sched tbody'); tb.innerHTML='';
+  m.levels.slice().reverse().forEach(l=>{
+    const c={b1:0,b2:0,b3:0}; l.units.forEach(u=>c[u.type]++);
+    const tr=document.createElement('tr'); if(l.isSB)tr.className='sb';
+    tr.innerHTML=`<td>${l.level+1}${l.isSB?' ◣':''}</td><td>${l.z.toFixed(1)}</td><td>${c.b1}</td><td>${c.b2}</td><td>${c.b3}</td><td>${Math.round(l.fArea)}</td>`;
+    tb.appendChild(tr);
+  });
+  // warnings
+  const w=document.getElementById('warns'); w.innerHTML='';
+  m.warns.forEach(([lvl,t,msg])=>{ const d=document.createElement('div'); d.className='warn-item '+(lvl==='bad'?'bad':lvl==='ok'?'ok':'');
+    d.innerHTML=`<b>${t}</b> ${msg}`; w.appendChild(d); });
+}
+function renderEmpty(msg){
+  ['mTotal','mFsr','mCov','mGfa','mEff'].forEach(id=>document.getElementById(id).textContent='—');
+  document.getElementById('warns').innerHTML=`<div class="warn-item bad"><b>No yield</b> ${msg}</div>`;
+  document.getElementById('mixOut').innerHTML=''; document.querySelector('#sched tbody').innerHTML='';
+  lastModel=null; if(scene){clearGroup();}
+}
+
+/* ════════════════════════ 3D (three.js) ════════════════════════ */
+let scene,camera,renderer,glRoot,raf, orbit={r:80,theta:0.9,phi:1.0,tx:0,ty:0,tz:0};
+function initGL(){
+  const el=document.getElementById('gl');
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  el.appendChild(renderer.domElement);
+  scene=new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xbcd0ff,0x202830,1.0));
+  const d=new THREE.DirectionalLight(0xffffff,0.85); d.position.set(40,80,30); scene.add(d);
+  camera=new THREE.PerspectiveCamera(42,1,0.5,4000);
+  glRoot=new THREE.Group(); scene.add(glRoot);
+  // interactions
+  const cv=renderer.domElement; let drag=null;
+  cv.addEventListener('mousedown',e=>{drag={x:e.clientX,y:e.clientY,b:e.button};});
+  addEventListener('mouseup',()=>drag=null);
+  addEventListener('mousemove',e=>{ if(!drag)return; const dx=e.clientX-drag.x,dy=e.clientY-drag.y; drag.x=e.clientX;drag.y=e.clientY;
+    if(drag.b===2||e.shiftKey){ orbit.tx-=dx*0.06; orbit.tz+=dy*0.06; }
+    else { orbit.theta-=dx*0.008; orbit.phi=Math.max(0.15,Math.min(1.5,orbit.phi-dy*0.006)); } });
+  cv.addEventListener('wheel',e=>{ e.preventDefault(); orbit.r=Math.max(8,Math.min(600,orbit.r*(1+Math.sign(e.deltaY)*0.08))); },{passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  resizeGL(); animate();
+}
+function resizeGL(){ const el=document.getElementById('gl'); if(!el.clientWidth)return;
+  renderer.setSize(el.clientWidth,el.clientHeight); camera.aspect=el.clientWidth/el.clientHeight; camera.updateProjectionMatrix(); }
+function clearGroup(){ while(glRoot.children.length) glRoot.remove(glRoot.children[0]); }
+function animate(){ raf=requestAnimationFrame(animate);
+  const ct=orbit, sx=Math.sin(ct.phi)*Math.cos(ct.theta), sy=Math.cos(ct.phi), sz=Math.sin(ct.phi)*Math.sin(ct.theta);
+  camera.position.set(ct.tx+ct.r*sx, ct.ty+ct.r*sy, ct.tz+ct.r*sz);
+  camera.lookAt(ct.tx,ct.ty,ct.tz); renderer.render(scene,camera); }
+
+let showEnv=false, showCtx=true;
+
+function box(cx,cy,cz,w,d,h,color,op,edge){
+  const g=new THREE.BoxGeometry(w,h,d);
+  const transparent=op<1;
+  const m=new THREE.MeshLambertMaterial({color,transparent,opacity:op,
+    depthWrite:!transparent});                 // translucent meshes don't occlude solids
+  const mesh=new THREE.Mesh(g,m); mesh.position.set(cx,cz+h/2,cy);
+  if(transparent) mesh.renderOrder=2;           // drawn after the solid units
+  glRoot.add(mesh);
+  if(edge!==false){
+    const eg=new THREE.LineSegments(new THREE.EdgesGeometry(g),
+      new THREE.LineBasicMaterial({color:edge||0x0c0e12,transparent:true,opacity:.55}));
+    eg.position.copy(mesh.position); glRoot.add(eg);
+  }
+  return mesh;
+}
+
+// extrude a 2D polygon (plan x,y) into a standing prism from z0 to z0+h
+function prism(poly, z0, h, color, op, cx, cy){
+  const shape=new THREE.Shape();
+  // negate plan-y so that after the upright rotation, three-z matches the rest
+  // of the scene (units/boundary map plan-y -> +z about the recentred origin)
+  poly.forEach(([x,y],i)=> i? shape.lineTo(x-cx, -(y-cy)) : shape.moveTo(x-cx, -(y-cy)));
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:h,bevelEnabled:false});
+  geo.rotateX(-Math.PI/2);                       // lay the extrusion upright (y-up)
+  const transparent=op<1;
+  const mesh=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color,transparent,opacity:op,depthWrite:!transparent}));
+  mesh.position.y=z0; glRoot.add(mesh);
+  return mesh;
+}
+
+function polyLine(poly, z, color, cx, cy, op){
+  const pts=poly.map(([x,y])=>new THREE.Vector3(x-cx, z, y-cy));
+  const lp=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color,transparent:true,opacity:op==null?0.8:op}));
+  glRoot.add(lp);
+}
+
+function build3D(m){
+  clearGroup();
+  const cx=m.F/2, cy=m.D/2;                      // recentre; plan-y -> three-z
+  orbit.ty=m.metrics.height*0.35;
+  orbit.r=Math.max(m.F,m.D,m.metrics.height)*1.7+24;
+  // ground plane
+  const gp=new THREE.Mesh(new THREE.PlaneGeometry(m.F*3,m.D*3),
+    new THREE.MeshBasicMaterial({color:0x10141a,transparent:true,opacity:.9}));
+  gp.rotation.x=-Math.PI/2; glRoot.add(gp);
+
+  // surrounding context: neighbouring lots as low pads (heights need a buildings dataset)
+  if(showCtx && m.site && m.site.context){
+    m.site.context.forEach(poly=>{
+      try{ prism(poly,0.0,5.5,0x222a35,0.5,cx,cy); polyLine(poly,0.05,0x39434f,cx,cy,0.5); }catch(e){}
+    });
+  }
+
+  // site boundary: true title polygon if located, else the rectangular site
+  if(m.site && m.site.poly){ polyLine(m.site.poly,0.06,0x5b9dff,cx,cy,0.85); }
+  else { polyLine([[0,0],[m.F,0],[m.F,m.D],[0,m.D]],0.06,0x5b9dff,cx,cy,0.6); }
+
+  // storeys
+  m.levels.forEach(l=>{
+    // apartment units: SOLID extruded boxes that fill most of the floor height
+    l.units.forEach(u=>{
+      box(u.x+u.wx/2-cx, u.y+u.wy/2-cy, l.z+0.05,
+          Math.max(0.2,u.wx-0.2), Math.max(0.2,u.wy-0.2), l.h*0.82,
+          parseInt(APTCOL[u.type].slice(1),16), 1.0);
+    });
+    // cores: solid
+    l.cores.forEach(c=> box(c.x+c.wx/2-cx,c.y+c.wy/2-cy,l.z,Math.max(0.2,c.wx-0.1),Math.max(0.2,c.wy-0.1),l.h*0.9,0x7b8696,1.0));
+    // floor slab: thin solid plate so stacked levels read clearly
+    const fw=l.frame.x1-l.frame.x0, fd=l.frame.y1-l.frame.y0;
+    const fcx=(l.frame.x0+l.frame.x1)/2-cx, fcy=(l.frame.y0+l.frame.y1)/2-cy;
+    box(fcx,fcy,l.z,fw,fd,0.12,l.isSB?0x33414f:0x2a3340,1.0,0x141a22);
+    // building envelope: translucent, only when toggled (doesn't occlude units)
+    if(showEnv){
+      const ew=l.envelope.x1-l.envelope.x0, ed=l.envelope.y1-l.envelope.y0;
+      const ecx=(l.envelope.x0+l.envelope.x1)/2-cx, ecy=(l.envelope.y0+l.envelope.y1)/2-cy;
+      box(ecx,ecy,l.z,ew,ed,l.h*0.96,l.isSB?0x4a6080:0x6f8095,0.16,0x5b9dff);
+    }
+  });
+}
+
+/* ════════════════════════ 2D PLAN ════════════════════════ */
+let planLevel='typ';
+function paintPlan(m){
+  const cv=document.getElementById('plan'); if(!m){return;}
+  const view=document.querySelector('.view'); const W=view.clientWidth,H=view.clientHeight;
+  cv.width=W*devicePixelRatio; cv.height=H*devicePixelRatio; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const ctx=cv.getContext('2d'); ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);
+  const lvl = planLevel==='sb' ? m.levels.find(l=>l.isSB) : m.levels.find(l=>!l.isSB);
+  if(!lvl){ctx.fillStyle='#5d6877';ctx.font='13px JetBrains Mono';ctx.fillText('no setback level',24,40);return;}
+  // fit transform (plan x->screen x, plan y down)
+  const pad=70, sc=Math.min((W-2*pad)/m.F,(H-2*pad)/m.D), ox=(W-m.F*sc)/2, oy=(H-m.D*sc)/2;
+  const X=x=>ox+x*sc, Y=y=>oy+y*sc;
+  // 600 grid
+  ctx.strokeStyle='rgba(91,157,255,.07)'; ctx.lineWidth=1;
+  for(let gx=0;gx<=m.F+1e-6;gx+=GRID){ctx.beginPath();ctx.moveTo(X(gx),Y(0));ctx.lineTo(X(gx),Y(m.D));ctx.stroke();}
+  for(let gy=0;gy<=m.D+1e-6;gy+=GRID){ctx.beginPath();ctx.moveTo(X(0),Y(gy));ctx.lineTo(X(m.F),Y(gy));ctx.stroke();}
+  // context lots (faint) when located
+  if(m.site && m.site.context){ ctx.strokeStyle='rgba(120,134,150,.35)'; ctx.fillStyle='rgba(40,48,60,.4)'; ctx.lineWidth=1;
+    m.site.context.forEach(poly=>{ ctx.beginPath(); poly.forEach(([x,y],i)=> i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y))); ctx.closePath(); ctx.fill(); ctx.stroke(); }); }
+  // site: true title polygon if located, else the rectangle
+  ctx.strokeStyle='#5b9dff'; ctx.lineWidth=1.5;
+  if(m.site && m.site.poly){ ctx.beginPath(); m.site.poly.forEach(([x,y],i)=> i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y))); ctx.closePath(); ctx.stroke(); }
+  else { ctx.strokeRect(X(0),Y(0),m.F*sc,m.D*sc); }
+  ctx.fillStyle='#5d6877'; ctx.font='10px JetBrains Mono';
+  ctx.fillText('STREET (front setback '+m.P.front.toFixed(1)+' m)',X(0)+2,Y(0)-6);
+  // buildable envelope (dashed) + effective plate (solid) when pulled back
+  const env=lvl.envelope, f=lvl.frame;
+  ctx.setLineDash([5,4]); ctx.strokeStyle='#39434f';
+  ctx.strokeRect(X(env.x0),Y(env.y0),(env.x1-env.x0)*sc,(env.y1-env.y0)*sc); ctx.setLineDash([]);
+  if(lvl.pulled){
+    ctx.strokeStyle='#4a5666'; ctx.lineWidth=1;
+    ctx.strokeRect(X(f.x0),Y(f.y0),(f.x1-f.x0)*sc,(f.y1-f.y0)*sc);
+  }
+  // corridor
+  const cr=lvl.corrRect; ctx.fillStyle='#222933'; ctx.fillRect(X(cr.x),Y(cr.y),cr.wx*sc,cr.wy*sc);
+  // units
+  lvl.units.forEach(u=>{
+    ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
+    ctx.strokeStyle='#0c0e12'; ctx.lineWidth=1; ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
+    if(u.wx*sc>26&&u.wy*sc>20){ ctx.fillStyle='#0c0e12'; ctx.font='bold 9px JetBrains Mono';
+      ctx.fillText(u.type.replace('b','')+'B', X(u.x)+3, Y(u.y)+12);
+      ctx.font='8px JetBrains Mono'; ctx.fillText((u.wx*u.wy).toFixed(0)+'m²',X(u.x)+3,Y(u.y)+22); }
+  });
+  // cores
+  lvl.cores.forEach(c=>{ ctx.fillStyle='#7b8696'; ctx.fillRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
+    ctx.strokeStyle='#0c0e12'; ctx.strokeRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
+    ctx.fillStyle='#0c0e12'; ctx.font='bold 9px JetBrains Mono';
+    ctx.save(); ctx.translate(X(c.x)+c.wx*sc/2,Y(c.y)+c.wy*sc/2); ctx.textAlign='center'; ctx.fillText('CORE',0,3); ctx.restore(); });
+  // scale bar
+  ctx.fillStyle='#8a96a8'; ctx.font='10px JetBrains Mono';
+  const sb=10*sc; ctx.strokeStyle='#8a96a8'; ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(20,H-26);ctx.lineTo(20+sb,H-26);ctx.stroke();
+  ctx.fillText('10 m',20,H-32);
+  ctx.fillText((planLevel==='sb'?'Setback level':'Typical floor')+' · '+(f.alongX?'corridor E–W':'corridor N–S'),20,28);
+}
+
+/* ════════════════════════ VIEW TABS ════════════════════════ */
+document.getElementById('tEnv').onclick=e=>{ showEnv=!showEnv; e.target.classList.toggle('on',showEnv);
+  if(lastModel)build3D(lastModel); setView('3d'); };
+document.getElementById('tCtx').onclick=e=>{ showCtx=!showCtx; e.target.classList.toggle('on',showCtx);
+  if(lastModel)build3D(lastModel); setView('3d'); };
+document.getElementById('t3d').onclick=()=>setView('3d');
+document.getElementById('t2d').onclick=()=>setView('2d');
+function setView(v){
+  const is3=v==='3d';
+  document.getElementById('gl').style.display=is3?'block':'none';
+  document.getElementById('plan').style.display=is3?'none':'block';
+  document.getElementById('t3d').classList.toggle('on',is3);
+  document.getElementById('t2d').classList.toggle('on',!is3);
+  document.getElementById('planpick').style.display=is3?'none':'flex';
+  document.getElementById('vhint').style.display=is3?'block':'none';
+  if(is3){resizeGL();} else if(lastModel){paintPlan(lastModel);}
+}
+document.getElementById('planpick').onclick=e=>{ if(!e.target.dataset.lvl)return; planLevel=e.target.dataset.lvl;
+  document.querySelectorAll('#planpick button').forEach(b=>b.classList.toggle('on',b.dataset.lvl===planLevel));
+  if(lastModel)paintPlan(lastModel); };
+
+/* ════════════════════════ DXF EXPORT ════════════════════════ */
+function dxfExport(m){
+  const K=1000; // metres -> mm
+  const L=[];
+  const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
+    ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4]];
+  // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
+  L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
+  L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
+  layers.forEach(([n,c])=>L.push('0','LAYER','2',n,'70','0','62',String(c),'6','CONTINUOUS'));
+  L.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+
+  const line=(lay,x1,y1,x2,y2)=>L.push('0','LINE','8',lay,'10',(x1*K).toFixed(1),'20',(y1*K).toFixed(1),'11',(x2*K).toFixed(1),'21',(y2*K).toFixed(1));
+  // single CLOSED polyline (one curve per shape, not 4 separate segments)
+  const poly=(lay,pts,oxx=0,oyy=0)=>{ if(pts.length<2)return;
+    L.push('0','POLYLINE','8',lay,'66','1','70','1');         // 70=1 -> closed
+    pts.forEach(([x,y])=>L.push('0','VERTEX','8',lay,'10',((x+oxx)*K).toFixed(1),'20',((y+oyy)*K).toFixed(1)));
+    L.push('0','SEQEND','8',lay); };
+  const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
+  const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
+  const face=(lay,p)=>{L.push('0','3DFACE','8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
+
+  // ── 2D: typical + setback plans, stacked along -Y ──
+  const plans=[['typ',0],['sb',-(m.D+8)]];
+  plans.forEach(([key,oy])=>{
+    const lvl = key==='sb'? m.levels.find(l=>l.isSB): m.levels.find(l=>!l.isSB);
+    if(!lvl)return;
+    // context lots + true title boundary as closed curves when located
+    if(m.site && m.site.context) m.site.context.forEach(p=>poly('CONTEXT',p,0,oy));
+    if(m.site && m.site.poly) poly('SITE',m.site.poly,0,oy); else rect('SITE',0,oy,m.F,m.D);
+    const env=lvl.envelope; rect('BUILDABLE',env.x0,oy+env.y0,env.x1-env.x0,env.y1-env.y0);
+    const f=lvl.frame; if(lvl.pulled) rect('SETBACK',f.x0,oy+f.y0,f.x1-f.x0,f.y1-f.y0);
+    for(let gx=0;gx<=m.F+1e-6;gx+=GRID) line('GRID',gx,oy,gx,oy+m.D);
+    for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
+    const cr=lvl.corrRect; rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy);
+    lvl.units.forEach(u=>{ const lay='APT_'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);
+      text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35); });
+    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy); text('TEXT',c.x+0.3,oy+c.y+c.wy/2,'CORE',0.35); });
+    text('TEXT',0,oy+m.D+1.2,(key==='sb'?'SETBACK LEVEL':'TYPICAL FLOOR'),0.6);
+  });
+  // ── 3D massing: offset +X (solid faces; outline rings are closed polylines) ──
+  const ox=m.F+10;
+  m.levels.forEach(l=>{ const f=l.frame, z0=l.z, z1=l.z+l.h*0.94;
+    const c=[[f.x0,f.y0],[f.x1,f.y0],[f.x1,f.y1],[f.x0,f.y1]].map(p=>[p[0]+ox,p[1]]);
+    face('MASS_3D',[[c[0][0],c[0][1],z1],[c[1][0],c[1][1],z1],[c[2][0],c[2][1],z1],[c[3][0],c[3][1],z1]]);
+    face('MASS_3D',[[c[0][0],c[0][1],z0],[c[1][0],c[1][1],z0],[c[2][0],c[2][1],z0],[c[3][0],c[3][1],z0]]);
+    for(let i=0;i<4;i++){const a=c[i],b=c[(i+1)%4];
+      face('MASS_3D',[[a[0],a[1],z0],[b[0],b[1],z0],[b[0],b[1],z1],[a[0],a[1],z1]]);}
+  });
+  L.push('0','ENDSEC','0','EOF');
+  download(L.join('\r\n'),'massing.dxf','application/dxf');
+}
+
+/* ════════════════════════ IFC EXPORT (IFC4) ════════════════════════ */
+function ifcGuid(){const a='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';let s='';for(let i=0;i<22;i++)s+=a[Math.floor(Math.random()*64)];return s;}
+function ifcExport(m){
+  const E=[]; let n=0;
+  const add=s=>{n++;E.push('#'+n+'='+s+';');return '#'+n;};
+  const F=v=>(+v).toFixed(5);
+  // units
+  const lu=add('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)');
+  const au=add('IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.)');
+  const vu=add('IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.)');
+  const ua=add(`IFCUNITASSIGNMENT((${lu},${au},${vu}))`);
+  const o=add('IFCCARTESIANPOINT((0.,0.,0.))'); const z=add('IFCDIRECTION((0.,0.,1.))'); const x=add('IFCDIRECTION((1.,0.,0.))');
+  const wcs=add(`IFCAXIS2PLACEMENT3D(${o},${z},${x})`);
+  const ctx=add(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,${wcs},$)`);
+  const proj=add(`IFCPROJECT('${ifcGuid()}',$,'${esc(addr.value)}',$,$,$,$,(${ctx}),${ua})`);
+  const sitePl=add(`IFCLOCALPLACEMENT($,${wcs})`);
+  const site=add(`IFCSITE('${ifcGuid()}',$,'Site',$,$,${sitePl},$,$,.ELEMENT.,$,$,$,$,$)`);
+  const bPl=add(`IFCLOCALPLACEMENT(${sitePl},${wcs})`);
+  const bldg=add(`IFCBUILDING('${ifcGuid()}',$,'${esc(addr.value)}',$,$,${bPl},$,$,.ELEMENT.,$,$,$)`);
+  add(`IFCRELAGGREGATES('${ifcGuid()}',$,$,$,${proj},(${site}))`);
+  add(`IFCRELAGGREGATES('${ifcGuid()}',$,$,$,${site},(${bldg}))`);
+
+  const rectProfile=(w,d)=>{ const p=[[0,0],[w,0],[w,d],[0,d],[0,0]].map(c=>add(`IFCCARTESIANPOINT((${F(c[0])},${F(c[1])}))`));
+    const pl=add(`IFCPOLYLINE((${p.join(',')}))`); return add(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${pl})`); };
+  const shape=(prof,px,py,h)=>{ const lp=add(`IFCCARTESIANPOINT((${F(px)},${F(py)},0.))`); const ax=add(`IFCAXIS2PLACEMENT3D(${lp},$,$)`);
+    const dr=add('IFCDIRECTION((0.,0.,1.))'); const sol=add(`IFCEXTRUDEDAREASOLID(${prof},${ax},${dr},${F(h)})`);
+    const sr=add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${sol}))`); return add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${sr}))`); };
+
+  const storeyIds=[];
+  m.levels.forEach(l=>{
+    const sp=add(`IFCCARTESIANPOINT((0.,0.,${F(l.z)}))`); const sax=add(`IFCAXIS2PLACEMENT3D(${sp},$,$)`);
+    const stPl=add(`IFCLOCALPLACEMENT(${bPl},${sax})`);
+    const st=add(`IFCBUILDINGSTOREY('${ifcGuid()}',$,'Level ${l.level+1}${l.isSB?' (setback)':''}',$,$,${stPl},$,$,.ELEMENT.,${F(l.z)})`);
+    storeyIds.push(st);
+    const contained=[]; const aggregated=[];
+    // floor slab (200 mm)
+    const f=l.frame; const slProf=rectProfile(f.x1-f.x0, f.y1-f.y0);
+    const slPl=add(`IFCLOCALPLACEMENT(${stPl},${wcs})`); const slSh=shape(slProf,f.x0,f.y0,0.2);
+    const slab=add(`IFCSLAB('${ifcGuid()}',$,'Floor Plate L${l.level+1}',$,$,${slPl},${slSh},$,.FLOOR.)`);
+    contained.push(slab);
+    // apartment spaces
+    const typeName={b1:'1 Bed',b2:'2 Bed',b3:'3 Bed'};
+    l.units.forEach((u,i)=>{
+      const pr=rectProfile(u.wx,u.wy); const ssh=shape(pr,u.x,u.y,l.h-0.2);
+      const spl=add(`IFCLOCALPLACEMENT(${stPl},${wcs})`);
+      const space=add(`IFCSPACE('${ifcGuid()}',$,'L${l.level+1}-${String(i+1).padStart(2,'0')}',$,$,${spl},${ssh},'${typeName[u.type]}',.ELEMENT.,.INTERNAL.,$)`);
+      aggregated.push(space);
+      const pv1=add(`IFCPROPERTYSINGLEVALUE('ApartmentType',$,IFCLABEL('${typeName[u.type]}'),$)`);
+      const pv2=add(`IFCPROPERTYSINGLEVALUE('Bedrooms',$,IFCINTEGER(${u.type.replace('b','')}),$)`);
+      const pv3=add(`IFCPROPERTYSINGLEVALUE('TargetAreaSqm',$,IFCREAL(${(u.wx*u.wy).toFixed(2)}),$)`);
+      const pv4=add(`IFCPROPERTYSINGLEVALUE('GridModule_mm',$,IFCINTEGER(600),$)`);
+      const ps=add(`IFCPROPERTYSET('${ifcGuid()}',$,'Pset_ApartmentBrief',$,(${pv1},${pv2},${pv3},${pv4}))`);
+      add(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${space}),${ps})`);
+    });
+    // cores as proxies
+    l.cores.forEach((c,i)=>{ const pr=rectProfile(c.wx,c.wy); const csh=shape(pr,c.x,c.y,l.h);
+      const cpl=add(`IFCLOCALPLACEMENT(${stPl},${wcs})`);
+      const core=add(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,'Core L${l.level+1}-${i+1}',$,$,${cpl},${csh},$,$)`);
+      contained.push(core); });
+    if(contained.length) add(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',$,$,$,(${contained.join(',')}),${st})`);
+    if(aggregated.length) add(`IFCRELAGGREGATES('${ifcGuid()}',$,$,$,${st},(${aggregated.join(',')}))`);
+  });
+  add(`IFCRELAGGREGATES('${ifcGuid()}',$,$,$,${bldg},(${storeyIds.join(',')}))`);
+
+  const ts=new Date().toISOString().slice(0,19);
+  const head=`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('massing.ifc','${ts}',(''),(''),'FORMWORK','FORMWORK','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+`;
+  download(head+E.join('\n')+'\nENDSEC;\nEND-ISO-10303-21;\n','massing.ifc','application/x-step');
+}
+function esc(s){return String(s).replace(/'/g,"''").replace(/\\/g,'\\\\');}
+function download(txt,name,mime){ const b=new Blob([txt],{type:mime}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
+
+/* ════════════════════════ WIRE-UP ════════════════════════ */
+let lastModel=null;
+document.getElementById('regen').onclick=generate;
+document.getElementById('exDxf').onclick=()=>lastModel&&dxfExport(lastModel);
+document.getElementById('exIfc').onclick=()=>lastModel&&ifcExport(lastModel);
+addEventListener('resize',()=>{ resizeGL(); if(lastModel&&document.getElementById('plan').style.display!=='none')paintPlan(lastModel); });
+
+renderLots(); syncMix(); initGL();
+setTimeout(()=>{ generate(); },120);
+</script>
+</body>
+</html>
