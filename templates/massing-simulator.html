@@ -112,6 +112,10 @@
   .exp button b{font-family:'JetBrains Mono',monospace; font-size:14px; letter-spacing:.06em}
   .exp button span{font-size:10px; color:var(--muted)}
   .note{font-size:10.5px; color:var(--muted2); line-height:1.5; margin-top:6px}
+  .srow{display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:var(--muted); padding:3px 0}
+  .srow b{color:var(--ink); font-weight:600; font-size:12px}
+  select{width:100%; background:var(--panel2); border:1px solid var(--line2); color:var(--ink); border-radius:6px; padding:7px 8px; font:inherit; font-size:12px; cursor:pointer}
+  select:focus{outline:none; border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -140,6 +144,17 @@
       <div id="lots"></div>
       <button class="btn add" id="addlot">+ merge adjacent lot</button>
       <div class="note">Frontage × depth per lot, in metres. A located site fills these from its oriented boundary; merged lots add frontage (side-by-side); depth = deepest lot.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Typology</h3>
+      <div class="srow"><span>Site type</span><b id="siteType">Row (assumed)</b></div>
+      <div class="srow"><span>Orientation</span><b id="siteOrient">—</b></div>
+      <div class="field" style="margin-top:8px">
+        <label>Development kind</label>
+        <select id="devkind"></select>
+      </div>
+      <div class="note" id="devNote">Locate a site to classify it as row, corner or through. The development kinds offered adapt to the site type; the choice drives core type, circulation and how units are distributed.</div>
     </div>
 
     <div class="grp">
@@ -205,6 +220,9 @@
       <span><i class="sw" style="background:var(--b2)"></i> 2B</span>
       <span><i class="sw" style="background:var(--b3)"></i> 3B</span>
       <span><i class="sw" style="background:var(--core)"></i> core</span>
+      <span><i class="sw" style="background:#3a4654"></i> balcony</span>
+      <span><i class="sw" style="background:#c46b9e"></i> pod</span>
+      <span><i class="sw" style="background:#e0a341"></i> ESM</span>
     </div>
   </main>
 
@@ -257,6 +275,74 @@ const snap  = v => Math.round(v / GRID) * GRID;
 const floorG= v => Math.floor(v / GRID + 1e-6) * GRID;
 const APTCOL = {b1:'#36c2a6', b2:'#f2b441', b3:'#ef6a5b'};
 let JUR = 'VIC';
+
+/* ════════════════════ TYPOLOGY / SITE-TYPE MODEL ════════════════════ */
+// Each development kind drives core type, circulation and unit distribution.
+const DEV_KINDS = {
+  double_loaded: {label:'Double-loaded bar',        core:'blade', circ:'central'},
+  single_loaded: {label:'Single-loaded',            core:'blade', circ:'side'},
+  multi_core:    {label:'Multi-core (point cores)',  core:'point', circ:'lobby'},
+  point_stair:   {label:'Point stair / point block', core:'point', circ:'gallery'},
+  courtyard:     {label:'Courtyard perimeter',       core:'point', circ:'gallery'},
+  through_double:{label:'Through — dual frontage',    core:'blade', circ:'central'},
+};
+// Which kinds are offered for each detected site assembly (per the typology matrix).
+const SITE_KINDS = {
+  row:     ['double_loaded','single_loaded','multi_core'],
+  corner:  ['courtyard','double_loaded','multi_core','point_stair'],
+  through: ['through_double','double_loaded','single_loaded','point_stair'],
+};
+const SITE_LABEL = {row:'Row — single frontage', corner:'Corner — two frontages', through:'Through — dual frontage'};
+let devKind = 'double_loaded';
+
+function pointInPoly(px,py,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+    if(((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+// classify a located site from its boundary + neighbouring lots (engine frame)
+function detectSiteType(sg){
+  if(!sg) return {type:'row', frontages:{front:true,rear:false,left:false,right:false}};
+  const F=sg.F, D=sg.D, off=4, ctx=sg.context||[];
+  const probes={ front:[F/2,-off], rear:[F/2,D+off], left:[-off,D/2], right:[F+off,D/2] };
+  const front={};
+  for(const k in probes){ const [px,py]=probes[k];
+    front[k] = !ctx.some(poly=>pointInPoly(px,py,poly));   // open (no neighbour) => street
+  }
+  let type='row';
+  if(front.front && front.rear) type='through';
+  else if((front.front?1:0)+(front.rear?1:0)+(front.left?1:0)+(front.right?1:0) >= 2) type='corner';
+  else type='row';
+  return {type, frontages:front};
+}
+function populateDevKinds(siteType){
+  const sel=document.getElementById('devkind'); const kinds=SITE_KINDS[siteType]||SITE_KINDS.row;
+  sel.innerHTML='';
+  kinds.forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=DEV_KINDS[k].label; sel.appendChild(o); });
+  devKind = kinds.includes(devKind)? devKind : kinds[0];
+  sel.value=devKind;
+}
+document.getElementById('devkind').onchange=e=>{ devKind=e.target.value;
+  document.getElementById('devNote').textContent =
+    `${DEV_KINDS[devKind].label}: ${DEV_KINDS[devKind].core==='point'?'point cores':'blade core(s)'}, ${DEV_KINDS[devKind].circ} circulation. North-facing rows carry more, narrower units; south rows fewer and wider.`;
+  generate(); };
+
+// compass bearing label from an orientation in degrees (long-axis bearing from east, CCW)
+function orientLabel(deg){
+  // engine +x corresponds to ENU bearing; convert long-axis to a compass octant
+  const compass = (90 - deg) % 360;            // east-CCW -> north-CW bearing
+  const b = (compass+360)%360;
+  const dirs=['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(b/45)%8]+'–'+dirs[(Math.round(b/45)+4)%8]+' ('+b.toFixed(0)+'°)';
+}
+// unit north vector in the engine frame: (sinθ, cosθ), θ = orientation in radians
+function northVec(){ const o=(siteGeo&&siteGeo.orientation!=null)?siteGeo.orientation:0;
+  const t=o*Math.PI/180; return [Math.sin(t), Math.cos(t)]; }
+function northness(normal){ const n=northVec(); return normal[0]*n[0]+normal[1]*n[1]; }
+
 
 /* ---- state: lots ---- */
 let lots = [{f:30, d:38}];
@@ -349,7 +435,17 @@ async function locateSite(){
     document.querySelectorAll('#jx button').forEach(b=>b.classList.toggle('on',b.dataset.j===JUR));
     // boundary -> engine frame + lots
     siteGeo=siteTransform(d.parcel, d.context, d.metrics.centroid, d.metrics.orientation_deg);
+    siteGeo.orientation = d.metrics.orientation_deg;
     lots=[{f:Math.max(GRID,siteGeo.F), d:Math.max(GRID,siteGeo.D)}]; renderLots();
+    // site classification (corner / row / through) from boundary + neighbours
+    const cls=detectSiteType(siteGeo); siteGeo.siteType=cls.type; siteGeo.frontages=cls.frontages;
+    siteGeo.streets = d.frontage_streets || null;     // names from backend reverse-geocode
+    populateDevKinds(cls.type);
+    document.getElementById('siteType').textContent = SITE_LABEL[cls.type];
+    document.getElementById('siteOrient').textContent = orientLabel(siteGeo.orientation);
+    devKind = document.getElementById('devkind').value;
+    document.getElementById('devNote').textContent =
+      `${DEV_KINDS[devKind].label}: ${DEV_KINDS[devKind].core==='point'?'point cores':'blade core(s)'}, ${DEV_KINDS[devKind].circ} circulation. North-facing rows carry more, narrower units; south rows fewer and wider.`;
     // zone-driven setbacks + storeys
     if(d.zone&&d.zone.setbacks){ const s=d.zone.setbacks;
       const set=(id,v)=>{ const el=document.getElementById(id); if(el&&v!=null){ el.value=snapTo(v);} };
@@ -381,13 +477,18 @@ function params(){
     corr:+corr.value/1000, coreLen:+core.value,
     mix:{b1:+m1i.value||0,b2:+m2i.value||0,b3:+m3i.value||0},
     area:{b1:+document.getElementById('a1').value,b2:+document.getElementById('a2').value,b3:+document.getElementById('a3').value},
-    minD:6.0, maxD:10.0, unitsPerCore:8
+    minD:6.0, maxD:10.0, unitsPerCore:8,
+    devkind:devKind, kind:DEV_KINDS[devKind],
+    orientation:(siteGeo&&siteGeo.orientation!=null)?siteGeo.orientation:null,
+    frontages:(siteGeo&&siteGeo.frontages)?siteGeo.frontages:null,
+    bal:{b1:2.0,b2:2.0,b3:2.4}, pod:3.0
   };
 }
 
 // tile one row of given clear length; advances global counters toward target shares
-function tileRow(len, depth, area, shares, counts, frame, vOff, level){
-  const fr = t => snap(Math.min(12, Math.max(3, area[t]/depth)));
+function tileRow(len, depth, area, shares, counts, frame, vOff, level, wscale){
+  wscale = wscale||1;
+  const fr = t => snap(Math.min(12, Math.max(3, (area[t]/depth)*wscale)));
   const units=[]; let u=0;
   while(true){
     const total = counts.b1+counts.b2+counts.b3;
@@ -422,47 +523,137 @@ function buildFrame(bx0,by0,bx1,by1){
   return {x0:bx0,y0:by0,x1:bx1,y1:by1, len:alongX?W:D, depth:alongX?D:W, alongX};
 }
 
-function layoutLevel(frame, P, shares, counts, level, isSB){
-  // Hold the corridor at its briefed width; pull the plate back for daylight.
-  // Extra envelope depth becomes setback/landscape, NOT an absurdly wide corridor.
-  const corr=P.corr; let aptD, double, rows, usedDepth;
-  if((frame.depth-corr)/2 >= P.minD){
-    double=true; aptD=floorG(Math.min(P.maxD,(frame.depth-corr)/2));
-    usedDepth=2*aptD+corr; rows=[0, aptD+corr];
-  } else {
-    double=false; aptD=floorG(Math.min(P.maxD, frame.depth-corr));
-    usedDepth=aptD+corr; rows=[0];
+// rect from min-corner + size
+function R(x,y,wx,wy,kind){ return {x,y,wx,wy,kind}; }
+
+// per-unit building-system fitout: balcony, ESM (on balcony), bathroom pod,
+// kitchen, and perimeter bulkheads (facade + party wall) linking ESM -> pod/kitchen.
+function attachServices(u,n,P){
+  const bd=(P.bal[u.type]||2.0);
+  const horiz = n[1]!==0;                              // facade is a horizontal edge (front/rear)
+  const span = horiz? u.wx : u.wy;
+  const ps = Math.min(P.pod, Math.max(2.2, span-0.4)); // pod 3×3, clamped to unit width
+  const pl = Math.min(span-0.2, ps+0.5);               // party-run length
+  let bal,esm,facadeRun,partyRun,pod,kit;
+  if(n[1]<0){            // front (faces -y)
+    bal=R(u.x+0.2,u.y-bd,u.wx-0.4,bd,'balcony');
+    esm=R(u.x+u.wx-1.1,u.y-0.6,0.9,0.6,'esm');
+    facadeRun=R(u.x+0.1,u.y+0.1,u.wx-0.2,0.3,'bulk');
+    partyRun =R(u.x+0.1,u.y+0.1,0.3,pl,'bulk');
+    pod=R(u.x+0.15,u.y+0.15,ps,ps,'pod');
+    kit=R(u.x+u.wx-2.6,u.y+0.15,2.4,0.6,'kitchen');
+  } else if(n[1]>0){     // rear (faces +y)
+    bal=R(u.x+0.2,u.y+u.wy,u.wx-0.4,bd,'balcony');
+    esm=R(u.x+u.wx-1.1,u.y+u.wy,0.9,0.6,'esm');
+    facadeRun=R(u.x+0.1,u.y+u.wy-0.4,u.wx-0.2,0.3,'bulk');
+    partyRun =R(u.x+0.1,u.y+u.wy-0.1-pl,0.3,pl,'bulk');
+    pod=R(u.x+0.15,u.y+u.wy-0.15-ps,ps,ps,'pod');
+    kit=R(u.x+u.wx-2.6,u.y+u.wy-0.75,2.4,0.6,'kitchen');
+  } else if(n[0]<0){     // left (faces -x)
+    bal=R(u.x-bd,u.y+0.2,bd,u.wy-0.4,'balcony');
+    esm=R(u.x-0.6,u.y+u.wy-1.1,0.6,0.9,'esm');
+    facadeRun=R(u.x+0.1,u.y+0.1,0.3,u.wy-0.2,'bulk');
+    partyRun =R(u.x+0.1,u.y+0.1,pl,0.3,'bulk');
+    pod=R(u.x+0.15,u.y+0.15,ps,ps,'pod');
+    kit=R(u.x+0.15,u.y+u.wy-2.6,0.6,2.4,'kitchen');
+  } else {               // right (faces +x)
+    bal=R(u.x+u.wx,u.y+0.2,bd,u.wy-0.4,'balcony');
+    esm=R(u.x+u.wx,u.y+u.wy-1.1,0.6,0.9,'esm');
+    facadeRun=R(u.x+u.wx-0.4,u.y+0.1,0.3,u.wy-0.2,'bulk');
+    partyRun =R(u.x+u.wx-0.1-pl,u.y+0.1,pl,0.3,'bulk');
+    pod=R(u.x+u.wx-0.15-ps,u.y+0.15,ps,ps,'pod');
+    kit=R(u.x+u.wx-0.75,u.y+u.wy-2.6,0.6,2.4,'kitchen');
   }
-  // effective plate, centred across the depth axis of the envelope
+  u.svc={balcony:bal,esm,pod,kitchen:kit,bulkheads:[facadeRun,partyRun]};
+}
+
+// world-space linear tiler (used for the courtyard ring). dir & inward are axis-aligned unit vectors.
+function tileWorld(ox,oy,dir,total,depth,inward,P,shares,counts,level,normal,wscale){
+  const out=[]; let u=0; const area=P.area;
+  const fr=t=>snap(Math.min(12,Math.max(3,(area[t]/depth)*(wscale||1))));
+  while(true){
+    const tot=counts.b1+counts.b2+counts.b3;
+    const order=['b1','b2','b3'].sort((a,b)=>((tot?counts[a]/tot:0)-shares[a])-((tot?counts[b]/tot:0)-shares[b]));
+    let placed=null;
+    for(const t of order){ if(shares[t]<=0)continue; if(u+fr(t)<=total+1e-6){placed=t;break;} }
+    if(!placed) for(const t of ['b1','b2','b3']){ if(shares[t]>0&&u+fr(t)<=total+1e-6){placed=t;break;} }
+    if(!placed)break;
+    const w=fr(placed);
+    const ax=ox+dir[0]*u, ay=oy+dir[1]*u;
+    const x0=ax+Math.min(0,dir[0]*w)+Math.min(0,inward[0]*depth);
+    const y0=ay+Math.min(0,dir[1]*w)+Math.min(0,inward[1]*depth);
+    const wx=Math.abs(dir[0]*w)+Math.abs(inward[0]*depth);
+    const wy=Math.abs(dir[1]*w)+Math.abs(inward[1]*depth);
+    const unit={x:x0,y:y0,wx,wy,type:placed,level,nrm:normal};
+    attachServices(unit,normal,P); out.push(unit);
+    counts[placed]++; u+=w;
+  }
+  return out;
+}
+
+function layoutLevel(frame, P, shares, counts, level, isSB){
+  const corr=P.corr, kind=P.kind||DEV_KINDS.double_loaded, dk=P.devkind||'double_loaded';
+  const vU = frame.alongX?[0,1]:[1,0];                  // +v outward (engine)
+  const negV=[-vU[0],-vU[1]];
+  const canDouble=(frame.depth-corr)/2 >= P.minD;
+  const single = (kind.circ==='side') || !canDouble;
+  const aptD = single? floorG(Math.min(P.maxD, frame.depth-corr))
+                     : floorG(Math.min(P.maxD,(frame.depth-corr)/2));
+  const usedDepth = single? aptD+corr : 2*aptD+corr;
   const dv0=Math.max(0,(frame.depth-usedDepth)/2);
   const eff={ alongX:frame.alongX, len:frame.len, depth:usedDepth,
     x0:frame.x0+(frame.alongX?0:dv0), y0:frame.y0+(frame.alongX?dv0:0),
     x1:frame.x1-(frame.alongX?0:dv0), y1:frame.y1-(frame.alongX?dv0:0) };
   const pulled = usedDepth < frame.depth-1e-6;
-  // cores along the length of the effective plate (blade cores spanning depth)
-  const coreCount = Math.max(1, Math.ceil(eff.len/45));
+
+  // ---- COURTYARD: perimeter single-loaded ring around a central void ----
+  if(dk==='courtyard'){
+    const X0=frame.x0,Y0=frame.y0,X1=frame.x1,Y1=frame.y1, W=X1-X0, Dp=Y1-Y0;
+    const rd=floorG(Math.min(P.maxD, Math.max(P.minD, 7.8)));
+    if(W-2*rd>=P.minD && Dp-2*rd>=P.minD){
+      let units=[];
+      units=units.concat(tileWorld(X0+rd,Y0, [1,0], W-2*rd, rd, [0,1], P,shares,counts,level,[0,-1]));   // bottom
+      units=units.concat(tileWorld(X0+rd,Y1, [1,0], W-2*rd, rd, [0,-1],P,shares,counts,level,[0, 1]));   // top
+      units=units.concat(tileWorld(X0,Y0+rd, [0,1], Dp-2*rd, rd, [1,0], P,shares,counts,level,[-1,0]));  // left
+      units=units.concat(tileWorld(X1,Y0+rd, [0,1], Dp-2*rd, rd, [-1,0],P,shares,counts,level,[ 1,0]));  // right
+      const cores=[ R(X0,Y0,P.coreLen,rd,'core'), R(X1-P.coreLen,Y1-rd,P.coreLen,rd,'core') ];
+      const court=R(X0+rd,Y0+rd,W-2*rd,Dp-2*rd,'court');
+      return {units,cores,corrRect:court,corrRects:[],aptD:rd,corr,coreCount:2,double:false,
+        frame:{alongX:frame.alongX,len:frame.len,depth:frame.depth,x0:X0,y0:Y0,x1:X1,y1:Y1},
+        envelope:frame,pulled:false,level,isSB,devkind:dk,court};
+    } // else fall through to bar logic
+  }
+
+  // ---- BAR / POINT-BLOCK: blade or point cores, one or two rows ----
+  const point = kind.core==='point';
+  const coreW = point? Math.min(eff.depth, 6.0) : eff.depth;
+  let coreCount = point? Math.max(1, Math.round(eff.len/24)) : Math.max(1, Math.ceil(eff.len/45));
+  if(dk==='point_stair') coreCount=1;
   const cores=[], coreSpots=[];
   for(let i=0;i<coreCount;i++){
     const c=snap((eff.len*(i+1)/(coreCount+1)) - P.coreLen/2);
     coreSpots.push([c, c+P.coreLen]);
-    cores.push(mapRect(eff, c, 0, P.coreLen, eff.depth, {kind:'core'}));
+    if(point){ const v=(eff.depth-coreW)/2; cores.push(mapRect(eff,c,v,P.coreLen,coreW,{kind:'core'})); }
+    else       cores.push(mapRect(eff,c,0,P.coreLen,eff.depth,{kind:'core'}));
   }
   coreSpots.sort((a,b)=>a[0]-b[0]);
   const free=[]; let cur=0;
   for(const [a,b] of coreSpots){ if(a-cur>0.6) free.push([cur,a]); cur=Math.max(cur,b); }
   if(eff.len-cur>0.6) free.push([cur,eff.len]);
+
+  const rows = single? [{v:0,nrm:negV}] : [{v:0,nrm:negV},{v:aptD+corr,nrm:vU}];
   let units=[];
-  for(const [a,b] of free){
-    for(const r of rows){
-      const sub=tileRow(b-a, aptD, P.area, shares, counts, eff, r, level);
-      sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; });
+  rows.forEach(row=>{
+    const wscale = 1 - 0.18*northness(row.nrm);        // north -> narrower & more; south -> wider & fewer
+    for(const [a,b] of free){
+      const sub=tileRow(b-a, aptD, P.area, shares, counts, eff, row.v, level, wscale);
+      sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; s.nrm=row.nrm; attachServices(s,row.nrm,P); });
       units=units.concat(sub);
     }
-  }
-  // corridor rect (full effective length, between the two unit rows)
+  });
   const corrRect = mapRect(eff, 0, aptD, eff.len, corr, {kind:'corridor'});
-  return {units, cores, corrRect, aptD, corr, coreCount, double,
-    frame:eff, envelope:frame, pulled, level, isSB};
+  return {units, cores, corrRect, corrRects:[corrRect], aptD, corr, coreCount, double:!single,
+    frame:eff, envelope:frame, pulled, level, isSB, devkind:dk};
 }
 
 function generate(){
@@ -629,46 +820,78 @@ function polyLine(poly, z, color, cx, cy, op){
   glRoot.add(lp);
 }
 
+// flat ground text label via canvas texture (street names, N marker)
+function groundLabel(text,x,z,color,w){
+  const c=document.createElement('canvas'); c.width=256; c.height=64;
+  const g=c.getContext('2d'); g.font='bold 30px sans-serif'; g.fillStyle=color||'#9fb0c4';
+  g.textAlign='center'; g.textBaseline='middle'; g.fillText(text,128,32);
+  const tex=new THREE.CanvasTexture(c); tex.needsUpdate=true;
+  const pl=new THREE.Mesh(new THREE.PlaneGeometry(w||12,(w||12)/4),
+    new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false}));
+  pl.rotation.x=-Math.PI/2; pl.position.set(x,0.12,z); pl.renderOrder=3; glRoot.add(pl);
+}
+function northArrow(m,cx,cy){
+  const n=northVec(), dir=new THREE.Vector3(n[0],0,n[1]).normalize();
+  const base=new THREE.Vector3(m.F-cx+5,0.2,-cy-5);
+  const len=Math.min(m.F,m.D)*0.18+4, tip=base.clone().add(dir.clone().multiplyScalar(len));
+  glRoot.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([base,tip]),
+    new THREE.LineBasicMaterial({color:0x5b9dff})));
+  const cone=new THREE.Mesh(new THREE.ConeGeometry(0.9,2.2,12),new THREE.MeshBasicMaterial({color:0x5b9dff}));
+  cone.position.copy(tip); cone.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir); glRoot.add(cone);
+  groundLabel('N',tip.x+dir.x*2,tip.z+dir.z*2,'#7fb0ff',6);
+}
+function streetLabels3D(m,cx,cy){
+  const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
+  if(!fr) return;
+  const mids={front:[m.F/2,-4],rear:[m.F/2,m.D+4],left:[-4,m.D/2],right:[m.F+4,m.D/2]};
+  for(const k in fr){ if(!fr[k])continue; const [x,y]=mids[k];
+    groundLabel(st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' frontage'), x-cx, y-cy, '#8aa0b8', 16); }
+}
+
 function build3D(m){
   clearGroup();
   const cx=m.F/2, cy=m.D/2;                      // recentre; plan-y -> three-z
   orbit.ty=m.metrics.height*0.35;
   orbit.r=Math.max(m.F,m.D,m.metrics.height)*1.7+24;
-  // ground plane
   const gp=new THREE.Mesh(new THREE.PlaneGeometry(m.F*3,m.D*3),
     new THREE.MeshBasicMaterial({color:0x10141a,transparent:true,opacity:.9}));
   gp.rotation.x=-Math.PI/2; glRoot.add(gp);
 
-  // surrounding context: neighbouring lots as low pads (heights need a buildings dataset)
   if(showCtx && m.site && m.site.context){
-    m.site.context.forEach(poly=>{
-      try{ prism(poly,0.0,5.5,0x222a35,0.5,cx,cy); polyLine(poly,0.05,0x39434f,cx,cy,0.5); }catch(e){}
-    });
+    m.site.context.forEach(poly=>{ try{ prism(poly,0.0,5.5,0x222a35,0.5,cx,cy); polyLine(poly,0.05,0x39434f,cx,cy,0.5); }catch(e){} });
   }
-
-  // site boundary: true title polygon if located, else the rectangular site
   if(m.site && m.site.poly){ polyLine(m.site.poly,0.06,0x5b9dff,cx,cy,0.85); }
   else { polyLine([[0,0],[m.F,0],[m.F,m.D],[0,m.D]],0.06,0x5b9dff,cx,cy,0.6); }
 
-  // storeys
+  northArrow(m,cx,cy);
+  streetLabels3D(m,cx,cy);
+
+  const B=(r,z,h,col,op)=>box(r.x+r.wx/2-cx, r.y+r.wy/2-cy, z, Math.max(0.15,r.wx), Math.max(0.15,r.wy), h, col, op==null?1:op, false);
+
   m.levels.forEach(l=>{
-    // apartment units: SOLID extruded boxes that fill most of the floor height
-    l.units.forEach(u=>{
-      box(u.x+u.wx/2-cx, u.y+u.wy/2-cy, l.z+0.05,
-          Math.max(0.2,u.wx-0.2), Math.max(0.2,u.wy-0.2), l.h*0.82,
-          parseInt(APTCOL[u.type].slice(1),16), 1.0);
-    });
-    // cores: solid
-    l.cores.forEach(c=> box(c.x+c.wx/2-cx,c.y+c.wy/2-cy,l.z,Math.max(0.2,c.wx-0.1),Math.max(0.2,c.wy-0.1),l.h*0.9,0x7b8696,1.0));
-    // floor slab: thin solid plate so stacked levels read clearly
+    // floor slab
     const fw=l.frame.x1-l.frame.x0, fd=l.frame.y1-l.frame.y0;
-    const fcx=(l.frame.x0+l.frame.x1)/2-cx, fcy=(l.frame.y0+l.frame.y1)/2-cy;
-    box(fcx,fcy,l.z,fw,fd,0.12,l.isSB?0x33414f:0x2a3340,1.0,0x141a22);
-    // building envelope: translucent, only when toggled (doesn't occlude units)
+    box((l.frame.x0+l.frame.x1)/2-cx,(l.frame.y0+l.frame.y1)/2-cy,l.z,fw,fd,0.12,l.isSB?0x33414f:0x2a3340,1.0,0x141a22);
+    // apartments + per-unit building-system fitout
+    l.units.forEach(u=>{
+      box(u.x+u.wx/2-cx, u.y+u.wy/2-cy, l.z+0.12, Math.max(0.2,u.wx-0.2), Math.max(0.2,u.wy-0.2),
+          l.h*0.8, parseInt(APTCOL[u.type].slice(1),16), 1.0);
+      const s=u.svc; if(s){
+        B(s.balcony, l.z+0.05, 0.5, 0x3a4654, 0.95);                 // balcony slab + guard
+        B(s.pod,     l.z+0.14, l.h*0.7, 0xc46b9e, 1.0);              // bathroom pod
+        B(s.kitchen, l.z+0.14, 0.9, 0xb6894a, 1.0);                  // kitchen bench
+        B(s.esm,     l.z+0.05, l.h*0.78, 0xe0a341, 1.0);             // ESM riser on balcony
+        s.bulkheads.forEach(b=> B(b, l.z+l.h*0.8-0.35, 0.35, 0x566072, 0.92)); // ceiling bulkheads
+      }
+    });
+    // cores
+    l.cores.forEach(c=> box(c.x+c.wx/2-cx,c.y+c.wy/2-cy,l.z,Math.max(0.2,c.wx-0.1),Math.max(0.2,c.wy-0.1),l.h*0.9,0x7b8696,1.0));
+    // courtyard void marker
+    if(l.court) polyLine([[l.court.x,l.court.y],[l.court.x+l.court.wx,l.court.y],[l.court.x+l.court.wx,l.court.y+l.court.wy],[l.court.x,l.court.y+l.court.wy]], l.z+0.13, 0x4a5666, cx, cy, 0.7);
+    // envelope (toggle)
     if(showEnv){
       const ew=l.envelope.x1-l.envelope.x0, ed=l.envelope.y1-l.envelope.y0;
-      const ecx=(l.envelope.x0+l.envelope.x1)/2-cx, ecy=(l.envelope.y0+l.envelope.y1)/2-cy;
-      box(ecx,ecy,l.z,ew,ed,l.h*0.96,l.isSB?0x4a6080:0x6f8095,0.16,0x5b9dff);
+      box((l.envelope.x0+l.envelope.x1)/2-cx,(l.envelope.y0+l.envelope.y1)/2-cy,l.z,ew,ed,l.h*0.96,l.isSB?0x4a6080:0x6f8095,0.16,0x5b9dff);
     }
   });
 }
@@ -683,32 +906,36 @@ function paintPlan(m){
   ctx.clearRect(0,0,W,H);
   const lvl = planLevel==='sb' ? m.levels.find(l=>l.isSB) : m.levels.find(l=>!l.isSB);
   if(!lvl){ctx.fillStyle='#5d6877';ctx.font='13px JetBrains Mono';ctx.fillText('no setback level',24,40);return;}
-  // fit transform (plan x->screen x, plan y down)
   const pad=70, sc=Math.min((W-2*pad)/m.F,(H-2*pad)/m.D), ox=(W-m.F*sc)/2, oy=(H-m.D*sc)/2;
   const X=x=>ox+x*sc, Y=y=>oy+y*sc;
+  const FR=(r,fill,line)=>{ ctx.fillStyle=fill; ctx.fillRect(X(r.x),Y(r.y),r.wx*sc,r.wy*sc);
+    if(line){ctx.strokeStyle=line;ctx.lineWidth=1;ctx.strokeRect(X(r.x),Y(r.y),r.wx*sc,r.wy*sc);} };
   // 600 grid
   ctx.strokeStyle='rgba(91,157,255,.07)'; ctx.lineWidth=1;
   for(let gx=0;gx<=m.F+1e-6;gx+=GRID){ctx.beginPath();ctx.moveTo(X(gx),Y(0));ctx.lineTo(X(gx),Y(m.D));ctx.stroke();}
   for(let gy=0;gy<=m.D+1e-6;gy+=GRID){ctx.beginPath();ctx.moveTo(X(0),Y(gy));ctx.lineTo(X(m.F),Y(gy));ctx.stroke();}
-  // context lots (faint) when located
+  // context lots
   if(m.site && m.site.context){ ctx.strokeStyle='rgba(120,134,150,.35)'; ctx.fillStyle='rgba(40,48,60,.4)'; ctx.lineWidth=1;
     m.site.context.forEach(poly=>{ ctx.beginPath(); poly.forEach(([x,y],i)=> i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y))); ctx.closePath(); ctx.fill(); ctx.stroke(); }); }
-  // site: true title polygon if located, else the rectangle
+  // site boundary
   ctx.strokeStyle='#5b9dff'; ctx.lineWidth=1.5;
   if(m.site && m.site.poly){ ctx.beginPath(); m.site.poly.forEach(([x,y],i)=> i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y))); ctx.closePath(); ctx.stroke(); }
   else { ctx.strokeRect(X(0),Y(0),m.F*sc,m.D*sc); }
-  ctx.fillStyle='#5d6877'; ctx.font='10px JetBrains Mono';
-  ctx.fillText('STREET (front setback '+m.P.front.toFixed(1)+' m)',X(0)+2,Y(0)-6);
-  // buildable envelope (dashed) + effective plate (solid) when pulled back
+  // street-frontage labels
+  drawStreetLabels(ctx,m,X,Y,sc);
+  // envelope (dashed) + pulled plate
   const env=lvl.envelope, f=lvl.frame;
-  ctx.setLineDash([5,4]); ctx.strokeStyle='#39434f';
+  ctx.setLineDash([5,4]); ctx.strokeStyle='#39434f'; ctx.lineWidth=1;
   ctx.strokeRect(X(env.x0),Y(env.y0),(env.x1-env.x0)*sc,(env.y1-env.y0)*sc); ctx.setLineDash([]);
-  if(lvl.pulled){
-    ctx.strokeStyle='#4a5666'; ctx.lineWidth=1;
-    ctx.strokeRect(X(f.x0),Y(f.y0),(f.x1-f.x0)*sc,(f.y1-f.y0)*sc);
-  }
-  // corridor
-  const cr=lvl.corrRect; ctx.fillStyle='#222933'; ctx.fillRect(X(cr.x),Y(cr.y),cr.wx*sc,cr.wy*sc);
+  if(lvl.pulled){ ctx.strokeStyle='#4a5666'; ctx.strokeRect(X(f.x0),Y(f.y0),(f.x1-f.x0)*sc,(f.y1-f.y0)*sc); }
+  // courtyard void
+  if(lvl.court){ ctx.setLineDash([3,3]); ctx.strokeStyle='#4a5666';
+    ctx.strokeRect(X(lvl.court.x),Y(lvl.court.y),lvl.court.wx*sc,lvl.court.wy*sc); ctx.setLineDash([]);
+    ctx.fillStyle='#5d6877'; ctx.font='9px JetBrains Mono'; ctx.fillText('COURT',X(lvl.court.x)+4,Y(lvl.court.y)+14); }
+  // corridor(s)
+  (lvl.corrRects||[]).forEach(cr=>{ ctx.fillStyle='#222933'; ctx.fillRect(X(cr.x),Y(cr.y),cr.wx*sc,cr.wy*sc); });
+  // balconies first (sit outside the units)
+  lvl.units.forEach(u=>{ if(u.svc) FR(u.svc.balcony,'rgba(58,70,84,.85)','#2a313c'); });
   // units
   lvl.units.forEach(u=>{
     ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
@@ -717,17 +944,62 @@ function paintPlan(m){
       ctx.fillText(u.type.replace('b','')+'B', X(u.x)+3, Y(u.y)+12);
       ctx.font='8px JetBrains Mono'; ctx.fillText((u.wx*u.wy).toFixed(0)+'m²',X(u.x)+3,Y(u.y)+22); }
   });
+  // building-system fitout: bulkheads, pod, kitchen, ESM
+  lvl.units.forEach(u=>{ const s=u.svc; if(!s)return;
+    s.bulkheads.forEach(b=>FR(b,'rgba(86,96,114,.85)'));
+    FR(s.pod,'#c46b9e','#0c0e12');
+    FR(s.kitchen,'#b6894a','#0c0e12');
+    FR(s.esm,'#e0a341','#0c0e12');
+    if(s.pod.wx*sc>16){ ctx.fillStyle='#1a1118'; ctx.font='7px JetBrains Mono'; ctx.fillText('POD',X(s.pod.x)+2,Y(s.pod.y)+10); }
+  });
   // cores
   lvl.cores.forEach(c=>{ ctx.fillStyle='#7b8696'; ctx.fillRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
     ctx.strokeStyle='#0c0e12'; ctx.strokeRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
     ctx.fillStyle='#0c0e12'; ctx.font='bold 9px JetBrains Mono';
     ctx.save(); ctx.translate(X(c.x)+c.wx*sc/2,Y(c.y)+c.wy*sc/2); ctx.textAlign='center'; ctx.fillText('CORE',0,3); ctx.restore(); });
-  // scale bar
-  ctx.fillStyle='#8a96a8'; ctx.font='10px JetBrains Mono';
+  // compass rose
+  drawCompass(ctx, W-58, 56);
+  // scale bar + caption
+  ctx.fillStyle='#8a96a8'; ctx.font='10px JetBrains Mono'; ctx.textAlign='left';
   const sb=10*sc; ctx.strokeStyle='#8a96a8'; ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(20,H-26);ctx.lineTo(20+sb,H-26);ctx.stroke();
   ctx.fillText('10 m',20,H-32);
-  ctx.fillText((planLevel==='sb'?'Setback level':'Typical floor')+' · '+(f.alongX?'corridor E–W':'corridor N–S'),20,28);
+  const dk=(m.P.kind&&m.P.kind.label)||'—';
+  ctx.fillText((planLevel==='sb'?'Setback level':'Typical floor')+' · '+dk,20,28);
+  if(m.site&&m.site.siteType){ ctx.fillStyle='#5d6877'; ctx.fillText('Site: '+(SITE_LABEL[m.site.siteType]||m.site.siteType),20,44); }
+}
+
+// frontage street names along the open edges
+function drawStreetLabels(ctx,m,X,Y,sc){
+  const fr=m.site&&m.site.frontages; if(!fr) {        // manual mode: just mark the front
+    ctx.fillStyle='#5d6877'; ctx.font='10px JetBrains Mono'; ctx.textAlign='left';
+    ctx.fillText('STREET (front setback '+m.P.front.toFixed(1)+' m)',X(0)+2,Y(0)-6); return; }
+  const st=(m.site&&m.site.streets)||{};
+  ctx.fillStyle='#7f93a8'; ctx.font='bold 10px JetBrains Mono';
+  const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' frontage');
+  ctx.textAlign='center';
+  if(fr.front) ctx.fillText(cap('front'), X(m.F/2), Y(0)-7);
+  if(fr.rear)  ctx.fillText(cap('rear'),  X(m.F/2), Y(m.D)+15);
+  ctx.save(); ctx.textAlign='center';
+  if(fr.left){ ctx.translate(X(0)-8,Y(m.D/2)); ctx.rotate(-Math.PI/2); ctx.fillText(cap('left'),0,0); ctx.rotate(Math.PI/2); ctx.translate(-(X(0)-8),-Y(m.D/2)); }
+  if(fr.right){ ctx.translate(X(m.F)+12,Y(m.D/2)); ctx.rotate(Math.PI/2); ctx.fillText(cap('right'),0,0); ctx.rotate(-Math.PI/2); }
+  ctx.restore(); ctx.textAlign='left';
+}
+// compass rose: north along engine (sinθ,cosθ); screen X right, Y down
+function drawCompass(ctx,cxp,cyp){
+  const n=northVec(), r=22;
+  ctx.save(); ctx.translate(cxp,cyp);
+  ctx.strokeStyle='#39434f'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(0,0,r,0,2*Math.PI); ctx.stroke();
+  ctx.strokeStyle='#5d6877'; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-n[0]*r,-n[1]*r); ctx.stroke(); // south tail
+  ctx.strokeStyle='#5b9dff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(n[0]*r,n[1]*r); ctx.stroke();
+  ctx.fillStyle='#5b9dff'; ctx.beginPath();                                  // arrowhead
+  const ang=Math.atan2(n[1],n[0]); const tx=n[0]*r, ty=n[1]*r;
+  ctx.moveTo(tx,ty); ctx.lineTo(tx-6*Math.cos(ang-0.4),ty-6*Math.sin(ang-0.4));
+  ctx.lineTo(tx-6*Math.cos(ang+0.4),ty-6*Math.sin(ang+0.4)); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#9fb0c4'; ctx.font='bold 11px JetBrains Mono'; ctx.textAlign='center';
+  ctx.fillText('N', n[0]*(r+10), n[1]*(r+10)+4);
+  if(!(siteGeo&&siteGeo.orientation!=null)){ ctx.fillStyle='#5d6877'; ctx.font='7px JetBrains Mono'; ctx.fillText('assumed',0,r+16); }
+  ctx.restore(); ctx.textAlign='left';
 }
 
 /* ════════════════════════ VIEW TABS ════════════════════════ */
@@ -756,7 +1028,9 @@ function dxfExport(m){
   const K=1000; // metres -> mm
   const L=[];
   const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
-    ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4]];
+    ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4],
+    ['BALCONY',150],['POD',211],['ESM',41],['KITCHEN',31],['BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
+    ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -773,23 +1047,53 @@ function dxfExport(m){
   const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
   const face=(lay,p)=>{L.push('0','3DFACE','8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
 
+  // de-duplicated wall centreline (shared party walls coincide)
+  const seenW=new Set();
+  const wline=(lay,x1,y1,x2,y2)=>{ const a=[Math.round(x1*10),Math.round(y1*10)], b=[Math.round(x2*10),Math.round(y2*10)];
+    const k=lay+a+'|'+b, k2=lay+b+'|'+a; if(seenW.has(k)||seenW.has(k2))return; seenW.add(k); line(lay,x1,y1,x2,y2); };
+  const wbox=(lay,x,y,w,d)=>{ wline(lay,x,y,x+w,y); wline(lay,x+w,y,x+w,y+d); wline(lay,x+w,y+d,x,y+d); wline(lay,x,y+d,x,y); };
+
   // ── 2D: typical + setback plans, stacked along -Y ──
   const plans=[['typ',0],['sb',-(m.D+8)]];
   plans.forEach(([key,oy])=>{
     const lvl = key==='sb'? m.levels.find(l=>l.isSB): m.levels.find(l=>!l.isSB);
     if(!lvl)return;
-    // context lots + true title boundary as closed curves when located
     if(m.site && m.site.context) m.site.context.forEach(p=>poly('CONTEXT',p,0,oy));
     if(m.site && m.site.poly) poly('SITE',m.site.poly,0,oy); else rect('SITE',0,oy,m.F,m.D);
     const env=lvl.envelope; rect('BUILDABLE',env.x0,oy+env.y0,env.x1-env.x0,env.y1-env.y0);
     const f=lvl.frame; if(lvl.pulled) rect('SETBACK',f.x0,oy+f.y0,f.x1-f.x0,f.y1-f.y0);
     for(let gx=0;gx<=m.F+1e-6;gx+=GRID) line('GRID',gx,oy,gx,oy+m.D);
     for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
-    const cr=lvl.corrRect; rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy);
+    (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
+    if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
     lvl.units.forEach(u=>{ const lay='APT_'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);
-      text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35); });
-    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy); text('TEXT',c.x+0.3,oy+c.y+c.wy/2,'CORE',0.35); });
-    text('TEXT',0,oy+m.D+1.2,(key==='sb'?'SETBACK LEVEL':'TYPICAL FLOOR'),0.6);
+      text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
+      // building-system fitout as closed polylines
+      const s=u.svc; if(s){
+        rect('BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
+        rect('POD',s.pod.x,oy+s.pod.y,s.pod.wx,s.pod.wy);
+        rect('KITCHEN',s.kitchen.x,oy+s.kitchen.y,s.kitchen.wx,s.kitchen.wy);
+        rect('ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
+        s.bulkheads.forEach(b=>rect('BULKHEAD',b.x,oy+b.y,b.wx,b.wy));
+      }
+      // wall centrelines: party (between dwellings) + internal (facade / corridor / pod)
+      const vF = u.nrm && u.nrm[1]!==0;   // facade is a horizontal edge -> party walls run across depth
+      if(vF){ wline('WALLS_PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
+              wline('WALLS_INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
+      else  { wline('WALLS_PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
+              wline('WALLS_INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
+      if(u.svc) wbox('WALLS_INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+    });
+    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy); text('TEXT',c.x+0.3,oy+c.y+c.wy/2,'CORE',0.35);
+      wbox('WALLS_CORE',c.x,oy+c.y,c.wx,c.wy); });
+    // street-frontage names
+    const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
+    if(fr){ const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' FRONTAGE');
+      if(fr.front) text('STREET_TEXT',2,oy-1.2,cap('front'),0.6);
+      if(fr.rear)  text('STREET_TEXT',2,oy+m.D+1.6,cap('rear'),0.6);
+      if(fr.left)  text('STREET_TEXT',-1.2,oy+m.D/2,cap('left'),0.6);
+      if(fr.right) text('STREET_TEXT',m.F+1.2,oy+m.D/2,cap('right'),0.6); }
+    text('TEXT',0,oy+m.D+3.0,(key==='sb'?'SETBACK LEVEL':'TYPICAL FLOOR')+'  ['+((m.P.kind&&m.P.kind.label)||'')+']',0.6);
   });
   // ── 3D massing: offset +X (solid faces; outline rings are closed polylines) ──
   const ox=m.F+10;
@@ -890,7 +1194,7 @@ document.getElementById('exDxf').onclick=()=>lastModel&&dxfExport(lastModel);
 document.getElementById('exIfc').onclick=()=>lastModel&&ifcExport(lastModel);
 addEventListener('resize',()=>{ resizeGL(); if(lastModel&&document.getElementById('plan').style.display!=='none')paintPlan(lastModel); });
 
-renderLots(); syncMix(); initGL();
+renderLots(); syncMix(); populateDevKinds('row'); initGL();
 setTimeout(()=>{ generate(); },120);
 </script>
 </body>

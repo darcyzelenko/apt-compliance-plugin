@@ -52,6 +52,7 @@ VIC_PARCEL = "https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning
 VIC_ZONE = "https://plan-gis.mapshare.vic.gov.au/arcgis/rest/services/Planning/Vicplan_PlanningSchemeZones/MapServer/0"
 
 PHOTON = "https://photon.komoot.io/api/"
+PHOTON_REVERSE = "https://photon.komoot.io/reverse"
 # Australia bounding box (minLon,minLat,maxLon,maxLat) to bias + constrain results.
 AU_BBOX = "112.9,-43.7,153.7,-10.0"
 USER_AGENT = "FORMWORK-massing/1.0 (apt-compliance-plugin)"
@@ -241,6 +242,59 @@ def _parcel_metrics(feature):
     }
 
 
+def _reverse_street(lat, lon):
+    """Nearest street name at a point, via Photon reverse geocoding (keyless)."""
+    try:
+        data = _get(PHOTON_REVERSE, {"lat": lat, "lon": lon, "lang": "en", "limit": 1})
+        feats = (data or {}).get("features") or []
+        if not feats:
+            return None
+        p = feats[0].get("properties", {})
+        return p.get("street") or p.get("name") or None
+    except Exception:
+        return None
+
+
+def _frontage_streets(feature, metrics):
+    """Name the four oriented-bbox edges (front/rear/left/right) by reverse-geocoding
+    a point a few metres outside each edge midpoint. Edge convention matches the
+    frontend after it rotates by -orientation and shifts to origin:
+      front = v-min edge, rear = v-max, left = u-min, right = u-max.
+    Best-effort and fully isolated — never raises into the main resolve flow."""
+    try:
+        ring = _outer_ring(feature)
+        if len(ring) < 4 or not metrics:
+            return None
+        lon0, lat0 = metrics["centroid"]
+        a = math.radians(metrics["orientation_deg"])
+        ca, sa = math.cos(a), math.sin(a)
+        k = math.cos(math.radians(lat0))
+        local = _to_local_m(ring, lat0, lon0)
+        # rotate into (u,v): rotation by -a
+        us = [x * ca + y * sa for x, y in local]
+        vs = [-x * sa + y * ca for x, y in local]
+        umin, umax, vmin, vmax = min(us), max(us), min(vs), max(vs)
+        uc, vc = (umin + umax) / 2, (vmin + vmax) / 2
+        off = 6.0
+        edges = {
+            "front": (uc, vmin - off),
+            "rear":  (uc, vmax + off),
+            "left":  (umin - off, vc),
+            "right": (umax + off, vc),
+        }
+        out = {}
+        for key, (u, v) in edges.items():
+            # rotate (u,v) back to local ENU by +a, then to lon/lat
+            x = u * ca - v * sa
+            y = u * sa + v * ca
+            lon = lon0 + x / (111320.0 * k)
+            lat = lat0 + y / 110540.0
+            out[key] = _reverse_street(lat, lon)
+        return out
+    except Exception:
+        return None
+
+
 # ----------------------------------------------------------------------------
 # Geocoding (keyless, AU-filtered). Swap for a keyed provider in production.
 # ----------------------------------------------------------------------------
@@ -371,6 +425,11 @@ def route_resolve():
         resp["metrics"] = _parcel_metrics(feat) if feat else None
     except Exception as e:
         resp["parcel_error"] = str(e)
+    try:
+        if resp.get("parcel") and resp.get("metrics"):
+            resp["frontage_streets"] = _frontage_streets(resp["parcel"], resp["metrics"])
+    except Exception:
+        resp["frontage_streets"] = None
     try:
         resp["zone"] = _zone_payload(state, lat, lon)
     except Exception as e:
