@@ -12,12 +12,14 @@ from compliance_engine import run_compliance
 from buildability_engine import run_buildability, parse_dxf_for_buildability
 from app_building_routes import register_building_routes
 from app_report_routes import register_report_routes
+from app_site_routes import site_bp
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
 register_report_routes(app)
 register_building_routes(app)
+app.register_blueprint(site_bp)
 
 
 # ── Buildability ──────────────────────────────────────────────────────────────
@@ -25,6 +27,10 @@ register_building_routes(app)
 @app.route('/build')
 def build():
     return render_template('build.html')
+
+@app.route('/massing-simulator')
+def massing_simulator():
+    return render_template('massing-simulator.html')
 
 
 @app.route('/api/nest', methods=['POST'])
