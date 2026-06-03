@@ -226,18 +226,20 @@
     let bd = clamp(0.42 * D, 3.0, 3.9); bd = Math.min(bd, D - 2.6);
     // FACADE SPLIT BY STRATEGY (this is the heart of the method):
     //  straight        — even split living vs bedrooms (often buries the living room)
-    //  living_priority — protect living frontage first; bedrooms take the minimum,
-    //                    snorkelling to a neck when the frontage is tight
+    //  living_priority — protect living frontage first; bedrooms take the minimum
     let LW, BW, snorkel = false;
     if (strategy === 'straight') {
       LW = W / (nBed + 1); BW = W - LW;                       // living = one equal share
     } else {
+      // living-priority: protect living, but beds must always be ≥ minBedFrontage
       LW = Math.max(C.minLivingFrontage, W - nBed * C.minBedFrontage); BW = W - LW;
-      if (BW < nBed * C.minBedNeck) { BW = nBed * C.minBedNeck; LW = Math.max(C.minRoomW, W - BW); }
-      snorkel = (BW / nBed) < C.minBedFrontage - 1e-6;        // beds below comfortable -> snorkel necks
-      if (snorkel) bd = clamp(0.6 * D, 3.3, Math.max(3.3, D - 2.4));
+      // if unit is too narrow for both at minimum, give beds their floor and accept less living
+      if (BW / nBed < C.minBedFrontage) { BW = nBed * C.minBedFrontage; LW = Math.max(C.minRoomW, W - BW); }
+      // snorkel (narrow neck + wider body deeper in plan) is a V2 feature — body not yet modelled;
+      // disabling prevents the narrow-neck-only rooms that produced 1.8 m bedrooms.
+      snorkel = false;
     }
-    const bedW = BW / nBed;
+    const bedW = Math.max(C.minBedFrontage, BW / nBed);
     for (let i = 0; i < nBed; i++) {
       rooms.push(rect(i * bedW, 0, bedW, bd, 'bed', snorkel ? 'BED~' : 'BED'));
       windows.push({ t0: i * bedW + 0.3, t1: (i + 1) * bedW - 0.3, kind: 'bed' });
@@ -246,7 +248,7 @@
     rooms.push(rect(BW, 0, LW, D, 'living', 'LIVING'));
     windows.push({ t0: BW + 0.4, t1: W - 0.4, kind: 'living' });
     const podW = Math.min(C.podW, BW), podT = Math.max(0, BW - podW);
-    rooms.push(rect(podT, bd + 0.1, podW, Math.min(C.podD, D - bd - C.entryD - 0.2), 'pod', 'POD'));
+    rooms.push(rect(podT, bd + 0.1, podW, Math.min(C.podD, D - bd - C.entryD - 0.2), 'pod', 'SERVICES|POD'));
     doors.push({ t: podT + podW * 0.5, d: bd + 0.1 });
     rooms.push(rect(BW, bd + 0.1, C.kitW, C.kitD, 'kitchen', 'KIT'));
     const entW = Math.min(1.6, BW);
@@ -962,7 +964,11 @@ function params(){
 // tile one row of given clear length; advances global counters toward target shares
 function tileRow(len, depth, area, shares, counts, frame, vOff, level, wscale){
   wscale = wscale||1;
-  const fr = t => snap(Math.min(12, Math.max(3, (area[t]/depth)*wscale)));
+  // minimum viable width: every bedroom + the living room must fit side-by-side on the facade.
+  // wscale can narrow units to pack more north-facing ones in, but never below this floor.
+  const nBeds={b1:1,b2:2,b3:3};
+  const minW = t => (nBeds[t]||1)*2.4 + 3.6;    // nBed × minBedFrontage + minLivingFrontage
+  const fr = t => Math.max(snap(Math.min(12, Math.max(3, (area[t]/depth)*wscale))), minW(t));
   const units=[]; let u=0;
   while(true){
     const total = counts.b1+counts.b2+counts.b3;
@@ -978,6 +984,18 @@ function tileRow(len, depth, area, shares, counts, frame, vOff, level, wscale){
     const w=fr(placed);
     units.push(mapRect(frame, u, vOff, w, depth, {type:placed, level}));
     counts[placed]++; u+=w;
+  }
+  // stretch units evenly to fill the row rather than leaving a gap at the end
+  if(units.length > 0) {
+    const leftover = len - u;
+    if(leftover >= GRID/2 && leftover < minW('b1')) {
+      const extra = leftover / units.length;
+      let pos = frame.alongX ? frame.x0 : frame.y0;
+      units.forEach(uu=>{
+        if(frame.alongX){ uu.x=pos; uu.wx+=extra; pos+=uu.wx; }
+        else            { uu.y=pos; uu.wy+=extra; pos+=uu.wy; }
+      });
+    }
   }
   return units;
 }
@@ -1055,7 +1073,7 @@ function layoutApartment(W,D,type){
   windows.push({t0:BW+0.4, t1:W-0.4});
   // pod: deep (behind bedrooms), right end of the back band, adjacent to living column
   const podW=Math.min(podWmax, BW), podT=Math.max(0, BW-podW);
-  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'POD'});
+  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'SERVICES|POD'});
   doors.push({t:podT-0.0+podW*0.5, d:bd+0.1});      // hall -> pod
   // kitchen: long edge perpendicular to facade, sharing the pod wall (t=BW)
   rooms.push({t:BW, d:bd+0.1, wt:kitW, wd:kitD, kind:'kitchen', label:'KIT'});
@@ -1542,7 +1560,8 @@ function paintPlan(m){
   ctx.clearRect(0,0,W,H);
   const lvl = planLevel==='sb' ? m.levels.find(l=>l.isSB) : m.levels.find(l=>!l.isSB);
   if(!lvl){ctx.fillStyle='#5d6877';ctx.font='13px JetBrains Mono';ctx.fillText('no setback level',24,40);return;}
-  const pad=70, sc=Math.min((W-2*pad)/m.F,(H-2*pad)/m.D), ox=(W-m.F*sc)/2, oy=(H-m.D*sc)/2;
+  const pad=40, baseSc=Math.min((W-2*pad)/m.F,(H-2*pad)/m.D);
+  const sc=baseSc*planZoom, ox=(W-m.F*sc)/2+planPanX, oy=(H-m.D*sc)/2+planPanY;
   if(sc <= 0) return;    // site dimensions exceed canvas — nothing drawable
   const X=x=>ox+x*sc, Y=y=>oy+y*sc;
   const FR=(r,fill,line)=>{ ctx.fillStyle=fill; ctx.fillRect(X(r.x),Y(r.y),r.wx*sc,r.wy*sc);
@@ -1677,11 +1696,15 @@ document.getElementById('t2d').onclick=()=>setView('2d');
 function setView(v){
   const is3=v==='3d';
   document.getElementById('gl').style.display=is3?'block':'none';
-  document.getElementById('plan').style.display=is3?'none':'block';
+  const planEl=document.getElementById('plan'); planEl.style.display=is3?'none':'block';
+  planEl.style.cursor=is3?'default':'grab';
   document.getElementById('t3d').classList.toggle('on',is3);
   document.getElementById('t2d').classList.toggle('on',!is3);
   document.getElementById('planpick').style.display=is3?'none':'flex';
-  document.getElementById('vhint').style.display=is3?'block':'none';
+  const hint=document.getElementById('vhint');
+  hint.style.display='block';
+  hint.textContent=is3?'drag · orbit   scroll · zoom   right-drag · pan'
+                      :'scroll · zoom   drag · pan   dbl-click · reset';
   if(is3){resizeGL();} else if(lastModel){paintPlan(lastModel);}
 }
 document.getElementById('planpick').onclick=e=>{ if(!e.target.dataset.lvl)return; planLevel=e.target.dataset.lvl;
@@ -1693,10 +1716,10 @@ function dxfExport(m){
   const K=1000; // metres -> mm
   const L=[];
   const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
-    ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4],
-    ['BALCONY',150],['POD',211],['ESM',41],['KITCHEN',31],['BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
-    ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4],
-    ['ROOM_BED',130],['ROOM_LIVING',134],['ROOM_ENTRY',252],['ROOM_HALL',250],['DOOR',7],['WINDOW',141]];
+    ['APTS|1BED',3],['APTS|2BED',2],['APTS|3BED',1],['TEXT',7],['MASS_3D',4],
+    ['SERVICES|BALCONY',150],['SERVICES|POD',211],['SERVICES|ESM',41],['SERVICES|KITCHEN',31],['SERVICES|BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
+    ['WALLS|CORE',9],['WALLS|PARTY',1],['WALLS|INTERNAL',4],
+    ['ROOMS|BED',130],['ROOMS|LIVING',134],['ROOMS|ENTRY',252],['ROOMS|HALL',250],['DOOR',7],['WINDOW',141]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -1733,11 +1756,11 @@ function dxfExport(m){
     for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
     (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
     if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
-    const RL={bed:'ROOM_BED',living:'ROOM_LIVING',kitchen:'KITCHEN',pod:'POD',entry:'ROOM_ENTRY',hall:'ROOM_HALL'};
-    lvl.units.forEach(u=>{ const lay='APT_'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);  // dwelling outline
+    const RL={bed:'ROOMS|BED',living:'ROOMS|LIVING',kitchen:'SERVICES|KITCHEN',pod:'SERVICES|POD',entry:'ROOMS|ENTRY',hall:'ROOMS|HALL'};
+    lvl.units.forEach(u=>{ const lay='APTS|'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);  // dwelling outline
       text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
       // internal rooms
-      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOM_LIVING', r.x, oy+r.y, r.wx, r.wy);
+      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOMS|LIVING', r.x, oy+r.y, r.wx, r.wy);
         if(r.label) text('TEXT', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
       // facade windows
       if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('WINDOW', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
@@ -1749,16 +1772,19 @@ function dxfExport(m){
         let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
         arc('DOOR', px, oy+py, r, s, e); });
       // building-system polylines (pod/kitchen are part of the rooms above)
-      const s=u.svc; if(s){ rect('BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
-        rect('ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
-        s.bulkheads.forEach(b=>rect('BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
+      const s=u.svc; if(s){ rect('SERVICES|BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
+        rect('SERVICES|ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
+        s.bulkheads.forEach(b=>rect('SERVICES|BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
       // wall centrelines: party (between dwellings) + internal (facade / corridor / pod)
       const vF = u.nrm && u.nrm[1]!==0;
-      if(vF){ wline('WALLS_PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
-              wline('WALLS_INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
-      else  { wline('WALLS_PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
-              wline('WALLS_INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
-      if(u.svc) wbox('WALLS_INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+      if(vF){ wline('WALLS|PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS|PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
+              wline('WALLS|INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS|INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
+      else  { wline('WALLS|PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS|PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
+              wline('WALLS|INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS|INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
+      if(u.svc) wbox('WALLS|INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+      // bedroom partitions + all other internal room walls (seenW deduplication prevents double lines)
+      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{
+        if(r.wx>0.1&&r.wy>0.1) wbox('WALLS|INTERNAL',r.x,oy+r.y,r.wx,r.wy); });
     });
     lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy);
       const cf=coreFitout(c);
@@ -1769,7 +1795,7 @@ function dxfExport(m){
       line('CORE',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
       text('TEXT',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
       text('TEXT',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
-      wbox('WALLS_CORE',c.x,oy+c.y,c.wx,c.wy); });
+      wbox('WALLS|CORE',c.x,oy+c.y,c.wx,c.wy); });
     // street-frontage names
     const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
     if(fr){ const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' FRONTAGE');
@@ -1872,11 +1898,23 @@ function download(txt,name,mime){ const b=new Blob([txt],{type:mime}); const a=d
   a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
 
 /* ════════════════════════ WIRE-UP ════════════════════════ */
-let lastModel=null;
+let lastModel=null, planZoom=1, planPanX=0, planPanY=0, planDrag=null;
 document.getElementById('regen').onclick=generate;
 document.getElementById('exDxf').onclick=()=>lastModel&&dxfExport(lastModel);
 document.getElementById('exIfc').onclick=()=>lastModel&&ifcExport(lastModel);
 addEventListener('resize',()=>{ resizeGL(); if(lastModel&&document.getElementById('plan').style.display!=='none')paintPlan(lastModel); });
+
+// plan zoom + pan (scroll, drag, double-click to reset)
+const planCv=document.getElementById('plan');
+planCv.addEventListener('wheel',e=>{ if(planCv.style.display==='none')return; e.preventDefault();
+  planZoom=Math.max(0.25,Math.min(12,planZoom*(e.deltaY<0?1.15:1/1.15)));
+  if(lastModel)paintPlan(lastModel); },{passive:false});
+planCv.addEventListener('mousedown',e=>{ if(e.button===0) planDrag={x:e.clientX,y:e.clientY,px:planPanX,py:planPanY}; });
+addEventListener('mouseup',()=>planDrag=null);
+addEventListener('mousemove',e=>{ if(!planDrag||planCv.style.display==='none')return;
+  planPanX=planDrag.px+(e.clientX-planDrag.x); planPanY=planDrag.py+(e.clientY-planDrag.y);
+  if(lastModel)paintPlan(lastModel); });
+planCv.addEventListener('dblclick',()=>{ planZoom=1; planPanX=0; planPanY=0; if(lastModel)paintPlan(lastModel); });
 
 renderLots(); syncMix(); populateDevKinds('row'); initGL();
 // double-rAF: first frame commits layout, second frame paints with real dimensions

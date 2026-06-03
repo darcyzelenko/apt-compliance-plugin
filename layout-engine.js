@@ -210,18 +210,19 @@
     let bd = clamp(0.42 * D, 3.0, 3.9); bd = Math.min(bd, D - 2.6);
     // FACADE SPLIT BY STRATEGY (this is the heart of the method):
     //  straight        — even split living vs bedrooms (often buries the living room)
-    //  living_priority — protect living frontage first; bedrooms take the minimum,
-    //                    snorkelling to a neck when the frontage is tight
+    //  living_priority — protect living frontage first; bedrooms take the minimum
     let LW, BW, snorkel = false;
     if (strategy === 'straight') {
       LW = W / (nBed + 1); BW = W - LW;                       // living = one equal share
     } else {
+      // living-priority: protect living, but beds must always be ≥ minBedFrontage
       LW = Math.max(C.minLivingFrontage, W - nBed * C.minBedFrontage); BW = W - LW;
-      if (BW < nBed * C.minBedNeck) { BW = nBed * C.minBedNeck; LW = Math.max(C.minRoomW, W - BW); }
-      snorkel = (BW / nBed) < C.minBedFrontage - 1e-6;        // beds below comfortable -> snorkel necks
-      if (snorkel) bd = clamp(0.6 * D, 3.3, Math.max(3.3, D - 2.4));
+      // if unit is too narrow for both at minimum, give beds their floor and accept less living
+      if (BW / nBed < C.minBedFrontage) { BW = nBed * C.minBedFrontage; LW = Math.max(C.minRoomW, W - BW); }
+      // snorkel (narrow neck + wider body) is a V2 feature — body not yet modelled; disabled for now
+      snorkel = false;
     }
-    const bedW = BW / nBed;
+    const bedW = Math.max(C.minBedFrontage, BW / nBed);
     for (let i = 0; i < nBed; i++) {
       rooms.push(rect(i * bedW, 0, bedW, bd, 'bed', snorkel ? 'BED~' : 'BED'));
       windows.push({ t0: i * bedW + 0.3, t1: (i + 1) * bedW - 0.3, kind: 'bed' });
