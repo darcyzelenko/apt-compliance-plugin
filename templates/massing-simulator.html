@@ -590,17 +590,26 @@ function layoutApartment(W,D,type){
   const rooms = [], windows = [], doors = [], walls = [];
 
   const MIN_BED_W = 3.0;
-  const MIN_LIVING_W = 3.0;
+  const MIN_LIVING_FACADE = 3.0;
+  const TARGET_LIVING_FACADE = nBed > 1 ? 4.2 : 3.6;
   const MIN_BED_D = 3.0;
   const MAX_BED_D = 3.6;
-  const MIN_KIT_RUN = 2.7;
+  const SNORKEL_W = 2.2;
+  const SNORKEL_NECK_D = 1.25;
   const KIT_DEPTH = 0.75;
+  const MIN_KIT_RUN = 2.7;
 
-  // Bedrooms and pod are hard constraints. Living/dining/entry is the leftover.
-  const bedDepth = Math.min(clamp(0.44 * D, MIN_BED_D, MAX_BED_D), Math.max(MIN_BED_D, D - 2.8));
-  const bedBandW = nBed * MIN_BED_W;
+  // Bedrooms and pod are hard constraints. Living/dining/entry is the residual
+  // apartment space. If the frontage is too tight for decent living-room light,
+  // 2B/3B units use snorkel bedrooms: a narrower facade neck with a deeper,
+  // full-width bedroom body behind it.
+  const standardBedBandW = nBed * MIN_BED_W;
+  const useSnorkel = nBed >= 2 && W < standardBedBandW + TARGET_LIVING_FACADE;
+  const bedFacadeW = useSnorkel ? nBed * SNORKEL_W : standardBedBandW;
+  const bedBodyW = standardBedBandW;
+  const livingFacadeW = W - bedFacadeW;
 
-  if(W < bedBandW + MIN_LIVING_W || D < 6.0){
+  if(W < bedFacadeW + MIN_LIVING_FACADE || D < 6.0){
     return {
       rooms:[{t:0,d:0,wt:W,wd:D,kind:'living',label:'INVALID — UNIT TOO SMALL'}],
       windows:[{t0:0.4,t1:Math.max(0.8,W-0.4)}],
@@ -609,72 +618,114 @@ function layoutApartment(W,D,type){
     };
   }
 
-  // Bathroom/service pod: behind the bedroom band, not on the façade.
-  // It deliberately does not occupy the full bedroom-band width, leaving a living-side
-  // access strip so the first bedroom and the pod can both be entered from living.
-  const podW = Math.min(2.4, Math.max(1.8, bedBandW - 0.6));
+  const bedDepthBase = Math.min(clamp(0.44 * D, MIN_BED_D, MAX_BED_D), Math.max(MIN_BED_D, D - 2.8));
+  const bedDepth = useSnorkel
+    ? Math.min(Math.max(bedDepthBase + 0.9, 4.0), Math.max(4.0, D - 2.8))
+    : bedDepthBase;
+
+  const neckDepth = useSnorkel ? Math.min(SNORKEL_NECK_D, bedDepth - 2.4) : bedDepth;
+  const podW = Math.min(2.4, Math.max(1.8, bedBodyW - 0.6));
   const podD = Math.min(2.4, Math.max(2.1, D - bedDepth - 1.0));
   const podT = 0;
   const podD0 = bedDepth;
   const podRight = podT + podW;
   const podBack = podD0 + podD;
 
-  // ── Bedrooms: all minimum 3 m wide, all façade-facing ──
-  for(let i=0; i<nBed; i++){
-    const t0 = i * MIN_BED_W;
-    const t1 = t0 + MIN_BED_W;
-    rooms.push({t:t0,d:0,wt:MIN_BED_W,wd:bedDepth,kind:'bed',label:'BED'});
-    windows.push({t0:t0+0.35,t1:t1-0.35});
-
-    // Bedroom doors sit on the rear bedroom wall and swing into the bedroom.
-    // The hinge is biased towards the living-side of each room, so the door never
-    // opens from one bedroom into another or into the pod.
-    const doorT = Math.max(t0+0.65, t1-0.45);
-    doors.push({t:doorT,d:bedDepth,tv:[-1,0],sv:[0,-1],label:'BED DOOR'});
-
-    // Internal wall lines are derived from the room boundaries, not separately invented.
-    walls.push({a:[t0,bedDepth],b:[t1,bedDepth],kind:'bed-rear'});
-    if(i>0) walls.push({a:[t0,0],b:[t0,bedDepth],kind:'bed-party'});
+  function pushWall(a,b,kind){ walls.push({a,b,kind:kind||'internal'}); }
+  function addRoomBoundaryWalls(poly,kind){
+    for(let i=0;i<poly.length;i++) pushWall(poly[i], poly[(i+1)%poly.length], kind);
   }
-  // Last bedroom wall to the living façade strip.
-  walls.push({a:[bedBandW,0],b:[bedBandW,bedDepth],kind:'bed-living'});
 
+  // ── Bedrooms ───────────────────────────────────────────────────────────
+  // Every bedroom has a 3 m wide usable body. In snorkel mode the facade contact
+  // is narrower, but the body gets deeper to compensate and preserve usable area.
+  for(let i=0; i<nBed; i++){
+    const bodyT0 = i * MIN_BED_W;
+    const bodyT1 = bodyT0 + MIN_BED_W;
+
+    if(useSnorkel){
+      const neckT0 = i * SNORKEL_W;
+      const neckT1 = neckT0 + SNORKEL_W;
+      const poly = [
+        [neckT0,0], [neckT1,0], [neckT1,neckDepth],
+        [bodyT1,neckDepth], [bodyT1,bedDepth], [bodyT0,bedDepth],
+        [bodyT0,neckDepth], [neckT0,neckDepth]
+      ];
+      rooms.push({poly,kind:'bed',label:'BED~'});
+      windows.push({t0:neckT0+0.25,t1:neckT1-0.25});
+      addRoomBoundaryWalls(poly,'bed');
+    } else {
+      rooms.push({t:bodyT0,d:0,wt:MIN_BED_W,wd:bedDepth,kind:'bed',label:'BED'});
+      windows.push({t0:bodyT0+0.35,t1:bodyT1-0.35});
+      pushWall([bodyT0,bedDepth],[bodyT1,bedDepth],'bed');
+      if(i>0) pushWall([bodyT0,0],[bodyT0,bedDepth],'bed-party');
+    }
+
+    // Bedroom doors are always on the rear wall, opening from the residual living
+    // zone into the bedroom. They are deliberately placed away from the kitchen zone.
+    const doorT = bodyT1 - 0.55;
+    doors.push({t:doorT,d:bedDepth,tv:[-1,0],sv:[0,-1],label:'BED DOOR'});
+  }
+
+  if(!useSnorkel) pushWall([bedBodyW,0],[bedBodyW,bedDepth],'bed-living');
+  else pushWall([bedBodyW,neckDepth],[bedBodyW,bedDepth],'bed-living');
+
+  // ── Bathroom/service pod ───────────────────────────────────────────────
+  // The pod sits behind the bedroom body. Its door is on the back wall, not the
+  // kitchen-adjacent wall, so the access path never passes through the kitchen.
   rooms.push({t:podT,d:podD0,wt:podW,wd:podD,kind:'pod',label:'POD'});
-  walls.push({a:[podT,podD0],b:[podRight,podD0],kind:'pod'});
-  walls.push({a:[podRight,podD0],b:[podRight,podBack],kind:'pod'});
-  walls.push({a:[podRight,podBack],b:[podT,podBack],kind:'pod'});
-  walls.push({a:[podT,podBack],b:[podT,podD0],kind:'pod'});
+  pushWall([podT,podD0],[podRight,podD0],'pod');
+  pushWall([podRight,podD0],[podRight,podBack],'pod');
+  pushWall([podRight,podBack],[podT,podBack],'pod');
+  pushWall([podT,podBack],[podT,podD0],'pod');
 
-  // Pod door on right-hand pod wall. It opens from living into the pod.
-  doors.push({t:podRight,d:podD0+0.75,tv:[0,1],sv:[-1,0],label:'POD DOOR'});
+  const podDoorT = Math.min(podRight-0.55, Math.max(podT+0.65, podW*0.55));
+  doors.push({t:podDoorT,d:podBack,tv:[1,0],sv:[0,1],label:'POD DOOR'});
 
-  // ── Living / dining / entry: residual room curve ──
-  // This is the apartment footprint minus the bedrooms and pod. It therefore
-  // includes entry and all circulation. Doors into bedrooms and pod all touch it.
-  const livingPoly = [
-    [bedBandW,0],
-    [W,0],
-    [W,D],
-    [0,D],
-    [0,podBack],
-    [podRight,podBack],
-    [podRight,bedDepth],
-    [bedBandW,bedDepth]
-  ];
+  // ── Living / dining / entry: residual room curve ───────────────────────
+  // The living polygon is the apartment footprint after the bedroom/pod mass is
+  // subtracted. It includes the entry zone and all access to bedrooms and pod.
+  let livingPoly;
+  if(useSnorkel){
+    livingPoly = [
+      [bedFacadeW,0],
+      [W,0],
+      [W,D],
+      [0,D],
+      [0,podBack],
+      [podRight,podBack],
+      [podRight,bedDepth],
+      [bedBodyW,bedDepth],
+      [bedBodyW,neckDepth],
+      [bedFacadeW,neckDepth]
+    ];
+  } else {
+    livingPoly = [
+      [bedBodyW,0],
+      [W,0],
+      [W,D],
+      [0,D],
+      [0,podBack],
+      [podRight,podBack],
+      [podRight,bedDepth],
+      [bedBodyW,bedDepth]
+    ];
+  }
   rooms.push({poly:livingPoly,kind:'living',label:'LIVING / DINING / ENTRY'});
-  windows.push({t0:bedBandW+0.4,t1:W-0.4});
+  windows.push({t0:bedFacadeW+0.4,t1:W-0.4});
 
-  // ── Kitchen: a rectangular linear run, not a square ──
-  // Prefer a kitchen placed directly against the pod wall so the pod can route
-  // through it. If the living strip beside the pod is too tight, fall back to a
-  // perimeter-wall kitchen along the back of the living zone.
+  // ── Kitchen: linear rectangle, not a square ────────────────────────────
+  // Prefer a run directly adjacent to a pod wall. Leave the pod door clear.
+  // If there is not enough depth beside the pod, use the living perimeter wall.
   let kitchen, routeMode='pod-wall';
+  const clearBesidePod = Math.max(0, podD - 1.15); // keep door zone clear at pod back
+  const sideRun = Math.min(Math.max(MIN_KIT_RUN, clearBesidePod), Math.max(0, clearBesidePod));
   const stripW = W - podRight;
-  const sideRun = Math.min(Math.max(MIN_KIT_RUN, podD), D - podD0 - 0.4);
+
   if(stripW >= KIT_DEPTH + 0.6 && sideRun >= MIN_KIT_RUN){
     kitchen = {
       t:podRight,
-      d:podD0,
+      d:podD0 + 0.15,
       wt:KIT_DEPTH,
       wd:sideRun,
       kind:'kitchen',
@@ -682,10 +733,10 @@ function layoutApartment(W,D,type){
     };
   } else {
     routeMode='perimeter';
-    const run = Math.min(Math.max(MIN_KIT_RUN, W - bedBandW - 0.6), W - bedBandW - 0.3);
+    const run = Math.min(Math.max(MIN_KIT_RUN, W - bedFacadeW - 0.6), W - bedFacadeW - 0.3);
     kitchen = {
-      t:Math.max(bedBandW, W - run - 0.3),
-      d:D - KIT_DEPTH,
+      t:Math.max(bedFacadeW, W - run - 0.3),
+      d:0.15,
       wt:run,
       wd:KIT_DEPTH,
       kind:'kitchen',
@@ -694,17 +745,31 @@ function layoutApartment(W,D,type){
   }
   rooms.push(kitchen);
 
-  // Entry door from corridor into the residual living/entry zone.
+  // Entry door from corridor into the residual living/entry zone. It is kept at
+  // the living side of the plan, away from both bedrooms and kitchen runs.
   doors.push({t:W-1.1,d:D,tv:[1,0],sv:[0,-1],label:'ENTRY'});
 
-  // Service-routing skeleton in local coordinates. The final point goes to the
-  // ESM after attachServices() maps it into world space.
-  const podC = [podT + podW/2, podD0 + podD/2];
-  const kitC = [kitchen.t + kitchen.wt/2, kitchen.d + kitchen.wd/2];
-  const entryC = [W - 0.65, D - 0.65];
-  const routes = [{pts:[podC, kitC, entryC], kind:routeMode, label:'POD → KIT → ESM'}];
+  // ── Service routing: pod → kitchen → ESM ───────────────────────────────
+  // Orthogonal route only. It tracks the perimeter of the living area rather than
+  // cutting diagonally through the middle of the room. The final point is the
+  // living-room facade/perimeter point adjacent to the ESM.
+  const kitFeed = [kitchen.t + kitchen.wt/2, kitchen.d + kitchen.wd/2];
+  const podFeed = [podRight, Math.min(podBack-0.35, kitchen.d + kitchen.wd/2)];
+  const perimeterX = W - 0.35;
+  const perimeterY = Math.max(0.35, Math.min(D-0.35, podFeed[1]));
+  const esmLocal = [W - 0.75, 0.35];
+  const pts = [
+    podFeed,
+    [kitFeed[0], podFeed[1]],
+    kitFeed,
+    [perimeterX, kitFeed[1]],
+    [perimeterX, perimeterY],
+    [perimeterX, esmLocal[1]],
+    esmLocal
+  ];
+  const routes = [{pts, kind:routeMode, label:'POD → KIT → ESM', appendEsm:false}];
 
-  return {rooms,windows,doors,walls,routes,invalid:false,snorkel:false};
+  return {rooms,windows,doors,walls,routes,invalid:false,snorkel:useSnorkel};
 }
 
 // articulate a core into stair + lift + treads (centrelines), for plan/DXF
@@ -751,7 +816,14 @@ function polyArea(poly){ let a=0; for(let i=0,n=poly.length;i<n;i++){const [x1,y
 function rectCentre(r){ return [r.x+r.wx/2, r.y+r.wy/2]; }
 function localRouteToWorld(u,n,route,esm){
   const pts = route.pts.map(p=>L2Wpt(u,n,p[0],p[1]));
-  if(esm) pts.push(rectCentre(esm));
+  if(esm && route.appendEsm !== false){
+    const e=rectCentre(esm), last=pts[pts.length-1];
+    if(last){
+      // add only orthogonal jogs to the ESM; never a diagonal shortcut
+      if(Math.abs(last[0]-e[0])>1e-6 && Math.abs(last[1]-e[1])>1e-6) pts.push([e[0],last[1]]);
+      pts.push(e);
+    }
+  }
   return {pts, kind:route.kind||'service', label:route.label||''};
 }
 
