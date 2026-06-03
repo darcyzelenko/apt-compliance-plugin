@@ -155,10 +155,21 @@ body{font-family:var(--display);background:var(--bg);color:var(--text);height:10
     <div class="st">Floor Plan</div>
     <div class="upload-zone" id="upload-zone">
       <div style="font-size:20px;margin-bottom:4px">⊞</div>
-      <p><strong>Drop DXF here</strong>or click to upload<br><span style="font-size:10px">WALLS · DOORS · WINDOWS · ROOMS</span></p>
+      <p><strong>Drop DXF here</strong>or click to upload</p>
     </div>
     <input type="file" id="dxf-input" accept=".dxf">
     <div style="margin-top:5px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center" id="file-status">No file · using demo plan</div>
+    <details style="margin-top:8px">
+      <summary style="font-family:var(--mono);font-size:10px;color:var(--accent2);cursor:pointer">Required layer structure</summary>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7;margin-top:6px;padding:7px 9px;background:var(--panel);border:1px solid var(--border);border-radius:6px">
+        <div style="color:var(--text);margin-bottom:4px">Layer name → entity type:</div>
+        <div><b style="color:var(--accent)">WALLS</b> → LINE (wall centrelines)</div>
+        <div><b style="color:var(--warn)">DOORS</b> → LWPOLYLINE (rectangles)</div>
+        <div><b style="color:var(--accent2)">WINDOWS</b> → LWPOLYLINE (rectangles)</div>
+        <div><b style="color:#a060f5">ROOMS</b> → LWPOLYLINE (closed polygons)</div>
+        <div style="margin-top:5px;color:var(--muted)">• Units in millimetres<br>• Walls are single LINEs (centreline)<br>• Door/window rectangle width = opening size<br>• Each ROOMS polygon = one room footprint</div>
+      </div>
+    </details>
   </div>
 
   <div class="ss">
@@ -1039,6 +1050,58 @@ function buildScene(result){
   scene.add(sceneGrp);
 }
 
+// ─── DXF parser (client-side) ─────────────────────────────────────────────────
+// Reads LINE entities on WALLS, LWPOLYLINE rectangles on DOORS/WINDOWS/ROOMS.
+// Same layer convention as the compliance tool's DXF export.
+function parseDXF(text){
+  const lines=text.split(/\r\n|\r|\n/);
+  const pairs=[];
+  for(let i=0;i+1<lines.length;i+=2){
+    const code=parseInt(lines[i].trim());
+    if(!isNaN(code)) pairs.push([code,lines[i+1]]);
+  }
+  function readEntity(start){
+    const props={},multi={};
+    let i=start+1;
+    while(i<pairs.length&&pairs[i][0]!==0){
+      const[code,val]=pairs[i], key=String(code);
+      if(!(key in props)) props[key]=val.trim();
+      if(code===10||code===20){(multi[key]=multi[key]||[]).push(parseFloat(val));}
+      i++;
+    }
+    return{props,multi,next:i};
+  }
+  const walls=[],openings=[],rooms=[];
+  let i=0;
+  while(i<pairs.length){
+    const[code,val]=pairs[i];
+    if(code===0&&val.trim()==='LINE'){
+      const ent=readEntity(i);
+      if((ent.props['8']||'').toUpperCase()==='WALLS'){
+        const sx=parseFloat(ent.props['10']),sy=parseFloat(ent.props['20']);
+        const ex=parseFloat(ent.props['11']),ey=parseFloat(ent.props['21']);
+        if([sx,sy,ex,ey].every(n=>!isNaN(n))) walls.push({start:[sx,sy],end:[ex,ey]});
+      }
+      i=ent.next;
+    } else if(code===0&&val.trim()==='LWPOLYLINE'){
+      const ent=readEntity(i);
+      const layer=(ent.props['8']||'').toUpperCase();
+      const xs=ent.multi['10']||[],ys=ent.multi['20']||[];
+      if(xs.length>=2){
+        const minX=Math.min(...xs),maxX=Math.max(...xs);
+        const minY=Math.min(...ys),maxY=Math.max(...ys);
+        const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
+        const w=Math.max(maxX-minX,maxY-minY);
+        if(layer==='DOORS') openings.push({type:'door',center:[cx,cy],width:w});
+        else if(layer==='WINDOWS') openings.push({type:'window',center:[cx,cy],width:w});
+        else if(layer==='ROOMS') rooms.push({room_id:(ent.props['1']||'ROOM')+'_'+rooms.length,bbox:[minX,minY,maxX,maxY]});
+      }
+      i=ent.next;
+    } else i++;
+  }
+  return{wall_segments:walls,openings,room_bboxes:rooms};
+}
+
 // ─── Nesting engine ───────────────────────────────────────────────────────────
 function dist2(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1]);}
 function projSeg(p,seg){
@@ -1637,24 +1700,25 @@ async function runAnalysis(){
   document.getElementById('lov').classList.add('show');
   ttEl.style.display='none';
   try{
-    let result;
+    let data;
     if(uploadedDxf){
-      const fd=new FormData();
-      fd.append('dxf_file',new Blob([uploadedDxf],{type:'application/octet-stream'}),'plan.dxf');
-      fd.append('mode',currentMode);
-      const resp=await fetch('/api/nest',{method:'POST',body:fd});
-      if(!resp.ok) throw new Error('Server '+resp.status);
-      result=await resp.json();
-      if(result.error) throw new Error(result.error);
+      data=parseDXF(uploadedDxf);
+      if(!data.wall_segments.length){
+        throw new Error('No walls found. Check the DXF has LINE entities on a WALLS layer.');
+      }
     } else {
-      result=simulateEngine(DEMO,currentMode);
+      data=DEMO;
     }
+    // Same fully-featured engine for both demo and uploaded DXF
+    const result=simulateEngine(data,currentMode);
     currentResult=result;
     buildScene(result);
     renderReport(result);
     document.getElementById('lov').classList.remove('show');
     updateLiftingReport();
-    notify('Analysis complete');
+    notify(uploadedDxf
+      ? `Analysed: ${data.wall_segments.length} walls, ${data.openings.length} openings, ${data.room_bboxes.length} rooms`
+      : 'Demo analysis complete');
   }catch(e){
     document.getElementById('lov').classList.remove('show');
     notify('Error: '+e.message,true);
@@ -1713,7 +1777,14 @@ uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag');co
 fi.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadDxf(f);});
 function loadDxf(f){
   const r=new FileReader();
-  r.onload=ev=>{uploadedDxf=ev.target.result;document.getElementById('file-status').textContent='✓ '+f.name;notify('Loaded: '+f.name);};
+  r.onload=ev=>{
+    uploadedDxf=ev.target.result;
+    // Clear per-wall overrides — indices won't match a different plan
+    for(const k in wallOverrides) delete wallOverrides[k];
+    document.getElementById('file-status').textContent='✓ '+f.name;
+    notify('Loaded: '+f.name+' — analysing…');
+    runAnalysis();   // analyse immediately so you see it took effect
+  };
   r.readAsText(f);
 }
 
