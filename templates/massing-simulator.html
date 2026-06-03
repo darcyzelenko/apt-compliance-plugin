@@ -221,8 +221,11 @@
       <span><i class="sw" style="background:var(--b3)"></i> 3B</span>
       <span><i class="sw" style="background:var(--core)"></i> core</span>
       <span><i class="sw" style="background:#3a4654"></i> balcony</span>
+      <span><i class="sw" style="background:#27313b"></i> living</span>
       <span><i class="sw" style="background:#c46b9e"></i> pod</span>
       <span><i class="sw" style="background:#e0a341"></i> ESM</span>
+      <span><i class="sw" style="background:#3f7d4f"></i> courtyard</span>
+      <span><i class="sw" style="background:#7fd4e6"></i> window</span>
     </div>
   </main>
 
@@ -525,45 +528,141 @@ function buildFrame(bx0,by0,bx1,by1){
 
 // rect from min-corner + size
 function R(x,y,wx,wy,kind){ return {x,y,wx,wy,kind}; }
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 
-// per-unit building-system fitout: balcony, ESM (on balcony), bathroom pod,
-// kitchen, and perimeter bulkheads (facade + party wall) linking ESM -> pod/kitchen.
+// map a local apartment rect (t along facade, d inward from facade at d=0) to world,
+// given the unit world rect u and outward facade normal n.
+function L2W(u,n,t,d,wt,wd,kind,label){
+  let r;
+  if(n[1]<0)      r={x:u.x+t,            y:u.y+d,                wx:wt, wy:wd}; // front
+  else if(n[1]>0) r={x:u.x+t,            y:u.y+u.wy-d-wd,        wx:wt, wy:wd}; // rear
+  else if(n[0]<0) r={x:u.x+d,            y:u.y+t,                wx:wd, wy:wt}; // left
+  else            r={x:u.x+u.wx-d-wd,    y:u.y+t,                wx:wd, wy:wt}; // right
+  r.kind=kind; r.label=label; return r;
+}
+function L2Wpt(u,n,t,d){
+  if(n[1]<0) return [u.x+t, u.y+d];
+  if(n[1]>0) return [u.x+t, u.y+u.wy-d];
+  if(n[0]<0) return [u.x+d, u.y+t];
+  return [u.x+u.wx-d, u.y+t];
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   APARTMENT LAYOUT — first-pass parametric plan, designed to be refined.
+   Local frame: t runs along the facade (0..W), d runs inward from facade (d=0).
+   Rules encoded:
+   • bedrooms are rectangular and sit ON the facade (≥1 facade wall) for light;
+   • the living/dining/kitchen zone also reaches the facade for light;
+   • when the frontage is too tight, bedrooms become narrow-necked "snorkels"
+     (deep, slim facade contact) so living keeps a facade window;
+   • bathroom pods are pushed deep (never on the facade);
+   • kitchens run their long edge perpendicular to the facade and share a wall
+     with the pod (consolidated wet wall);
+   • an entry vestibule and a hall/alcove feed the bedrooms.
+   Returns rooms[], windows[] (facade glazing segments) and doors[] in local coords.
+────────────────────────────────────────────────────────────────────────── */
+function layoutApartment(W,D,type){
+  const nBed={b1:1,b2:2,b3:3}[type]||1;
+  const rooms=[], windows=[], doors=[];
+  const entryD=1.4, podWmax=2.6, podD=2.4, kitW=1.8, kitD=2.6;
+  let bd=clamp(0.42*D,3.0,3.9); bd=Math.min(bd, D-2.6);
+  let LW=clamp(W*0.42,3.0,4.8);            // living facade width (right column)
+  let BW=W-LW;                             // bedroom band width (left)
+  let snorkel=false;
+  if(BW < nBed*2.6){                       // tight frontage -> snorkel bedrooms
+    snorkel=true; LW=Math.max(2.8, W-nBed*2.0); BW=W-LW; bd=clamp(0.6*D,3.3,Math.max(3.3,D-2.4));
+  }
+  if(BW<1.8){ BW=Math.max(1.8,W*0.5); LW=W-BW; }   // degenerate-narrow guard
+  const bedW=BW/nBed;
+  for(let i=0;i<nBed;i++){
+    rooms.push({t:i*bedW, d:0, wt:bedW, wd:bd, kind:'bed', label:(snorkel?'BED~':'BED')});
+    windows.push({t0:i*bedW+0.3, t1:(i+1)*bedW-0.3});
+    doors.push({t:i*bedW+bedW/2, d:bd});            // hall -> bedroom
+  }
+  // living/dining/kitchen column on the facade (right)
+  rooms.push({t:BW, d:0, wt:LW, wd:D, kind:'living', label:'LIVING / DINING'});
+  windows.push({t0:BW+0.4, t1:W-0.4});
+  // pod: deep (behind bedrooms), right end of the back band, adjacent to living column
+  const podW=Math.min(podWmax, BW), podT=Math.max(0, BW-podW);
+  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'POD'});
+  doors.push({t:podT-0.0+podW*0.5, d:bd+0.1});      // hall -> pod
+  // kitchen: long edge perpendicular to facade, sharing the pod wall (t=BW)
+  rooms.push({t:BW, d:bd+0.1, wt:kitW, wd:kitD, kind:'kitchen', label:'KIT'});
+  // entry vestibule at the corridor edge
+  const entW=Math.min(1.6,BW);
+  rooms.push({t:0, d:D-entryD, wt:entW, wd:entryD, kind:'entry', label:'ENTRY'});
+  doors.push({t:entW*0.5, d:D});                    // corridor -> entry
+  // hall / alcove connecting entry to the bedrooms (left of the pod)
+  rooms.push({t:0, d:bd, wt:Math.max(0.3,podT), wd:D-bd, kind:'hall', label:''});
+  return {rooms,windows,doors,snorkel};
+}
+
+// articulate a core into stair + lift + treads (centrelines), for plan/DXF
+function coreFitout(c){
+  const axisX=c.wx>=c.wy;
+  const L=Math.max(c.wx,c.wy);
+  const stairLen=Math.min(2.6,L*0.55), liftLen=Math.min(2.2,L*0.4);
+  let stair,lift,treads=[];
+  if(axisX){
+    stair=R(c.x,c.y,stairLen,c.wy,'stair');
+    lift =R(c.x+c.wx-liftLen,c.y,liftLen,Math.min(c.wy,2.6),'lift');
+    const n=Math.max(3,Math.round(stairLen/0.28));
+    for(let i=1;i<n;i++){const xx=c.x+stairLen*i/n; treads.push([[xx,c.y],[xx,c.y+c.wy]]);}
+  } else {
+    stair=R(c.x,c.y,c.wx,stairLen,'stair');
+    lift =R(c.x,c.y+c.wy-liftLen,Math.min(c.wx,2.6),liftLen,'lift');
+    const n=Math.max(3,Math.round(stairLen/0.28));
+    for(let i=1;i<n;i++){const yy=c.y+stairLen*i/n; treads.push([[c.x,yy],[c.x+c.wx,yy]]);}
+  }
+  return {stair,lift,treads};
+}
+
+// boundary helpers — keep the building inside a jagged title boundary
+function rectCornersInPoly(u,poly){
+  return [[u.x,u.y],[u.x+u.wx,u.y],[u.x+u.wx,u.y+u.wy],[u.x,u.y+u.wy],[u.x+u.wx/2,u.y+u.wy/2]]
+    .every(([x,y])=>pointInPoly(x,y,poly));
+}
+function clipPolyByRect(poly,x0,y0,x1,y1){      // Sutherland–Hodgman (convex rect clip)
+  let out=poly.slice();
+  const step=(inside,ix)=>{ const res=[];
+    for(let i=0;i<out.length;i++){ const A=out[i],B=out[(i+1)%out.length], ina=inside(A),inb=inside(B);
+      if(ina){res.push(A); if(!inb)res.push(ix(A,B));} else if(inb){res.push(ix(A,B));} }
+    out=res; };
+  step(p=>p[0]>=x0,(A,B)=>{const t=(x0-A[0])/(B[0]-A[0]);return[x0,A[1]+t*(B[1]-A[1])];});
+  step(p=>p[0]<=x1,(A,B)=>{const t=(x1-A[0])/(B[0]-A[0]);return[x1,A[1]+t*(B[1]-A[1])];});
+  step(p=>p[1]>=y0,(A,B)=>{const t=(y0-A[1])/(B[1]-A[1]);return[A[0]+t*(B[0]-A[0]),y0];});
+  step(p=>p[1]<=y1,(A,B)=>{const t=(y1-A[1])/(B[1]-A[1]);return[A[0]+t*(B[0]-A[0]),y1];});
+  return out;
+}
+function polyArea(poly){ let a=0; for(let i=0,n=poly.length;i<n;i++){const [x1,y1]=poly[i],[x2,y2]=poly[(i+1)%n]; a+=x1*y2-x2*y1;} return Math.abs(a)/2; }
+
+// per-unit fitout: balcony + ESM + perimeter bulkheads (building system), and the
+// internal apartment layout (rooms / windows / doors). Sets u.svc and u.plan.
 function attachServices(u,n,P){
   const bd=(P.bal[u.type]||2.0);
-  const horiz = n[1]!==0;                              // facade is a horizontal edge (front/rear)
-  const span = horiz? u.wx : u.wy;
-  const ps = Math.min(P.pod, Math.max(2.2, span-0.4)); // pod 3×3, clamped to unit width
-  const pl = Math.min(span-0.2, ps+0.5);               // party-run length
-  let bal,esm,facadeRun,partyRun,pod,kit;
-  if(n[1]<0){            // front (faces -y)
-    bal=R(u.x+0.2,u.y-bd,u.wx-0.4,bd,'balcony');
-    esm=R(u.x+u.wx-1.1,u.y-0.6,0.9,0.6,'esm');
-    facadeRun=R(u.x+0.1,u.y+0.1,u.wx-0.2,0.3,'bulk');
-    partyRun =R(u.x+0.1,u.y+0.1,0.3,pl,'bulk');
-    pod=R(u.x+0.15,u.y+0.15,ps,ps,'pod');
-    kit=R(u.x+u.wx-2.6,u.y+0.15,2.4,0.6,'kitchen');
-  } else if(n[1]>0){     // rear (faces +y)
-    bal=R(u.x+0.2,u.y+u.wy,u.wx-0.4,bd,'balcony');
-    esm=R(u.x+u.wx-1.1,u.y+u.wy,0.9,0.6,'esm');
-    facadeRun=R(u.x+0.1,u.y+u.wy-0.4,u.wx-0.2,0.3,'bulk');
-    partyRun =R(u.x+0.1,u.y+u.wy-0.1-pl,0.3,pl,'bulk');
-    pod=R(u.x+0.15,u.y+u.wy-0.15-ps,ps,ps,'pod');
-    kit=R(u.x+u.wx-2.6,u.y+u.wy-0.75,2.4,0.6,'kitchen');
-  } else if(n[0]<0){     // left (faces -x)
-    bal=R(u.x-bd,u.y+0.2,bd,u.wy-0.4,'balcony');
-    esm=R(u.x-0.6,u.y+u.wy-1.1,0.6,0.9,'esm');
-    facadeRun=R(u.x+0.1,u.y+0.1,0.3,u.wy-0.2,'bulk');
-    partyRun =R(u.x+0.1,u.y+0.1,pl,0.3,'bulk');
-    pod=R(u.x+0.15,u.y+0.15,ps,ps,'pod');
-    kit=R(u.x+0.15,u.y+u.wy-2.6,0.6,2.4,'kitchen');
-  } else {               // right (faces +x)
-    bal=R(u.x+u.wx,u.y+0.2,bd,u.wy-0.4,'balcony');
-    esm=R(u.x+u.wx,u.y+u.wy-1.1,0.6,0.9,'esm');
-    facadeRun=R(u.x+u.wx-0.4,u.y+0.1,0.3,u.wy-0.2,'bulk');
-    partyRun =R(u.x+u.wx-0.1-pl,u.y+0.1,pl,0.3,'bulk');
-    pod=R(u.x+u.wx-0.15-ps,u.y+0.15,ps,ps,'pod');
-    kit=R(u.x+u.wx-0.75,u.y+u.wy-2.6,0.6,2.4,'kitchen');
+  const span=(n[1]!==0)?u.wx:u.wy, pl=Math.min(span-0.2,3.0);
+  let bal,esm,facadeRun,partyRun;
+  if(n[1]<0){            // front
+    bal=R(u.x+0.2,u.y-bd,u.wx-0.4,bd,'balcony'); esm=R(u.x+u.wx-1.1,u.y-0.6,0.9,0.6,'esm');
+    facadeRun=R(u.x+0.1,u.y+0.1,u.wx-0.2,0.3,'bulk'); partyRun=R(u.x+0.1,u.y+0.1,0.3,pl,'bulk');
+  } else if(n[1]>0){     // rear
+    bal=R(u.x+0.2,u.y+u.wy,u.wx-0.4,bd,'balcony'); esm=R(u.x+u.wx-1.1,u.y+u.wy,0.9,0.6,'esm');
+    facadeRun=R(u.x+0.1,u.y+u.wy-0.4,u.wx-0.2,0.3,'bulk'); partyRun=R(u.x+0.1,u.y+u.wy-0.1-pl,0.3,pl,'bulk');
+  } else if(n[0]<0){     // left
+    bal=R(u.x-bd,u.y+0.2,bd,u.wy-0.4,'balcony'); esm=R(u.x-0.6,u.y+u.wy-1.1,0.6,0.9,'esm');
+    facadeRun=R(u.x+0.1,u.y+0.1,0.3,u.wy-0.2,'bulk'); partyRun=R(u.x+0.1,u.y+0.1,pl,0.3,'bulk');
+  } else {               // right
+    bal=R(u.x+u.wx,u.y+0.2,bd,u.wy-0.4,'balcony'); esm=R(u.x+u.wx,u.y+u.wy-1.1,0.6,0.9,'esm');
+    facadeRun=R(u.x+u.wx-0.4,u.y+0.1,0.3,u.wy-0.2,'bulk'); partyRun=R(u.x+u.wx-0.1-pl,u.y+0.1,pl,0.3,'bulk');
   }
+  const horiz=n[1]!==0, W=horiz?u.wx:u.wy, D=horiz?u.wy:u.wx;
+  const ap=layoutApartment(W,D,u.type);
+  const rooms=ap.rooms.map(r=>L2W(u,n,r.t,r.d,r.wt,r.wd,r.kind,r.label));
+  const windows=ap.windows.map(w=>({a:L2Wpt(u,n,w.t0,0), b:L2Wpt(u,n,w.t1,0)}));
+  const doors=ap.doors.map(dd=>({p:L2Wpt(u,n,dd.t,dd.d), n}));
+  const pod=rooms.find(r=>r.kind==='pod')||R(u.x,u.y,1,1,'pod');
+  const kit=rooms.find(r=>r.kind==='kitchen')||R(u.x,u.y,1,1,'kitchen');
+  u.plan={rooms,windows,doors,snorkel:ap.snorkel};
   u.svc={balcony:bal,esm,pod,kitchen:kit,bulkheads:[facadeRun,partyRun]};
 }
 
@@ -591,8 +690,9 @@ function tileWorld(ox,oy,dir,total,depth,inward,P,shares,counts,level,normal,wsc
   return out;
 }
 
-function layoutLevel(frame, P, shares, counts, level, isSB){
+function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
   const corr=P.corr, kind=P.kind||DEV_KINDS.double_loaded, dk=P.devkind||'double_loaded';
+  const CR=coreRef||frame;
   const vU = frame.alongX?[0,1]:[1,0];                  // +v outward (engine)
   const negV=[-vU[0],-vU[1]];
   const canDouble=(frame.depth-corr)/2 >= P.minD;
@@ -616,7 +716,7 @@ function layoutLevel(frame, P, shares, counts, level, isSB){
       units=units.concat(tileWorld(X0+rd,Y1, [1,0], W-2*rd, rd, [0,-1],P,shares,counts,level,[0, 1]));   // top
       units=units.concat(tileWorld(X0,Y0+rd, [0,1], Dp-2*rd, rd, [1,0], P,shares,counts,level,[-1,0]));  // left
       units=units.concat(tileWorld(X1,Y0+rd, [0,1], Dp-2*rd, rd, [-1,0],P,shares,counts,level,[ 1,0]));  // right
-      const cores=[ R(X0,Y0,P.coreLen,rd,'core'), R(X1-P.coreLen,Y1-rd,P.coreLen,rd,'core') ];
+      const cores=[ R(CR.x0,CR.y0,P.coreLen,rd,'core'), R(CR.x1-P.coreLen,CR.y1-rd,P.coreLen,rd,'core') ];
       const court=R(X0+rd,Y0+rd,W-2*rd,Dp-2*rd,'court');
       return {units,cores,corrRect:court,corrRects:[],aptD:rd,corr,coreCount:2,double:false,
         frame:{alongX:frame.alongX,len:frame.len,depth:frame.depth,x0:X0,y0:Y0,x1:X1,y1:Y1},
@@ -627,11 +727,17 @@ function layoutLevel(frame, P, shares, counts, level, isSB){
   // ---- BAR / POINT-BLOCK: blade or point cores, one or two rows ----
   const point = kind.core==='point';
   const coreW = point? Math.min(eff.depth, 6.0) : eff.depth;
-  let coreCount = point? Math.max(1, Math.round(eff.len/24)) : Math.max(1, Math.ceil(eff.len/45));
+  // core count + positions are derived from the shared reference frame (CR) so the
+  // typical and setback levels place cores at identical world positions -> they
+  // stack vertically (a core can't jog between floors).
+  let coreCount = point? Math.max(1, Math.round(CR.len/24)) : Math.max(1, Math.ceil(CR.len/45));
   if(dk==='point_stair') coreCount=1;
+  const refStart = CR.alongX? CR.x0 : CR.y0;
+  const effStart = eff.alongX? eff.x0 : eff.y0;
   const cores=[], coreSpots=[];
   for(let i=0;i<coreCount;i++){
-    const c=snap((eff.len*(i+1)/(coreCount+1)) - P.coreLen/2);
+    const cWorld = refStart + CR.len*(i+1)/(coreCount+1);     // shared world position
+    const c = snap((cWorld - effStart) - P.coreLen/2);        // into this level's local frame
     coreSpots.push([c, c+P.coreLen]);
     if(point){ const v=(eff.depth-coreW)/2; cores.push(mapRect(eff,c,v,P.coreLen,coreW,{kind:'core'})); }
     else       cores.push(mapRect(eff,c,0,P.coreLen,eff.depth,{kind:'core'}));
@@ -673,27 +779,35 @@ function generate(){
   const typFrame=buildFrame(bx0,by0,bx1,by1);
   const sbFrame =buildFrame(bx0+P.upper,by0+P.upper,bx1-P.upper,by1-P.upper);
 
+  const haveSB = P.storeys>1 && (sbFrame.x1>sbFrame.x0 && sbFrame.y1>sbFrame.y0);
+  const coreRef = haveSB? sbFrame : typFrame;   // narrower frame -> cores valid on every level
   const nTyp=Math.max(0,P.storeys-1);
-  // accumulate true mix across all floors; geometry per floor uses its effective (pulled-back) plate
+  const clipPoly = (siteGeo && siteGeo.poly) ? siteGeo.poly : null;
   const levels=[];
-  let gfa=0, nla=0;
+  let gfa=0;
   for(let s=0;s<P.storeys;s++){
-    const isSB = (s===P.storeys-1) && P.storeys>1 && (sbFrame.x1>sbFrame.x0 && sbFrame.y1>sbFrame.y0);
+    const isSB = (s===P.storeys-1) && haveSB;
     const fr = isSB? sbFrame : typFrame;
-    const lvl=layoutLevel(fr,P,shares,counts,s,isSB);
+    const lvl=layoutLevel(fr,P,shares,counts,s,isSB,coreRef);
+    // keep the building inside a jagged title boundary: drop units that fall outside
+    if(clipPoly) lvl.units = lvl.units.filter(u=>rectCornersInPoly(u,clipPoly));
     const z = s*P.f2f - P.dig;
-    const E=lvl.frame;                       // effective plate (after daylight pull-back)
-    const fArea=(E.x1-E.x0)*(E.y1-E.y0);
-    gfa+=fArea;
-    lvl.units.forEach(u=>nla+=u.wx*u.wy);
-    levels.push(Object.assign(lvl,{z, h:P.f2f, fArea}));   // keep lvl.frame = eff
+    const E=lvl.frame;
+    const cp = clipPoly? clipPolyByRect(clipPoly,E.x0,E.y0,E.x1,E.y1) : null;
+    const courtA = lvl.court? lvl.court.wx*lvl.court.wy : 0;
+    const plateArea = Math.max(0, (cp&&cp.length>=3? polyArea(cp) : (E.x1-E.x0)*(E.y1-E.y0)) - courtA);
+    lvl.plateArea = plateArea; gfa += plateArea;
+    levels.push(Object.assign(lvl,{z, h:P.f2f, fArea:plateArea}));
   }
+  // recompute mix + NLA from the units that actually survived clipping
+  counts.b1=counts.b2=counts.b3=0; let nla=0;
+  levels.forEach(l=>l.units.forEach(u=>{ counts[u.type]++; nla+=u.wx*u.wy; }));
   const total=counts.b1+counts.b2+counts.b3;
   let typU=0; levels.forEach(l=>{ if(!l.isSB) typU+=l.units.length; });
   const upf = nTyp? Math.round(typU/nTyp) : (levels[0]?levels[0].units.length:0);
 
   // metrics
-  const groundArea=levels[0]?levels[0].fArea:0;          // effective ground plate
+  const groundArea=levels[0]?levels[0].plateArea:0;
   const fsr=gfa/siteArea, cov=100*groundArea/siteArea, eff=gfa? 100*nla/gfa:0;
   const upc = upf/Math.max(1, levels[0]?levels[0].coreCount:1);
 
@@ -813,6 +927,19 @@ function prism(poly, z0, h, color, op, cx, cy){
   return mesh;
 }
 
+// extrude a thin floor slab from a polygon, with optional holes (e.g. a courtyard).
+function slabExtrude(outer, holes, z0, h, color, op, cx, cy){
+  if(!outer || outer.length<3) return;
+  const shape=new THREE.Shape();
+  outer.forEach(([x,y],i)=> i? shape.lineTo(x-cx,-(y-cy)) : shape.moveTo(x-cx,-(y-cy)));
+  (holes||[]).forEach(hp=>{ if(hp.length<3)return; const path=new THREE.Path();
+    hp.forEach(([x,y],i)=> i? path.lineTo(x-cx,-(y-cy)) : path.moveTo(x-cx,-(y-cy)));
+    shape.holes.push(path); });
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:h,bevelEnabled:false}); geo.rotateX(-Math.PI/2);
+  const mesh=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color,transparent:op<1,opacity:op==null?1:op,depthWrite:!(op<1)}));
+  mesh.position.y=z0; glRoot.add(mesh);
+}
+
 function polyLine(poly, z, color, cx, cy, op){
   const pts=poly.map(([x,y])=>new THREE.Vector3(x-cx, z, y-cy));
   const lp=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
@@ -869,9 +996,14 @@ function build3D(m){
   const B=(r,z,h,col,op)=>box(r.x+r.wx/2-cx, r.y+r.wy/2-cy, z, Math.max(0.15,r.wx), Math.max(0.15,r.wy), h, col, op==null?1:op, false);
 
   m.levels.forEach(l=>{
-    // floor slab
-    const fw=l.frame.x1-l.frame.x0, fd=l.frame.y1-l.frame.y0;
-    box((l.frame.x0+l.frame.x1)/2-cx,(l.frame.y0+l.frame.y1)/2-cy,l.z,fw,fd,0.12,l.isSB?0x33414f:0x2a3340,1.0,0x141a22);
+    // floor slab: clipped to the title boundary (never crosses it) with a courtyard hole
+    const fr=l.frame;
+    const outer = (m.site&&m.site.poly)
+      ? clipPolyByRect(m.site.poly, fr.x0,fr.y0,fr.x1,fr.y1)
+      : [[fr.x0,fr.y0],[fr.x1,fr.y0],[fr.x1,fr.y1],[fr.x0,fr.y1]];
+    const holes = l.court? [[[l.court.x,l.court.y],[l.court.x+l.court.wx,l.court.y],
+                             [l.court.x+l.court.wx,l.court.y+l.court.wy],[l.court.x,l.court.y+l.court.wy]]] : [];
+    slabExtrude(outer, holes, l.z, 0.12, l.isSB?0x33414f:0x2a3340, 1.0, cx, cy);
     // apartments + per-unit building-system fitout
     l.units.forEach(u=>{
       box(u.x+u.wx/2-cx, u.y+u.wy/2-cy, l.z+0.12, Math.max(0.2,u.wx-0.2), Math.max(0.2,u.wy-0.2),
@@ -886,14 +1018,24 @@ function build3D(m){
     });
     // cores
     l.cores.forEach(c=> box(c.x+c.wx/2-cx,c.y+c.wy/2-cy,l.z,Math.max(0.2,c.wx-0.1),Math.max(0.2,c.wy-0.1),l.h*0.9,0x7b8696,1.0));
-    // courtyard void marker
-    if(l.court) polyLine([[l.court.x,l.court.y],[l.court.x+l.court.wx,l.court.y],[l.court.x+l.court.wx,l.court.y+l.court.wy],[l.court.x,l.court.y+l.court.wy]], l.z+0.13, 0x4a5666, cx, cy, 0.7);
     // envelope (toggle)
     if(showEnv){
       const ew=l.envelope.x1-l.envelope.x0, ed=l.envelope.y1-l.envelope.y0;
       box((l.envelope.x0+l.envelope.x1)/2-cx,(l.envelope.y0+l.envelope.y1)/2-cy,l.z,ew,ed,l.h*0.96,l.isSB?0x4a6080:0x6f8095,0.16,0x5b9dff);
     }
   });
+  // green courtyard floor (through the cut-out), drawn once at grade
+  const ct=m.levels[0]&&m.levels[0].court;
+  if(ct){
+    const g=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.4,ct.wx-0.4),Math.max(0.4,ct.wy-0.4)),
+      new THREE.MeshLambertMaterial({color:0x3f7d4f}));
+    g.rotation.x=-Math.PI/2; g.position.set(ct.x+ct.wx/2-cx, 0.06, ct.y+ct.wy/2-cy); glRoot.add(g);
+    // a couple of planters for legibility
+    for(const [fxv,fyv] of [[0.3,0.3],[0.7,0.7],[0.3,0.7]]){
+      const tx=ct.x+ct.wx*fxv-cx, tz=ct.y+ct.wy*fyv-cy;
+      box(tx,tz,0.1,1.0,1.0,0.6,0x356b43,1.0,false);
+    }
+  }
 }
 
 /* ════════════════════════ 2D PLAN ════════════════════════ */
@@ -928,35 +1070,47 @@ function paintPlan(m){
   ctx.setLineDash([5,4]); ctx.strokeStyle='#39434f'; ctx.lineWidth=1;
   ctx.strokeRect(X(env.x0),Y(env.y0),(env.x1-env.x0)*sc,(env.y1-env.y0)*sc); ctx.setLineDash([]);
   if(lvl.pulled){ ctx.strokeStyle='#4a5666'; ctx.strokeRect(X(f.x0),Y(f.y0),(f.x1-f.x0)*sc,(f.y1-f.y0)*sc); }
-  // courtyard void
-  if(lvl.court){ ctx.setLineDash([3,3]); ctx.strokeStyle='#4a5666';
+  // green courtyard cut-out
+  if(lvl.court){ ctx.fillStyle='rgba(63,125,79,.45)'; ctx.fillRect(X(lvl.court.x),Y(lvl.court.y),lvl.court.wx*sc,lvl.court.wy*sc);
+    ctx.setLineDash([4,3]); ctx.strokeStyle='#4f9a63'; ctx.lineWidth=1;
     ctx.strokeRect(X(lvl.court.x),Y(lvl.court.y),lvl.court.wx*sc,lvl.court.wy*sc); ctx.setLineDash([]);
-    ctx.fillStyle='#5d6877'; ctx.font='9px JetBrains Mono'; ctx.fillText('COURT',X(lvl.court.x)+4,Y(lvl.court.y)+14); }
+    ctx.fillStyle='#bfe0c6'; ctx.font='9px JetBrains Mono'; ctx.fillText('COURTYARD',X(lvl.court.x)+5,Y(lvl.court.y)+15); }
   // corridor(s)
   (lvl.corrRects||[]).forEach(cr=>{ ctx.fillStyle='#222933'; ctx.fillRect(X(cr.x),Y(cr.y),cr.wx*sc,cr.wy*sc); });
-  // balconies first (sit outside the units)
+  // balconies (outside the units)
   lvl.units.forEach(u=>{ if(u.svc) FR(u.svc.balcony,'rgba(58,70,84,.85)','#2a313c'); });
-  // units
+  // apartments: internal rooms + windows + doors
+  const RC={living:'#27313b',kitchen:'#b6894a',pod:'#c46b9e',entry:'#34404c',hall:'#1f262e'};
   lvl.units.forEach(u=>{
-    ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
-    ctx.strokeStyle='#0c0e12'; ctx.lineWidth=1; ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
-    if(u.wx*sc>26&&u.wy*sc>20){ ctx.fillStyle='#0c0e12'; ctx.font='bold 9px JetBrains Mono';
-      ctx.fillText(u.type.replace('b','')+'B', X(u.x)+3, Y(u.y)+12);
-      ctx.font='8px JetBrains Mono'; ctx.fillText((u.wx*u.wy).toFixed(0)+'m²',X(u.x)+3,Y(u.y)+22); }
+    const pl=u.plan;
+    if(pl && pl.rooms){
+      pl.rooms.forEach(r=>{ const fill = r.kind==='bed'? APTCOL[u.type] : (RC[r.kind]||'#2a323c');
+        FR(r, fill, '#0c0e12');
+        if(r.label && r.wx*sc>30 && r.wy*sc>16){ ctx.fillStyle=(r.kind==='kitchen'||r.kind==='pod')?'#1a1118':'#cdd6e0';
+          ctx.font='7px JetBrains Mono'; ctx.fillText(r.label, X(r.x)+2, Y(r.y)+9); } });
+      ctx.strokeStyle='#7fd4e6'; ctx.lineWidth=2;       // facade glazing
+      pl.windows.forEach(w=>{ ctx.beginPath(); ctx.moveTo(X(w.a[0]),Y(w.a[1])); ctx.lineTo(X(w.b[0]),Y(w.b[1])); ctx.stroke(); });
+      pl.doors.forEach(d=>drawDoor(ctx,X,Y,sc,d));
+    } else { ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); }
+    ctx.strokeStyle='#0c0e12'; ctx.lineWidth=1.3; ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); // dwelling outline
+    if(u.wx*sc>22&&u.wy*sc>18){ ctx.fillStyle='#0c0e12'; ctx.font='bold 8px JetBrains Mono';
+      ctx.fillText(u.type.replace('b','')+'B'+(pl&&pl.snorkel?'~':''), X(u.x)+3, Y(u.y)+u.wy*sc-4); }
   });
-  // building-system fitout: bulkheads, pod, kitchen, ESM
+  // building system over rooms: perimeter bulkheads + ESM
   lvl.units.forEach(u=>{ const s=u.svc; if(!s)return;
-    s.bulkheads.forEach(b=>FR(b,'rgba(86,96,114,.85)'));
-    FR(s.pod,'#c46b9e','#0c0e12');
-    FR(s.kitchen,'#b6894a','#0c0e12');
-    FR(s.esm,'#e0a341','#0c0e12');
-    if(s.pod.wx*sc>16){ ctx.fillStyle='#1a1118'; ctx.font='7px JetBrains Mono'; ctx.fillText('POD',X(s.pod.x)+2,Y(s.pod.y)+10); }
-  });
-  // cores
-  lvl.cores.forEach(c=>{ ctx.fillStyle='#7b8696'; ctx.fillRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
-    ctx.strokeStyle='#0c0e12'; ctx.strokeRect(X(c.x),Y(c.y),c.wx*sc,c.wy*sc);
-    ctx.fillStyle='#0c0e12'; ctx.font='bold 9px JetBrains Mono';
-    ctx.save(); ctx.translate(X(c.x)+c.wx*sc/2,Y(c.y)+c.wy*sc/2); ctx.textAlign='center'; ctx.fillText('CORE',0,3); ctx.restore(); });
+    s.bulkheads.forEach(b=>FR(b,'rgba(86,96,114,.5)'));
+    FR(s.esm,'#e0a341','#0c0e12'); });
+  // cores: articulated stair + lift
+  lvl.cores.forEach(c=>{ const cf=coreFitout(c);
+    FR(cf.stair,'#6b7686','#0c0e12');
+    ctx.strokeStyle='#0c0e12'; ctx.lineWidth=1;
+    cf.treads.forEach(t=>{ ctx.beginPath(); ctx.moveTo(X(t[0][0]),Y(t[0][1])); ctx.lineTo(X(t[1][0]),Y(t[1][1])); ctx.stroke(); });
+    FR(cf.lift,'#8b97a6','#0c0e12');
+    ctx.beginPath(); ctx.moveTo(X(cf.lift.x),Y(cf.lift.y)); ctx.lineTo(X(cf.lift.x+cf.lift.wx),Y(cf.lift.y+cf.lift.wy));
+    ctx.moveTo(X(cf.lift.x+cf.lift.wx),Y(cf.lift.y)); ctx.lineTo(X(cf.lift.x),Y(cf.lift.y+cf.lift.wy)); ctx.stroke();
+    if(c.wx*sc>30){ ctx.fillStyle='#0c0e12'; ctx.font='6px JetBrains Mono'; ctx.textAlign='center';
+      ctx.fillText('STAIR',X(cf.stair.x+cf.stair.wx/2),Y(cf.stair.y+cf.stair.wy/2)+2);
+      ctx.fillText('LIFT',X(cf.lift.x+cf.lift.wx/2),Y(cf.lift.y+cf.lift.wy/2)+2); ctx.textAlign='left'; } });
   // compass rose
   drawCompass(ctx, W-58, 56);
   // scale bar + caption
@@ -984,6 +1138,21 @@ function drawStreetLabels(ctx,m,X,Y,sc){
   if(fr.left){ ctx.translate(X(0)-8,Y(m.D/2)); ctx.rotate(-Math.PI/2); ctx.fillText(cap('left'),0,0); ctx.rotate(Math.PI/2); ctx.translate(-(X(0)-8),-Y(m.D/2)); }
   if(fr.right){ ctx.translate(X(m.F)+12,Y(m.D/2)); ctx.rotate(Math.PI/2); ctx.fillText(cap('right'),0,0); ctx.rotate(-Math.PI/2); }
   ctx.restore(); ctx.textAlign='left';
+}
+// door: leaf + 90° swing arc, hinged on the wall, swinging into the apartment
+function drawDoor(ctx,X,Y,sc,door){
+  const [px,py]=door.p, n=door.n||[0,-1];
+  const tv=(n[1]!==0)?[1,0]:[0,1];      // wall tangent
+  const sv=[-n[0],-n[1]];               // swing into interior
+  const r=0.85;
+  const hx=px+tv[0]*r, hy=py+tv[1]*r;   // leaf tip
+  const ex=px+sv[0]*r, ey=py+sv[1]*r;   // arc end on the swing side
+  ctx.strokeStyle='#cfd8e3'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(X(px),Y(py)); ctx.lineTo(X(hx),Y(hy)); ctx.stroke();
+  const a0=Math.atan2(Y(hy)-Y(py),X(hx)-X(px)), a1=Math.atan2(Y(ey)-Y(py),X(ex)-X(px));
+  let d=a1-a0; while(d<=-Math.PI)d+=2*Math.PI; while(d>Math.PI)d-=2*Math.PI;
+  ctx.strokeStyle='rgba(207,216,227,.6)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(X(px),Y(py), r*sc, a0, a0+d, d<0); ctx.stroke();
 }
 // compass rose: north along engine (sinθ,cosθ); screen X right, Y down
 function drawCompass(ctx,cxp,cyp){
@@ -1030,7 +1199,8 @@ function dxfExport(m){
   const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
     ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4],
     ['BALCONY',150],['POD',211],['ESM',41],['KITCHEN',31],['BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
-    ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4]];
+    ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4],
+    ['ROOM_BED',130],['ROOM_LIVING',134],['ROOM_ENTRY',252],['ROOM_HALL',250],['DOOR',7],['WINDOW',141]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -1046,6 +1216,7 @@ function dxfExport(m){
   const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
   const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
   const face=(lay,p)=>{L.push('0','3DFACE','8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
+  const arc=(lay,cx,cy,r,a0,a1)=>L.push('0','ARC','8',lay,'10',(cx*K).toFixed(1),'20',(cy*K).toFixed(1),'40',(r*K).toFixed(1),'50',a0.toFixed(2),'51',a1.toFixed(2));
 
   // de-duplicated wall centreline (shared party walls coincide)
   const seenW=new Set();
@@ -1066,25 +1237,42 @@ function dxfExport(m){
     for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
     (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
     if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
-    lvl.units.forEach(u=>{ const lay='APT_'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);
+    const RL={bed:'ROOM_BED',living:'ROOM_LIVING',kitchen:'KITCHEN',pod:'POD',entry:'ROOM_ENTRY',hall:'ROOM_HALL'};
+    lvl.units.forEach(u=>{ const lay='APT_'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);  // dwelling outline
       text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
-      // building-system fitout as closed polylines
-      const s=u.svc; if(s){
-        rect('BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
-        rect('POD',s.pod.x,oy+s.pod.y,s.pod.wx,s.pod.wy);
-        rect('KITCHEN',s.kitchen.x,oy+s.kitchen.y,s.kitchen.wx,s.kitchen.wy);
+      // internal rooms
+      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOM_LIVING', r.x, oy+r.y, r.wx, r.wy);
+        if(r.label) text('TEXT', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
+      // facade windows
+      if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('WINDOW', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
+      // doors (leaf + swing arc)
+      if(u.plan&&u.plan.doors) u.plan.doors.forEach(d=>{ const [px,py]=d.p, n=d.n||[0,-1];
+        const tv=(n[1]!==0)?[1,0]:[0,1], sv=[-n[0],-n[1]], r=0.85;
+        line('DOOR', px, oy+py, px+tv[0]*r, oy+py+tv[1]*r);
+        const aL=Math.atan2(tv[1],tv[0])*180/Math.PI, aE=Math.atan2(sv[1],sv[0])*180/Math.PI;
+        let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
+        arc('DOOR', px, oy+py, r, s, e); });
+      // building-system polylines (pod/kitchen are part of the rooms above)
+      const s=u.svc; if(s){ rect('BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
         rect('ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
-        s.bulkheads.forEach(b=>rect('BULKHEAD',b.x,oy+b.y,b.wx,b.wy));
-      }
+        s.bulkheads.forEach(b=>rect('BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
       // wall centrelines: party (between dwellings) + internal (facade / corridor / pod)
-      const vF = u.nrm && u.nrm[1]!==0;   // facade is a horizontal edge -> party walls run across depth
+      const vF = u.nrm && u.nrm[1]!==0;
       if(vF){ wline('WALLS_PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
               wline('WALLS_INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
       else  { wline('WALLS_PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
               wline('WALLS_INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
       if(u.svc) wbox('WALLS_INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
     });
-    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy); text('TEXT',c.x+0.3,oy+c.y+c.wy/2,'CORE',0.35);
+    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy);
+      const cf=coreFitout(c);
+      rect('CORE',cf.stair.x,oy+cf.stair.y,cf.stair.wx,cf.stair.wy);
+      cf.treads.forEach(t=> line('CORE', t[0][0], oy+t[0][1], t[1][0], oy+t[1][1]));
+      rect('CORE',cf.lift.x,oy+cf.lift.y,cf.lift.wx,cf.lift.wy);
+      line('CORE',cf.lift.x,oy+cf.lift.y,cf.lift.x+cf.lift.wx,oy+cf.lift.y+cf.lift.wy);
+      line('CORE',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
+      text('TEXT',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
+      text('TEXT',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
       wbox('WALLS_CORE',c.x,oy+c.y,c.wx,c.wy); });
     // street-frontage names
     const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
