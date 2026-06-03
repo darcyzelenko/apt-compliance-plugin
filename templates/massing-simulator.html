@@ -587,74 +587,124 @@ function normalise2(v){
 ────────────────────────────────────────────────────────────────────────── */
 function layoutApartment(W,D,type){
   const nBed = {b1:1,b2:2,b3:3}[type] || 1;
-  const rooms = [], windows = [], doors = [];
+  const rooms = [], windows = [], doors = [], walls = [];
 
   const MIN_BED_W = 3.0;
   const MIN_LIVING_W = 3.0;
   const MIN_BED_D = 3.0;
   const MAX_BED_D = 3.6;
+  const MIN_KIT_RUN = 2.7;
+  const KIT_DEPTH = 0.75;
 
-  // Bedrooms are fixed first. Living/entry becomes the residual space.
-  const bedDepth = Math.min(clamp(0.45 * D, MIN_BED_D, MAX_BED_D), Math.max(MIN_BED_D, D - 2.8));
+  // Bedrooms and pod are hard constraints. Living/dining/entry is the leftover.
+  const bedDepth = Math.min(clamp(0.44 * D, MIN_BED_D, MAX_BED_D), Math.max(MIN_BED_D, D - 2.8));
   const bedBandW = nBed * MIN_BED_W;
 
-  // Fail loudly rather than drawing bullshit 2 m bedrooms.
   if(W < bedBandW + MIN_LIVING_W || D < 6.0){
     return {
-      rooms:[{
-        t:0,d:0,wt:W,wd:D,
-        kind:'living',
-        label:'INVALID — UNIT TOO SMALL'
-      }],
+      rooms:[{t:0,d:0,wt:W,wd:D,kind:'living',label:'INVALID — UNIT TOO SMALL'}],
       windows:[{t0:0.4,t1:Math.max(0.8,W-0.4)}],
       doors:[{t:Math.min(W-0.8,1.0),d:D,tv:[1,0],sv:[0,-1],label:'ENTRY'}],
-      invalid:true,
-      snorkel:false
+      walls:[], routes:[], invalid:true, snorkel:false
     };
   }
 
-  // ── Bedrooms: all 3 m wide, all on facade ──
-  for(let i=0; i<nBed; i++){
-    const t0 = i * MIN_BED_W;
-    rooms.push({t:t0,d:0,wt:MIN_BED_W,wd:bedDepth,kind:'bed',label:'BED'});
-    windows.push({t0:t0+0.35,t1:t0+MIN_BED_W-0.35});
-    // Door on rear wall, leaf and swing into bedroom.
-    doors.push({t:t0+0.75,d:bedDepth,tv:[1,0],sv:[0,-1],label:'BED DOOR'});
-  }
-
-  // ── Bathroom pod: behind bedrooms, accessed from residual living/entry zone ──
-  const podW = Math.min(2.4, bedBandW);
-  const podD = Math.min(2.4, Math.max(1.8, D - bedDepth - 1.0));
+  // Bathroom/service pod: behind the bedroom band, not on the façade.
+  // It deliberately does not occupy the full bedroom-band width, leaving a living-side
+  // access strip so the first bedroom and the pod can both be entered from living.
+  const podW = Math.min(2.4, Math.max(1.8, bedBandW - 0.6));
+  const podD = Math.min(2.4, Math.max(2.1, D - bedDepth - 1.0));
   const podT = 0;
   const podD0 = bedDepth;
-  rooms.push({t:podT,d:podD0,wt:podW,wd:podD,kind:'pod',label:'POD'});
-  // Pod door sits on right-hand wall and swings into bathroom.
-  doors.push({t:podT+podW,d:podD0+0.65,tv:[0,1],sv:[-1,0],label:'POD DOOR'});
+  const podRight = podT + podW;
+  const podBack = podD0 + podD;
 
-  // ── Living / dining / entry: residual L-shaped room curve ──
-  // This polygon is the whole apartment footprint minus bedrooms and pod.
+  // ── Bedrooms: all minimum 3 m wide, all façade-facing ──
+  for(let i=0; i<nBed; i++){
+    const t0 = i * MIN_BED_W;
+    const t1 = t0 + MIN_BED_W;
+    rooms.push({t:t0,d:0,wt:MIN_BED_W,wd:bedDepth,kind:'bed',label:'BED'});
+    windows.push({t0:t0+0.35,t1:t1-0.35});
+
+    // Bedroom doors sit on the rear bedroom wall and swing into the bedroom.
+    // The hinge is biased towards the living-side of each room, so the door never
+    // opens from one bedroom into another or into the pod.
+    const doorT = Math.max(t0+0.65, t1-0.45);
+    doors.push({t:doorT,d:bedDepth,tv:[-1,0],sv:[0,-1],label:'BED DOOR'});
+
+    // Internal wall lines are derived from the room boundaries, not separately invented.
+    walls.push({a:[t0,bedDepth],b:[t1,bedDepth],kind:'bed-rear'});
+    if(i>0) walls.push({a:[t0,0],b:[t0,bedDepth],kind:'bed-party'});
+  }
+  // Last bedroom wall to the living façade strip.
+  walls.push({a:[bedBandW,0],b:[bedBandW,bedDepth],kind:'bed-living'});
+
+  rooms.push({t:podT,d:podD0,wt:podW,wd:podD,kind:'pod',label:'POD'});
+  walls.push({a:[podT,podD0],b:[podRight,podD0],kind:'pod'});
+  walls.push({a:[podRight,podD0],b:[podRight,podBack],kind:'pod'});
+  walls.push({a:[podRight,podBack],b:[podT,podBack],kind:'pod'});
+  walls.push({a:[podT,podBack],b:[podT,podD0],kind:'pod'});
+
+  // Pod door on right-hand pod wall. It opens from living into the pod.
+  doors.push({t:podRight,d:podD0+0.75,tv:[0,1],sv:[-1,0],label:'POD DOOR'});
+
+  // ── Living / dining / entry: residual room curve ──
+  // This is the apartment footprint minus the bedrooms and pod. It therefore
+  // includes entry and all circulation. Doors into bedrooms and pod all touch it.
   const livingPoly = [
     [bedBandW,0],
     [W,0],
     [W,D],
     [0,D],
-    [0,bedDepth+podD],
-    [podW,bedDepth+podD],
-    [podW,bedDepth],
+    [0,podBack],
+    [podRight,podBack],
+    [podRight,bedDepth],
     [bedBandW,bedDepth]
   ];
   rooms.push({poly:livingPoly,kind:'living',label:'LIVING / DINING / ENTRY'});
   windows.push({t0:bedBandW+0.4,t1:W-0.4});
 
-  // Kitchen is treated as an open object inside the residual living zone.
-  const kitW = Math.min(2.4, Math.max(1.8, W - bedBandW));
-  const kitD = Math.min(2.6, Math.max(2.0, D - bedDepth - 0.4));
-  rooms.push({t:bedBandW,d:bedDepth+0.2,wt:kitW,wd:kitD,kind:'kitchen',label:'KIT'});
+  // ── Kitchen: a rectangular linear run, not a square ──
+  // Prefer a kitchen placed directly against the pod wall so the pod can route
+  // through it. If the living strip beside the pod is too tight, fall back to a
+  // perimeter-wall kitchen along the back of the living zone.
+  let kitchen, routeMode='pod-wall';
+  const stripW = W - podRight;
+  const sideRun = Math.min(Math.max(MIN_KIT_RUN, podD), D - podD0 - 0.4);
+  if(stripW >= KIT_DEPTH + 0.6 && sideRun >= MIN_KIT_RUN){
+    kitchen = {
+      t:podRight,
+      d:podD0,
+      wt:KIT_DEPTH,
+      wd:sideRun,
+      kind:'kitchen',
+      label:'KIT'
+    };
+  } else {
+    routeMode='perimeter';
+    const run = Math.min(Math.max(MIN_KIT_RUN, W - bedBandW - 0.6), W - bedBandW - 0.3);
+    kitchen = {
+      t:Math.max(bedBandW, W - run - 0.3),
+      d:D - KIT_DEPTH,
+      wt:run,
+      wd:KIT_DEPTH,
+      kind:'kitchen',
+      label:'KIT'
+    };
+  }
+  rooms.push(kitchen);
 
-  // Entry door from corridor, swinging into the residual living/entry zone.
+  // Entry door from corridor into the residual living/entry zone.
   doors.push({t:W-1.1,d:D,tv:[1,0],sv:[0,-1],label:'ENTRY'});
 
-  return {rooms,windows,doors,invalid:false,snorkel:false};
+  // Service-routing skeleton in local coordinates. The final point goes to the
+  // ESM after attachServices() maps it into world space.
+  const podC = [podT + podW/2, podD0 + podD/2];
+  const kitC = [kitchen.t + kitchen.wt/2, kitchen.d + kitchen.wd/2];
+  const entryC = [W - 0.65, D - 0.65];
+  const routes = [{pts:[podC, kitC, entryC], kind:routeMode, label:'POD → KIT → ESM'}];
+
+  return {rooms,windows,doors,walls,routes,invalid:false,snorkel:false};
 }
 
 // articulate a core into stair + lift + treads (centrelines), for plan/DXF
@@ -698,6 +748,13 @@ function polyArea(poly){ let a=0; for(let i=0,n=poly.length;i<n;i++){const [x1,y
 
 // per-unit fitout: balcony + ESM + perimeter bulkheads (building system), and the
 // internal apartment layout (rooms / windows / doors). Sets u.svc and u.plan.
+function rectCentre(r){ return [r.x+r.wx/2, r.y+r.wy/2]; }
+function localRouteToWorld(u,n,route,esm){
+  const pts = route.pts.map(p=>L2Wpt(u,n,p[0],p[1]));
+  if(esm) pts.push(rectCentre(esm));
+  return {pts, kind:route.kind||'service', label:route.label||''};
+}
+
 function attachServices(u,n,P){
   const bd=(P.bal[u.type]||2.0);
   const span=(n[1]!==0)?u.wx:u.wy, pl=Math.min(span-0.2,3.0);
@@ -715,8 +772,10 @@ function attachServices(u,n,P){
     bal=R(u.x+u.wx,u.y+0.2,bd,u.wy-0.4,'balcony'); esm=R(u.x+u.wx,u.y+u.wy-1.1,0.6,0.9,'esm');
     facadeRun=R(u.x+u.wx-0.4,u.y+0.1,0.3,u.wy-0.2,'bulk'); partyRun=R(u.x+u.wx-0.1-pl,u.y+0.1,pl,0.3,'bulk');
   }
+
   const horiz=n[1]!==0, W=horiz?u.wx:u.wy, D=horiz?u.wy:u.wx;
   const ap=layoutApartment(W,D,u.type);
+
   const rooms = ap.rooms.map(r => {
     if(r.poly){
       const pts = r.poly.map(p => L2Wpt(u,n,p[0],p[1]));
@@ -731,16 +790,26 @@ function attachServices(u,n,P){
     }
     return L2W(u,n,r.t,r.d,r.wt,r.wd,r.kind,r.label);
   });
+
   const windows=ap.windows.map(w=>({a:L2Wpt(u,n,w.t0,0), b:L2Wpt(u,n,w.t1,0)}));
   const doors = ap.doors.map(dd => {
     const tv = normalise2(L2Wvec(n, dd.tv ? dd.tv[0] : 1, dd.tv ? dd.tv[1] : 0));
     const sv = normalise2(L2Wvec(n, dd.sv ? dd.sv[0] : 0, dd.sv ? dd.sv[1] : -1));
     return {p:L2Wpt(u,n,dd.t,dd.d), tv, sv, label:dd.label||''};
   });
+
+  const internalWalls = (ap.walls||[]).map(w=>({
+    a:L2Wpt(u,n,w.a[0],w.a[1]),
+    b:L2Wpt(u,n,w.b[0],w.b[1]),
+    kind:w.kind||'internal'
+  }));
+
+  const routes = (ap.routes||[]).map(r=>localRouteToWorld(u,n,r,esm));
   const pod=rooms.find(r=>r.kind==='pod')||R(u.x,u.y,1,1,'pod');
   const kit=rooms.find(r=>r.kind==='kitchen')||R(u.x,u.y,1,1,'kitchen');
-  u.plan={rooms,windows,doors,snorkel:ap.snorkel,invalid:ap.invalid};
-  u.svc={balcony:bal,esm,pod,kitchen:kit,bulkheads:[facadeRun,partyRun]};
+
+  u.plan={rooms,windows,doors,internalWalls,routes,snorkel:ap.snorkel,invalid:ap.invalid};
+  u.svc={balcony:bal,esm,pod,kitchen:kit,bulkheads:[facadeRun,partyRun],routes};
 }
 
 // world-space linear tiler (used for the courtyard ring). dir & inward are axis-aligned unit vectors.
@@ -1178,8 +1247,18 @@ function paintPlan(m){
         if(r.label && r.wx*sc>30 && r.wy*sc>16){ ctx.fillStyle=(r.kind==='kitchen'||r.kind==='pod')?'#1a1118':'#cdd6e0';
           ctx.font='7px JetBrains Mono'; ctx.fillText(r.label, X(r.x)+2, Y(r.y)+9); }
       });
+      // Internal walls are derived from bedroom/pod room boundaries.
+      if(pl.internalWalls){
+        ctx.strokeStyle='#111820'; ctx.lineWidth=Math.max(1.2,0.12*sc);
+        pl.internalWalls.forEach(w=>{ ctx.beginPath(); ctx.moveTo(X(w.a[0]),Y(w.a[1])); ctx.lineTo(X(w.b[0]),Y(w.b[1])); ctx.stroke(); });
+      }
       ctx.strokeStyle=pl.invalid?'#ef6a5b':'#7fd4e6'; ctx.lineWidth=2;       // facade glazing
       pl.windows.forEach(w=>{ ctx.beginPath(); ctx.moveTo(X(w.a[0]),Y(w.a[1])); ctx.lineTo(X(w.b[0]),Y(w.b[1])); ctx.stroke(); });
+      if(pl.routes){
+        ctx.setLineDash([4,3]); ctx.strokeStyle='#6fc0ff'; ctx.lineWidth=1.2;
+        pl.routes.forEach(r=>{ if(!r.pts||r.pts.length<2)return; ctx.beginPath(); r.pts.forEach((p,i)=> i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1]))); ctx.stroke(); });
+        ctx.setLineDash([]);
+      }
       pl.doors.forEach(d=>drawDoor(ctx,X,Y,sc,d));
     } else { ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); }
     ctx.strokeStyle='#0c0e12'; ctx.lineWidth=1.3; ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); // dwelling outline
@@ -1189,7 +1268,13 @@ function paintPlan(m){
   // building system over rooms: perimeter bulkheads + ESM
   lvl.units.forEach(u=>{ const s=u.svc; if(!s)return;
     s.bulkheads.forEach(b=>FR(b,'rgba(86,96,114,.5)'));
-    FR(s.esm,'#e0a341','#0c0e12'); });
+    FR(s.esm,'#e0a341','#0c0e12');
+    if(s.routes){
+      ctx.setLineDash([4,3]); ctx.strokeStyle='#6fc0ff'; ctx.lineWidth=1.2;
+      s.routes.forEach(r=>{ if(!r.pts||r.pts.length<2)return; ctx.beginPath(); r.pts.forEach((p,i)=> i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1]))); ctx.stroke(); });
+      ctx.setLineDash([]);
+    }
+  });
   // cores: articulated stair + lift
   lvl.cores.forEach(c=>{ const cf=coreFitout(c);
     FR(cf.stair,'#6b7686','#0c0e12');
@@ -1291,7 +1376,7 @@ function dxfExport(m){
     ['APT_1BED',3],['APT_2BED',2],['APT_3BED',1],['TEXT',7],['MASS_3D',4],
     ['BALCONY',150],['POD',211],['ESM',41],['KITCHEN',31],['BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
     ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4],
-    ['ROOM_BED',130],['ROOM_LIVING',134],['ROOM_ENTRY',252],['ROOM_HALL',250],['DOOR',7],['WINDOW',141]];
+    ['ROOM_BED',130],['ROOM_LIVING',134],['ROOM_ENTRY',252],['ROOM_HALL',250],['DOOR',7],['WINDOW',141],['SERVICE_ROUTE',140]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -1346,6 +1431,8 @@ function dxfExport(m){
         const aL=Math.atan2(tv[1],tv[0])*180/Math.PI, aE=Math.atan2(sv[1],sv[0])*180/Math.PI;
         let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
         arc('DOOR', px, oy+py, r, s, e); });
+      if(u.plan&&u.plan.internalWalls) u.plan.internalWalls.forEach(w=>line('WALLS_INTERNAL', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
+      if(u.plan&&u.plan.routes) u.plan.routes.forEach(r=>{ if(!r.pts||r.pts.length<2)return; for(let i=0;i<r.pts.length-1;i++) line('SERVICE_ROUTE', r.pts[i][0], oy+r.pts[i][1], r.pts[i+1][0], oy+r.pts[i+1][1]); });
       // building-system polylines (pod/kitchen are part of the rooms above)
       const s=u.svc; if(s){ rect('BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
         rect('ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
