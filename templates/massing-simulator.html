@@ -2248,7 +2248,7 @@ function dxfExport(m){
     '0','TABLE','2','LAYER','70',String(layers.length)
   );
   layers.forEach(([nm,col])=>
-    L.push('0','LAYER','2',nm,'70','0','62',String(col),'6','Continuous'));
+    L.push('0','LAYER','2',nm,'70','0','62',String(col),'6','CONTINUOUS'));
   L.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
 
   /* ── Entity helpers ──────────────────────────────────────────────────── */
@@ -2264,9 +2264,13 @@ function dxfExport(m){
   const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>
     poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
   const text=(lay,x,y,t,hgt=0.3)=>L.push(
-    '0','06_Annotation::Labels','8',lay,
-    '10',(x*K).toFixed(1),'20',(y*K).toFixed(1),
-    '40',(hgt*K).toFixed(1),'1',t);
+    '0','TEXT','8',lay,
+    '10',(x*K).toFixed(1),
+    '20',(y*K).toFixed(1),
+    '30','0.0',
+    '40',(hgt*K).toFixed(1),
+    '1',String(t)
+    );
   const face=(lay,p)=>{ L.push('0','3DFACE','8',lay);
     for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];
       L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));} };
