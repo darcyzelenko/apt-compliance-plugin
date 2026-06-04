@@ -248,13 +248,12 @@
     rooms.push(rect(BW, 0, LW, D, 'living', 'LIVING'));
     windows.push({ t0: BW + 0.4, t1: W - 0.4, kind: 'living' });
     const podW = Math.min(C.podW, BW), podT = Math.max(0, BW - podW);
-    rooms.push(rect(podT, bd + 0.1, podW, Math.min(C.podD, D - bd - C.entryD - 0.2), 'pod', 'SERVICES|POD'));
+    rooms.push(rect(podT, bd + 0.1, podW, Math.min(C.podD, D - bd - 0.2), 'pod', 'POD'));
     doors.push({ t: podT + podW * 0.5, d: bd + 0.1 });
     rooms.push(rect(BW, bd + 0.1, C.kitW, C.kitD, 'kitchen', 'KIT'));
+    // entry and hall are circulation zones, not partitioned rooms — keep the corridor door but no room rect
     const entW = Math.min(1.6, BW);
-    rooms.push(rect(0, D - C.entryD, entW, C.entryD, 'entry', 'ENTRY'));
-    doors.push({ t: entW * 0.5, d: D });
-    rooms.push(rect(0, bd, Math.max(0.3, podT), D - bd, 'hall', ''));
+    doors.push({ t: entW * 0.5, d: D });   // corridor -> apartment entry
     return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd };
   }
 
@@ -1073,7 +1072,7 @@ function layoutApartment(W,D,type){
   windows.push({t0:BW+0.4, t1:W-0.4});
   // pod: deep (behind bedrooms), right end of the back band, adjacent to living column
   const podW=Math.min(podWmax, BW), podT=Math.max(0, BW-podW);
-  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'SERVICES|POD'});
+  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'SERVICES::POD'});
   doors.push({t:podT-0.0+podW*0.5, d:bd+0.1});      // hall -> pod
   // kitchen: long edge perpendicular to facade, sharing the pod wall (t=BW)
   rooms.push({t:BW, d:bd+0.1, wt:kitW, wd:kitD, kind:'kitchen', label:'KIT'});
@@ -1148,15 +1147,22 @@ function attachServices(u,n,P){
   // route the apartment layout through the party-wall engine when present; the engine
   // compares strategies (straight vs living-priority) and returns the best, plus a
   // score and conflicts. Falls back to the built-in layout if the module is absent.
+  // If an S-wall was applied, use the wider shallow-band width so living gets more facade.
+  const effectiveW = u.shallowW || W;
   const dv = clamp(0.5+0.5*northness(n), 0.12, 1);
   const ap = (window.LayoutEngine && LayoutEngine.layoutApartmentBest)
-    ? LayoutEngine.layoutApartmentBest(W,D,u.type,dv,{mix:P.mix, constraints:{areas:P.area, grid:GRID}})
-    : layoutApartment(W,D,u.type);
+    ? LayoutEngine.layoutApartmentBest(effectiveW,D,u.type,dv,{mix:P.mix, constraints:{areas:P.area, grid:GRID}})
+    : layoutApartment(effectiveW,D,u.type);
   u.score    = (ap.score!=null)?ap.score:null;
   u.valid    = (ap.valid!=null)?ap.valid:true;
   u.strategy = ap.strategy||'baseline';
   u.conflicts= ap.conflicts||[];
   u.breakdown= ap.breakdown||null;
+  // stash layout params for clean DXF wall generation (merged partition lines)
+  const nBed={b1:1,b2:2,b3:3}[u.type]||1;
+  const LW=ap.livingFrontage||effectiveW*0.45, BW=effectiveW-LW, bedW=BW/Math.max(1,nBed);
+  const aptBd=ap.rooms?((ap.rooms.find(r=>r.kind==='bed')||{}).wd||3.3):3.3;
+  u.layoutParams={BW,bedW,bd:aptBd,nBed,D,effectiveW,horiz};
   const rooms=ap.rooms.map(r=>L2W(u,n,r.t,r.d,r.wt,r.wd,r.kind,r.label));
   const windows=ap.windows.map(w=>({a:L2Wpt(u,n,w.t0,0), b:L2Wpt(u,n,w.t1,0)}));
   const doors=ap.doors.map(dd=>({p:L2Wpt(u,n,dd.t,dd.d), n}));
@@ -1188,6 +1194,46 @@ function tileWorld(ox,oy,dir,total,depth,inward,P,shares,counts,level,normal,wsc
     counts[placed]++; u+=w;
   }
   return out;
+}
+
+// ─── S-WALL PARTY-WALL NEGOTIATION ───────────────────────────────────────────
+// After tileRow, step the boundary between adjacent units that would benefit from
+// more facade at the living-room depth (the "shallow band"). The tight unit gains
+// facade in the first half of the apartment depth; the neighbour gives that space
+// but is compensated with extra depth in the service-zone "deep band".
+// Each unit with a step gets u.footprint = [{rect},{rect}] (two-rect L-shape).
+function applySwalls(units, aptD, frame, rowNrm) {
+  if(units.length < 2) return;
+  const STEP = 1.2;           // step amount: 2 × 600 mm grid cells
+  const BAND = aptD * 0.5;    // split at mid-depth (area-conserving when both bands equal)
+  const horiz = rowNrm[1] !== 0;   // true = facade on top/bottom, units go along X
+  const facadeAtLow = horiz ? rowNrm[1]<0 : rowNrm[0]<0; // facade is at the lower coord
+  for(let i=0; i<units.length-1; i++){
+    const A=units[i], B=units[i+1];
+    const nBedA={b1:1,b2:2,b3:3}[A.type]||1, nBedB={b1:1,b2:2,b3:3}[B.type]||1;
+    const minWA=nBedA*2.4+3.6, minWB=nBedB*2.4+3.6;
+    const Aw=horiz?A.wx:A.wy, Bw=horiz?B.wx:B.wy;
+    if(Aw>minWA+1.5 || Bw<minWB+STEP-1e-6) continue;  // A has slack, or B can't give — skip
+    if(horiz){
+      // units go along X; party wall is a vertical line; facade on top (facadeAtLow) or bottom
+      const sY0 = facadeAtLow ? A.y : A.y+aptD-BAND;   // shallow rect top-y
+      const dY0 = facadeAtLow ? A.y+BAND : A.y;         // deep rect top-y
+      A.footprint=[{x:A.x,       y:sY0, wx:Aw+STEP, wy:BAND},
+                   {x:A.x,       y:dY0, wx:Aw-STEP, wy:aptD-BAND}];
+      B.footprint=[{x:A.x+Aw+STEP, y:sY0, wx:Bw-STEP, wy:BAND},
+                   {x:A.x+Aw-STEP, y:dY0, wx:Bw+STEP, wy:aptD-BAND}];
+    } else {
+      // units go along Y; party wall is a horizontal line; facade on left (facadeAtLow) or right
+      const sX0 = facadeAtLow ? A.x : A.x+aptD-BAND;   // shallow rect left-x
+      const dX0 = facadeAtLow ? A.x+BAND : A.x;         // deep rect left-x
+      A.footprint=[{x:sX0, y:A.y,        wx:BAND,     wy:Aw+STEP},
+                   {x:dX0, y:A.y,        wx:aptD-BAND, wy:Aw-STEP}];
+      B.footprint=[{x:sX0, y:A.y+Aw+STEP, wx:BAND,    wy:Bw-STEP},
+                   {x:dX0, y:A.y+Aw-STEP, wx:aptD-BAND, wy:Bw+STEP}];
+    }
+    // expose the wider shallow-band facade width so attachServices can use it for room layout
+    A.shallowW = Aw+STEP;  B.shallowW = Bw-STEP;
+  }
 }
 
 function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
@@ -1226,7 +1272,10 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
 
   // ---- BAR / POINT-BLOCK: blade or point cores, one or two rows ----
   const point = kind.core==='point';
-  const coreW = point? Math.min(eff.depth, 6.0) : eff.depth;
+  // blade cores: span corridor + reasonable lobby penetration on each side (not the full building depth)
+  const bladeDepth = Math.min(eff.depth, P.corr + 4.0);   // corr + ~2m each side
+  const bladeVstart = Math.max(0, aptD - (bladeDepth - P.corr) / 2);
+  const coreW = point? Math.min(eff.depth, 6.0) : bladeDepth;
   // core count + positions are derived from the shared reference frame (CR) so the
   // typical and setback levels place cores at identical world positions -> they
   // stack vertically (a core can't jog between floors).
@@ -1240,7 +1289,7 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
     const c = snap((cWorld - effStart) - P.coreLen/2);        // into this level's local frame
     coreSpots.push([c, c+P.coreLen]);
     if(point){ const v=(eff.depth-coreW)/2; cores.push(mapRect(eff,c,v,P.coreLen,coreW,{kind:'core'})); }
-    else       cores.push(mapRect(eff,c,0,P.coreLen,eff.depth,{kind:'core'}));
+    else       cores.push(mapRect(eff,c,bladeVstart,P.coreLen,coreW,{kind:'core'}));
   }
   coreSpots.sort((a,b)=>a[0]-b[0]);
   const free=[]; let cur=0;
@@ -1254,6 +1303,8 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
     for(const [a,b] of free){
       const sub=tileRow(b-a, aptD, P.area, shares, counts, eff, row.v, level, wscale);
       sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; s.nrm=row.nrm; attachServices(s,row.nrm,P); });
+      // S-wall: step adjacent party walls so living-tight apartments gain facade at the shallow band
+      applySwalls(sub, aptD, eff, row.nrm);
       units=units.concat(sub);
     }
   });
@@ -1517,8 +1568,10 @@ function build3D(m){
     slabExtrude(outer, holes, l.z, 0.12, l.isSB?0x33414f:0x2a3340, 1.0, cx, cy);
     // apartments + per-unit building-system fitout
     l.units.forEach(u=>{
-      box(u.x+u.wx/2-cx, u.y+u.wy/2-cy, l.z+0.12, Math.max(0.2,u.wx-0.2), Math.max(0.2,u.wy-0.2),
-          l.h*0.8, parseInt(APTCOL[u.type].slice(1),16), 1.0);
+      const col=parseInt(APTCOL[u.type].slice(1),16);
+      (u.footprint||[{x:u.x,y:u.y,wx:u.wx,wy:u.wy}]).forEach(r=>{
+        box(r.x+r.wx/2-cx,r.y+r.wy/2-cy,l.z+0.12,Math.max(0.2,r.wx-0.2),Math.max(0.2,r.wy-0.2),l.h*0.8,col,1.0);
+      });
       const s=u.svc; if(s){
         B(s.balcony, l.z+0.05, 0.5, 0x3a4654, 0.95);                 // balcony slab + guard
         B(s.pod,     l.z+0.14, l.h*0.7, 0xc46b9e, 1.0);              // bathroom pod
@@ -1546,6 +1599,29 @@ function build3D(m){
       const tx=ct.x+ct.wx*fxv-cx, tz=ct.y+ct.wy*fyv-cy;
       box(tx,tz,0.1,1.0,1.0,0.6,0x356b43,1.0,false);
     }
+  }
+}
+
+// turn two abutting rects (from an S-wall footprint) into an ordered 6-point polygon
+function lpoly(r0, r1, nrm) {
+  // r0 = shallow band (facade side), r1 = deep band; the step is the x or y offset between them
+  const horiz = nrm&&nrm[1]!==0;
+  if(horiz){
+    // step in X; r0 and r1 share the y start/end, split at some y
+    const x0=Math.min(r0.x,r1.x), x1r0=r0.x+r0.wx, x1r1=r1.x+r1.wx;
+    const yA=r0.y, yM=r0.y+r0.wy, yB=r1.y+r1.wy;
+    if(r0.wx>=r1.wx) // r0 wider (A gained facade)
+      return [[x0,yA],[x1r0,yA],[x1r0,yM],[x1r1,yM],[x1r1,yB],[x0,yB]];
+    else
+      return [[x0,yA],[x1r0,yA],[x1r0,yM],[x1r1,yM],[x1r1,yB],[x0,yB]];
+  } else {
+    // step in Y; r0 and r1 share the x start/end, split at some x
+    const y0=Math.min(r0.y,r1.y), y1r0=r0.y+r0.wy, y1r1=r1.y+r1.wy;
+    const xA=r0.x, xM=r0.x+r0.wx, xB=r1.x+r1.wx;
+    if(r0.wy>=r1.wy) // r0 wider
+      return [[xA,y0],[xM,y0],[xM,y1r0],[xB,y1r0],[xB,y1r1],[xA,y1r1]];
+    else
+      return [[xA,y0],[xM,y0],[xM,y1r0],[xB,y1r0],[xB,y1r1],[xA,y1r1]];
   }
 }
 
@@ -1606,9 +1682,20 @@ function paintPlan(m){
       pl.windows.forEach(w=>{ ctx.beginPath(); ctx.moveTo(X(w.a[0]),Y(w.a[1])); ctx.lineTo(X(w.b[0]),Y(w.b[1])); ctx.stroke(); });
       pl.doors.forEach(d=>drawDoor(ctx,X,Y,sc,d));
     } else { ctx.fillStyle=APTCOL[u.type]+'cc'; ctx.fillRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); }
-    ctx.strokeStyle=(u.valid===false)?'#ef6a5b':'#0c0e12'; ctx.lineWidth=(u.valid===false)?2:1.3; ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc); // dwelling outline
+    ctx.strokeStyle=(u.valid===false)?'#ef6a5b':'#0c0e12'; ctx.lineWidth=(u.valid===false)?2:1.3;
+    if(u.footprint&&u.footprint.length>1){
+      // S-wall unit: trace the L-shaped outline as a single closed path
+      const fp=u.footprint, horiz=fp[0].wy===fp[1].wy?false:true; // detect orientation
+      ctx.beginPath();
+      // build the 6-point L polygon from the two rects
+      const corners=lpoly(fp[0],fp[1],u.nrm);
+      corners.forEach(([x,y],i)=> i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y)));
+      ctx.closePath(); ctx.stroke();
+    } else {
+      ctx.strokeRect(X(u.x),Y(u.y),u.wx*sc,u.wy*sc);
+    }
     if(u.wx*sc>22&&u.wy*sc>18){ ctx.fillStyle='#0c0e12'; ctx.font='bold 8px JetBrains Mono';
-      ctx.fillText(u.type.replace('b','')+'B'+(pl&&pl.snorkel?'~':'')+(u.score!=null?(' '+Math.round(u.score)):''), X(u.x)+3, Y(u.y)+u.wy*sc-4); }
+      ctx.fillText(u.type.replace('b','')+'B'+(u.score!=null?(' '+Math.round(u.score)):''), X(u.x)+3, Y(u.y)+u.wy*sc-4); }
   });
   // building system over rooms: perimeter bulkheads + ESM
   lvl.units.forEach(u=>{ const s=u.svc; if(!s)return;
@@ -1716,10 +1803,10 @@ function dxfExport(m){
   const K=1000; // metres -> mm
   const L=[];
   const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
-    ['APTS|1BED',3],['APTS|2BED',2],['APTS|3BED',1],['TEXT',7],['MASS_3D',4],
-    ['SERVICES|BALCONY',150],['SERVICES|POD',211],['SERVICES|ESM',41],['SERVICES|KITCHEN',31],['SERVICES|BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
-    ['WALLS|CORE',9],['WALLS|PARTY',1],['WALLS|INTERNAL',4],
-    ['ROOMS|BED',130],['ROOMS|LIVING',134],['ROOMS|ENTRY',252],['ROOMS|HALL',250],['DOOR',7],['WINDOW',141]];
+    ['APTS::1BED',3],['APTS::2BED',2],['APTS::3BED',1],['TEXT',7],['MASS_3D',4],
+    ['SERVICES::BALCONY',150],['SERVICES::POD',211],['SERVICES::ESM',41],['SERVICES::KITCHEN',31],['SERVICES::BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
+    ['WALLS::CORE',9],['WALLS::PARTY',1],['WALLS::INTERNAL',4],
+    ['ROOMS::BED',130],['ROOMS::LIVING',134],['ROOMS::ENTRY',252],['ROOMS::HALL',250],['DOOR',7],['WINDOW',141]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -1756,11 +1843,19 @@ function dxfExport(m){
     for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
     (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
     if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
-    const RL={bed:'ROOMS|BED',living:'ROOMS|LIVING',kitchen:'SERVICES|KITCHEN',pod:'SERVICES|POD',entry:'ROOMS|ENTRY',hall:'ROOMS|HALL'};
-    lvl.units.forEach(u=>{ const lay='APTS|'+u.type.replace('b','')+'BED'; rect(lay,u.x,oy+u.y,u.wx,u.wy);  // dwelling outline
+    const RL={bed:'ROOMS::BED',living:'ROOMS::LIVING',kitchen:'SERVICES::KITCHEN',pod:'SERVICES::POD'};
+    lvl.units.forEach(u=>{
+      const lay='APTS::'+u.type.replace('b','')+'BED';
+      // apartment outline: L-shaped poly for S-wall units, closed rect otherwise
+      if(u.footprint&&u.footprint.length>1){
+        const corners=lpoly(u.footprint[0],u.footprint[1],u.nrm);
+        poly(lay,corners.map(([x,y])=>[x,y]),0,oy);
+      } else {
+        rect(lay,u.x,oy+u.y,u.wx,u.wy);
+      }
       text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
-      // internal rooms
-      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOMS|LIVING', r.x, oy+r.y, r.wx, r.wy);
+      // room fills
+      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOMS::LIVING', r.x, oy+r.y, r.wx, r.wy);
         if(r.label) text('TEXT', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
       // facade windows
       if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('WINDOW', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
@@ -1771,20 +1866,46 @@ function dxfExport(m){
         const aL=Math.atan2(tv[1],tv[0])*180/Math.PI, aE=Math.atan2(sv[1],sv[0])*180/Math.PI;
         let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
         arc('DOOR', px, oy+py, r, s, e); });
-      // building-system polylines (pod/kitchen are part of the rooms above)
-      const s=u.svc; if(s){ rect('SERVICES|BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
-        rect('SERVICES|ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
-        s.bulkheads.forEach(b=>rect('SERVICES|BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
-      // wall centrelines: party (between dwellings) + internal (facade / corridor / pod)
-      const vF = u.nrm && u.nrm[1]!==0;
-      if(vF){ wline('WALLS|PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS|PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
-              wline('WALLS|INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS|INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
-      else  { wline('WALLS|PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS|PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
-              wline('WALLS|INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS|INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
-      if(u.svc) wbox('WALLS|INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
-      // bedroom partitions + all other internal room walls (seenW deduplication prevents double lines)
-      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{
-        if(r.wx>0.1&&r.wy>0.1) wbox('WALLS|INTERNAL',r.x,oy+r.y,r.wx,r.wy); });
+      // building-system polylines
+      const s=u.svc; if(s){ rect('SERVICES::BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
+        rect('SERVICES::ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
+        s.bulkheads.forEach(b=>rect('SERVICES::BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
+      // ── WALL CENTRELINES ── party walls (between dwellings) from footprint edges
+      const vF=u.nrm&&u.nrm[1]!==0;
+      const n=u.nrm||[0,-1];
+      if(u.footprint&&u.footprint.length>1){
+        // S-wall: emit the stepped party-wall segments on each side from the footprint corners
+        const corners=lpoly(u.footprint[0],u.footprint[1],n);
+        for(let ci=0;ci<corners.length;ci++){
+          const [x1,y1]=corners[ci], [x2,y2]=corners[(ci+1)%corners.length];
+          // classify: corners moving along facade direction = interior partition; depth = party/facade
+          const lay2 = (vF?Math.abs(x2-x1)<1e-6:Math.abs(y2-y1)<1e-6) ? 'WALLS::PARTY' : 'WALLS::INTERNAL';
+          wline(lay2,x1,oy+y1,x2,oy+y2);
+        }
+      } else {
+        if(vF){ wline('WALLS::PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
+                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
+        else  { wline('WALLS::PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
+                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
+      }
+      // ── INTERNAL PARTITION LINES from layoutParams (merged — no collinear segments) ──
+      const lp=u.layoutParams;
+      if(lp&&u.plan){
+        const p=(t,d)=>L2Wpt(u,n,t,d);
+        // 1. bed back wall (one merged line across all bedrooms)
+        const b1=p(0,lp.bd), b2=p(lp.BW,lp.bd);
+        wline('WALLS::INTERNAL',b1[0],oy+b1[1],b2[0],oy+b2[1]);
+        // 2. living / bedroom partition (one vertical or horizontal line, full depth)
+        const l1=p(lp.BW,0), l2=p(lp.BW,lp.D);
+        wline('WALLS::INTERNAL',l1[0],oy+l1[1],l2[0],oy+l2[1]);
+        // 3. inter-bedroom partitions (one per wall, from facade to bed back wall)
+        for(let bi=1;bi<lp.nBed;bi++){
+          const i1=p(bi*lp.bedW,0), i2=p(bi*lp.bedW,lp.bd);
+          wline('WALLS::INTERNAL',i1[0],oy+i1[1],i2[0],oy+i2[1]);
+        }
+        // 4. pod perimeter (compact; won't have collinear issues)
+        if(u.svc&&u.svc.pod) wbox('WALLS::INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+      }
     });
     lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy);
       const cf=coreFitout(c);
@@ -1795,7 +1916,7 @@ function dxfExport(m){
       line('CORE',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
       text('TEXT',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
       text('TEXT',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
-      wbox('WALLS|CORE',c.x,oy+c.y,c.wx,c.wy); });
+      wbox('WALLS::CORE',c.x,oy+c.y,c.wx,c.wy); });
     // street-frontage names
     const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
     if(fr){ const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' FRONTAGE');
