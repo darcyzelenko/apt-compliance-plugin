@@ -1313,13 +1313,11 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
     const wscale = 1 - 0.18*northness(row.nrm);
     for(const [a,b] of free){
       const sub=tileRow(b-a, aptD, P.area, shares, counts, eff, row.v, level, wscale);
-      // 1. world-position shift (map from span-local to world)
-      sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; s.nrm=row.nrm; });
-      // 2. flex-fill: rescale widths so the span is exactly filled (variable-width apartments)
+      // position shift + services (original proven order)
+      sub.forEach(s=>{ if(eff.alongX) s.x+=a; else s.y+=a; s.nrm=row.nrm; attachServices(s,row.nrm,P); });
+      // flex-fill: widen/narrow units to fill the span exactly (adjusts footprint, not rooms)
       flexFill(sub, b-a, eff, aptD, P);
-      // 3. room layout + services (uses final positions and widths)
-      sub.forEach(s=>attachServices(s, row.nrm, P));
-      // 4. S-wall: step adjacent party walls for better facade allocation
+      // S-wall: step party walls for better facade allocation
       applySwalls(sub, aptD, eff, row.nrm);
       units=units.concat(sub);
     }
@@ -1330,6 +1328,12 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
 }
 
 function generate(){
+  try { _generate(); } catch(err) {
+    console.error('FORMWORK generate() error:', err);
+    renderEmpty('Layout error: '+err.message+' — check console for details.');
+  }
+}
+function _generate(){
   const P=params();
   const F=lots.reduce((s,l)=>s+l.f,0), D=Math.max(...lots.map(l=>l.d));
   const siteArea=F*D;
@@ -1679,6 +1683,4 @@ function paintPlan(m){
   if(sc <= 0) return;    // site dimensions exceed canvas — nothing drawable
   const X=x=>ox+x*sc, Y=y=>oy+y*sc;
   const FR=(r,fill,line)=>{ ctx.fillStyle=fill; ctx.fillRect(X(r.x),Y(r.y),r.wx*sc,r.wy*sc);
-    if(line){ctx.strokeStyle=line;ctx.lineWidth=1;ctx.strokeRect(X(r.x),Y(r.y),r.wx*sc,r.wy*sc);} };
-  // 600 grid
-  ctx.st
+    if(line){ctx.strokeStyle=line;ctx
