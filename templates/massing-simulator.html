@@ -922,6 +922,11 @@
   .exp button b{font-family:'JetBrains Mono',monospace; font-size:14px; letter-spacing:.06em}
   .exp button span{font-size:10px; color:var(--muted)}
   .note{font-size:10.5px; color:var(--muted2); line-height:1.5; margin-top:6px}
+  @keyframes locating-pulse{0%,100%{opacity:.45}50%{opacity:1}}
+  @keyframes progress-run{0%{width:0%}60%{width:82%}100%{width:97%}}
+  .locating{animation:locating-pulse 1.1s ease-in-out infinite;color:var(--accent)!important;font-size:14px!important;font-weight:600;letter-spacing:.02em}
+  #locating-bar{height:3px;border-radius:2px;background:var(--accent);width:0;margin-top:6px;transition:none}
+  #locating-bar.run{animation:progress-run 20s ease-out forwards}
   .srow{display:flex; justify-content:space-between; align-items:center; font-size:11.5px; color:var(--muted); padding:3px 0}
   .srow b{color:var(--ink); font-weight:600; font-size:12px}
   select{width:100%; background:var(--panel2); border:1px solid var(--line2); color:var(--ink); border-radius:6px; padding:7px 8px; font:inherit; font-size:12px; cursor:pointer}
@@ -949,11 +954,10 @@
         <input type="text" id="addr" value="120 Sydney Road, Brunswick VIC">
       </div>
       <button class="btn primary" id="locate" style="margin-bottom:8px">⌖ Locate real site</button>
-      <div class="note" id="siteStatus">Fetches the title boundary, planning zone and neighbouring lots from the VIC / NSW cadastre via your backend.</div>
-      <div class="field"><label>Lots <span class="val" id="lotsum"></span></label></div>
+      <div class="note" id="siteStatus" style="font-size:13px;line-height:1.6">Fetches the title boundary, planning zone and neighbouring lots from the VIC / NSW cadastre via your backend.</div>
+      <div id="locating-bar"></div>
+      <div class="field"><label>Lot size <span class="val" id="lotsum"></span></label></div>
       <div id="lots"></div>
-      <button class="btn add" id="addlot">+ merge adjacent lot</button>
-      <div class="note">Frontage × depth per lot, in metres. A located site fills these from its oriented boundary; merged lots add frontage (side-by-side); depth = deepest lot.</div>
     </div>
 
     <div class="grp">
@@ -1179,7 +1183,6 @@ function updateLotSum(){
   const f = lots.reduce((s,l)=>s+l.f,0), d = Math.max(...lots.map(l=>l.d));
   document.getElementById('lotsum').textContent = `${f.toFixed(1)} × ${d.toFixed(1)} m · ${(f*d).toFixed(0)} m²`;
 }
-document.getElementById('addlot').onclick=()=>{ lots.push({f:15,d:lots[0].d}); renderLots(); };
 
 /* ---- generic slider wiring ---- */
 function bind(id,outId,fmt){ const el=document.getElementById(id),o=document.getElementById(outId);
@@ -1216,8 +1219,17 @@ const API_BASE = (new URLSearchParams(location.search).get('api'))
   || window.FORMWORK_API || '';
 let siteGeo = null;   // {poly:[[x,y]...], context:[[[x,y]...]...]} in engine metres
 
-function setSiteStatus(msg, kind){ const el=document.getElementById('siteStatus');
-  el.textContent=msg; el.style.color = kind==='err'?'var(--bad)':kind==='ok'?'var(--good)':'var(--muted2)'; }
+function setSiteStatus(msg, kind){
+  const el=document.getElementById('siteStatus');
+  const bar=document.getElementById('locating-bar');
+  el.textContent=msg;
+  const loading=!kind;   // no kind = 'Locating…' interim state
+  el.className='note'+(loading?' locating':'');
+  el.style.color=kind==='err'?'var(--bad)':kind==='ok'?'var(--good)':'';
+  if(bar){ bar.className=''; void bar.offsetWidth;   // force reflow to restart animation
+    if(loading){ bar.className='run'; }
+    else { bar.style.width=kind==='ok'?'100%':'0'; bar.className=''; } }
+}
 
 const snapTo = v => Math.round(v/GRID)*GRID;
 
@@ -2253,6 +2265,8 @@ function dxfExport(m){
     const RL={bed:'ROOMS::BED',kitchen:'ROOMS::KIT',pod:'ROOMS::POD'};
     lvl.units.forEach(u=>{
       const lay='APTS::'+u.type.replace('b','')+'BED';
+      const n=u.nrm||[0,-1];   // facade normal — declared once, used by ROOMS::LIVING, walls, and partitions
+      const vF=n[1]!==0;
       // apartment outline on APTS layer
       if(u.footprint&&u.footprint.length>1){
         const corners=lpoly(u.footprint[0],u.footprint[1],u.nrm);
@@ -2292,8 +2306,6 @@ function dxfExport(m){
         rect('SERVICES::ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
         s.bulkheads.forEach(b=>rect('SERVICES::BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
       // ── WALL CENTRELINES ─────────────────────────────────────────────────────
-      const vF=u.nrm&&u.nrm[1]!==0;
-      const n=u.nrm||[0,-1];
       if(u.footprint&&u.footprint.length>1){
         const corners=lpoly(u.footprint[0],u.footprint[1],n);
         for(let ci=0;ci<corners.length;ci++){
