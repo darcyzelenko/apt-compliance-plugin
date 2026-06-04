@@ -2297,8 +2297,9 @@ function dxfExport(m){
     const RL={bed:'04_Rooms::Bedroom',kitchen:'04_Rooms::Kitchen',pod:'04_Rooms::Bathroom'};
     lvl.units.forEach(u=>{
       const lay='02_Apartments::'+{'b1':'1Bed','b2':'2Bed','b3':'3Bed'}[u.type];
-      const n=u.nrm||[0,-1];   // facade normal — declared once, used by ROOMS::LIVING, walls, and partitions
+      const n=u.nrm||[0,-1];   // facade normal — used by ROOMS::LIVING, walls, and partitions
       const vF=n[1]!==0;
+      const lp=u.layoutParams;  // layout params: BW, bedW, bd, nBed, D, effectiveW, svcStart
       // apartment outline on APTS layer
       if(u.footprint&&u.footprint.length>1){
         const corners=lpoly(u.footprint[0],u.footprint[1],u.nrm);
@@ -2352,7 +2353,6 @@ function dxfExport(m){
                 wline('03_Walls::Internal',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('03_Walls::Internal',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
       }
       // ── INTERNAL PARTITIONS from layoutParams (merged, no collinear) ──────
-      const lp=u.layoutParams;
       if(lp&&u.plan){
         const p=(t,d)=>L2Wpt(u,n,t,d);
         // 1. bed back wall — single merged line across the full bedroom band
