@@ -231,13 +231,13 @@
     windows.push({ t0: BW + 0.4, t1: W - 0.4, kind: 'living' });
     const podW = Math.min(C.podW, BW), podT = Math.max(0, BW - podW);
     const svcD = Math.min(C.podD, D * 0.28);
-    const svcStart = D - C.entryD - svcD;
+    const svcStart = D - svcD;                        // directly at corridor wall
     rooms.push(rect(podT, svcStart, podW, svcD, 'pod', 'POD'));
     doors.push({ t: podT + podW * 0.5, d: svcStart });
-    rooms.push(rect(BW, Math.max(svcStart, D - C.entryD - C.kitD), C.kitW, C.kitD, 'kitchen', 'KIT'));
+    rooms.push(rect(BW, Math.max(svcStart, D - C.kitD), C.kitW, C.kitD, 'kitchen', 'KIT'));
     const entW = Math.min(1.6, BW);
     doors.push({ t: entW * 0.5, d: D });
-    return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd };
+    return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd, svcStart };
   }
 
   /* ========================================================================
@@ -446,7 +446,8 @@
     const t = best.tmpl;
     return {
       rooms: t.rooms, windows: t.windows, doors: t.doors, snorkel: t.snorkel,
-      livingFrontage: t.livingFrontage, strategy: best.strategy, score: +best.ev.score.toFixed(1),
+      livingFrontage: t.livingFrontage, svcStart: t.svcStart,
+      strategy: best.strategy, score: +best.ev.score.toFixed(1),
       valid: best.ev.valid, conflicts: best.ev.conflicts, breakdown: best.ev.breakdown
     };
   }

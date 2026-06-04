@@ -245,19 +245,18 @@
       windows.push({ t0: i * bedW + 0.3, t1: (i + 1) * bedW - 0.3, kind: 'bed' });
       doors.push({ t: i * bedW + bedW / 2, d: bd });
     }
-    // living windows face the facade — keep them even though living = full apt space
+    // living windows face the facade — kept even though living = full apt space
     windows.push({ t0: BW + 0.4, t1: W - 0.4, kind: 'living' });
-    // service zone: pod + kitchen are at the CORRIDOR end (near riser shafts), not near bedrooms
+    // service zone: pod + kitchen DIRECTLY at the corridor wall (d = D-svcD..D)
     const podW = Math.min(C.podW, BW), podT = Math.max(0, BW - podW);
     const svcD = Math.min(C.podD, D * 0.28);        // service zone depth (~2.4 m)
-    const svcStart = D - C.entryD - svcD;            // service zone begins here (before entry)
+    const svcStart = D - svcD;                       // directly at corridor, no entry buffer
     rooms.push(rect(podT, svcStart, podW, svcD, 'pod', 'POD'));
-    doors.push({ t: podT + podW * 0.5, d: svcStart });  // living → pod
-    rooms.push(rect(BW, Math.max(svcStart, D - C.entryD - C.kitD), C.kitW, C.kitD, 'kitchen', 'KIT'));
-    // corridor door (entry always at corridor face)
+    doors.push({ t: podT + podW * 0.5, d: svcStart });
+    rooms.push(rect(BW, Math.max(svcStart, D - C.kitD), C.kitW, C.kitD, 'kitchen', 'KIT'));
     const entW = Math.min(1.6, BW);
     doors.push({ t: entW * 0.5, d: D });
-    return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd };
+    return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd, svcStart };
   }
 
   /* ========================================================================
@@ -1483,10 +1482,13 @@ function attachServices(u,n,P){
   u.conflicts= ap.conflicts||[];
   u.breakdown= ap.breakdown||null;
   // stash layout params for clean DXF wall generation (merged partition lines)
-  const nBed={b1:1,b2:2,b3:3}[u.type]||1;
-  const LW=ap.livingFrontage||effectiveW*0.45, BW=effectiveW-LW, bedW=BW/Math.max(1,nBed);
+  const nBedActual = ap.rooms ? ap.rooms.filter(r=>r.kind==='bed').length : ({b1:1,b2:2,b3:3}[u.type]||1);
+  const nBed = nBedActual || ({b1:1,b2:2,b3:3}[u.type]||1);
+  const LW=ap.livingFrontage||effectiveW*0.45, BW=effectiveW-LW, bedW=nBed>0?BW/nBed:BW;
   const aptBd=ap.rooms?((ap.rooms.find(r=>r.kind==='bed')||{}).wd||3.3):3.3;
-  u.layoutParams={BW,bedW,bd:aptBd,nBed,D,effectiveW,horiz};
+  const podR=ap.rooms?ap.rooms.find(r=>r.kind==='pod'):null;
+  const svcStart=podR?podR.d:(effectiveW-2.4);   // corridor-end service zone start
+  u.layoutParams={BW,bedW,bd:aptBd,nBed,D,effectiveW,horiz,svcStart};
   const rooms=ap.rooms.map(r=>L2W(u,n,r.t,r.d,r.wt,r.wd,r.kind,r.label));
   const windows=ap.windows.map(w=>({a:L2Wpt(u,n,w.t0,0), b:L2Wpt(u,n,w.t1,0)}));
   const doors=ap.doors.map(dd=>({p:L2Wpt(u,n,dd.t,dd.d), n}));
@@ -2202,22 +2204,32 @@ function dxfExport(m){
     ['ROOMS::LIVING',134],['ROOMS::BED',130],['ROOMS::POD',211],['ROOMS::KIT',31],
     ['WALLS::PARTY',1],['WALLS::INTERNAL',4],['WALLS::CORE',9],
     ['SERVICES::BALCONY',150],['SERVICES::ESM',41],['SERVICES::KITCHEN',31],['SERVICES::BULKHEAD',252]];
-  // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
-  L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
-  L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
-  layers.forEach(([n,c])=>L.push('0','LAYER','2',n,'70','0','62',String(c),'6','CONTINUOUS'));
-  L.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+  // R2000 (AC1015) DXF — required for Rhino to parse '::' layer names as nested layer hierarchy.
+  // R12 (AC1009) does not support layer nesting; the '::' separator only works in R2000+.
+  let _hn=100; const hn=()=>(_hn++).toString(16).toUpperCase().padStart(4,'0');
+  L.push('0','SECTION','2','HEADER',
+    '9','$ACADVER','1','AC1015',
+    '9','$HANDSEED','5','FFFF',
+    '9','$INSUNITS','70','4',
+    '0','ENDSEC');
+  L.push('0','SECTION','2','TABLES');
+  L.push('0','TABLE','2','LAYER','5',hn(),'100','AcDbSymbolTable','70',String(layers.length));
+  layers.forEach(([n,c])=>L.push(
+    '0','LAYER','5',hn(),'100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord',
+    '2',n,'70','0','62',String(c),'6','Continuous'));
+  L.push('0','ENDTAB','0','ENDSEC');
+  L.push('0','SECTION','2','ENTITIES');
 
-  const line=(lay,x1,y1,x2,y2)=>L.push('0','LINE','8',lay,'10',(x1*K).toFixed(1),'20',(y1*K).toFixed(1),'11',(x2*K).toFixed(1),'21',(y2*K).toFixed(1));
+  const line=(lay,x1,y1,x2,y2)=>L.push('0','LINE','5',hn(),'8',lay,'10',(x1*K).toFixed(1),'20',(y1*K).toFixed(1),'11',(x2*K).toFixed(1),'21',(y2*K).toFixed(1));
   // single CLOSED polyline (one curve per shape, not 4 separate segments)
   const poly=(lay,pts,oxx=0,oyy=0)=>{ if(pts.length<2)return;
-    L.push('0','POLYLINE','8',lay,'66','1','70','1');         // 70=1 -> closed
-    pts.forEach(([x,y])=>L.push('0','VERTEX','8',lay,'10',((x+oxx)*K).toFixed(1),'20',((y+oyy)*K).toFixed(1)));
-    L.push('0','SEQEND','8',lay); };
+    L.push('0','POLYLINE','5',hn(),'8',lay,'66','1','70','1');
+    pts.forEach(([x,y])=>L.push('0','VERTEX','5',hn(),'8',lay,'10',((x+oxx)*K).toFixed(1),'20',((y+oyy)*K).toFixed(1)));
+    L.push('0','SEQEND','5',hn(),'8',lay); };
   const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
-  const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
-  const face=(lay,p)=>{L.push('0','3DFACE','8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
-  const arc=(lay,cx,cy,r,a0,a1)=>L.push('0','ARC','8',lay,'10',(cx*K).toFixed(1),'20',(cy*K).toFixed(1),'40',(r*K).toFixed(1),'50',a0.toFixed(2),'51',a1.toFixed(2));
+  const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','5',hn(),'8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
+  const face=(lay,p)=>{L.push('0','3DFACE','5',hn(),'8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
+  const arc=(lay,cx,cy,r,a0,a1)=>L.push('0','ARC','5',hn(),'8',lay,'10',(cx*K).toFixed(1),'20',(cy*K).toFixed(1),'40',(r*K).toFixed(1),'50',a0.toFixed(2),'51',a1.toFixed(2));
 
   // de-duplicated wall centreline (shared party walls coincide)
   const seenW=new Set();
@@ -2241,15 +2253,25 @@ function dxfExport(m){
     const RL={bed:'ROOMS::BED',kitchen:'ROOMS::KIT',pod:'ROOMS::POD'};
     lvl.units.forEach(u=>{
       const lay='APTS::'+u.type.replace('b','')+'BED';
-      // apartment outline on APTS layer (for reference)
+      // apartment outline on APTS layer
       if(u.footprint&&u.footprint.length>1){
         const corners=lpoly(u.footprint[0],u.footprint[1],u.nrm);
         poly(lay,corners.map(([x,y])=>[x,y]),0,oy);
-        // ROOMS::LIVING = the full apartment space (same outline, separate layer)
-        poly('ROOMS::LIVING',corners.map(([x,y])=>[x,y]),0,oy);
+      } else { rect(lay,u.x,oy+u.y,u.wx,u.wy); }
+      // ROOMS::LIVING = the open-plan area: living column (full depth) + zone behind beds
+      // Output as two separate closed polylines forming the open-plan zone
+      if(lp){
+        const p4=(t,d)=>L2Wpt(u,n,t,d);
+        const sv=lp.svcStart||lp.D-2.4;
+        // 1. Living column: t=BW..W, full depth (0..D)
+        poly('ROOMS::LIVING',[p4(lp.BW,0),p4(lp.effectiveW,0),p4(lp.effectiveW,lp.D),p4(lp.BW,lp.D)].map(([x,y])=>[x,oy+y]));
+        // 2. Open-plan zone behind beds (between bed back wall and service zone)
+        if(sv-lp.bd > 0.3)
+          poly('ROOMS::LIVING',[p4(0,lp.bd),p4(lp.BW,lp.bd),p4(lp.BW,sv),p4(0,sv)].map(([x,y])=>[x,oy+y]));
       } else {
-        rect(lay,u.x,oy+u.y,u.wx,u.wy);
-        rect('ROOMS::LIVING',u.x,oy+u.y,u.wx,u.wy);
+        // fallback: full apt outline
+        if(u.footprint&&u.footprint.length>1){ const c=lpoly(u.footprint[0],u.footprint[1],u.nrm); poly('ROOMS::LIVING',c.map(([x,y])=>[x,oy+y])); }
+        else rect('ROOMS::LIVING',u.x,oy+u.y,u.wx,u.wy);
       }
       text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
       // individual rooms (bed, pod, kit) — living is the apt outline above
