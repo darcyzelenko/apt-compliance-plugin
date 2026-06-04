@@ -2207,41 +2207,73 @@ document.getElementById('planpick').onclick=e=>{ if(!e.target.dataset.lvl)return
 function dxfExport(m){
   const K=1000; // metres -> mm
   const L=[];
-  const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
-    ['TEXT',7],['DOOR',7],['WINDOW',141],['COURT',254],['STREET_TEXT',6],['MASS_3D',4],
-    // parent layers — Rhino uses these as folder nodes when child names contain '::'
-    ['APTS',2],['ROOMS',3],['WALLS',1],['SERVICES',4],
-    // child layers
-    ['APTS::1BED',3],['APTS::2BED',2],['APTS::3BED',1],
-    ['ROOMS::LIVING',134],['ROOMS::BED',130],['ROOMS::POD',211],['ROOMS::KIT',31],
-    ['WALLS::PARTY',1],['WALLS::INTERNAL',4],['WALLS::CORE',9],
-    ['SERVICES::BALCONY',150],['SERVICES::ESM',41],['SERVICES::KITCHEN',31],['SERVICES::BULKHEAD',252]];
-  // R2000 (AC1015) DXF — required for Rhino to parse '::' layer names as nested layer hierarchy.
-  // R12 (AC1009) does not support layer nesting; the '::' separator only works in R2000+.
-  let _hn=100; const hn=()=>(_hn++).toString(16).toUpperCase().padStart(4,'0');
-  L.push('0','SECTION','2','HEADER',
-    '9','$ACADVER','1','AC1015',
-    '9','$HANDSEED','5','FFFF',
-    '9','$INSUNITS','70','4',
-    '0','ENDSEC');
-  L.push('0','SECTION','2','TABLES');
-  L.push('0','TABLE','2','LAYER','5',hn(),'100','AcDbSymbolTable','70',String(layers.length));
-  layers.forEach(([n,c])=>L.push(
-    '0','LAYER','5',hn(),'100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord',
-    '2',n,'70','0','62',String(c),'6','Continuous'));
-  L.push('0','ENDTAB','0','ENDSEC');
-  L.push('0','SECTION','2','ENTITIES');
 
-  const line=(lay,x1,y1,x2,y2)=>L.push('0','LINE','5',hn(),'8',lay,'10',(x1*K).toFixed(1),'20',(y1*K).toFixed(1),'11',(x2*K).toFixed(1),'21',(y2*K).toFixed(1));
-  // single CLOSED polyline (one curve per shape, not 4 separate segments)
+  /* ── Layer table (GPT-style numbered parents + :: children) ──────────────
+     Rule: parent layers are listed first, children immediately after.
+     Rhino parses '::' as a nested-layer separator on import (AC1015+).
+     DXF itself is a flat-layer format — the hierarchy lives in the name only. */
+  const layers=[
+    // parents (folder nodes — no geometry placed directly on these)
+    ['00_Site',      7], ['01_FloorPlate', 8], ['02_Apartments',2],
+    ['03_Walls',     1], ['04_Rooms',      3], ['05_Services',  4],
+    ['06_Annotation',7], ['07_Massing',    9],
+    // 00_Site children
+    ['00_Site::Boundary', 5],['00_Site::Context',  8],
+    ['00_Site::Buildable',8],['00_Site::Setback', 253],['00_Site::Grid',251],
+    // 01_FloorPlate children
+    ['01_FloorPlate::Corridor',8],['01_FloorPlate::Core',9],['01_FloorPlate::Court',254],
+    // 02_Apartments children
+    ['02_Apartments::1Bed',3],['02_Apartments::2Bed',2],['02_Apartments::3Bed',1],
+    // 03_Walls children
+    ['03_Walls::Party',1],['03_Walls::Internal',4],['03_Walls::Core',9],
+    // 04_Rooms children
+    ['04_Rooms::Living', 134],['04_Rooms::Bedroom',130],
+    ['04_Rooms::Bathroom',211],['04_Rooms::Kitchen', 31],
+    // 05_Services children
+    ['05_Services::Balcony',150],['05_Services::ESM',41],['05_Services::Bulkhead',252],
+    // 06_Annotation children
+    ['06_Annotation::Labels',7],['06_Annotation::Windows',141],['06_Annotation::Doors',7],
+  ];
+
+  /* ── Minimal AC1015 header ───────────────────────────────────────────────
+     AC1015 = R2000: the earliest DXF version where ':' is legal in layer names
+     and Rhino's importer applies the '::' hierarchy logic.
+     No entity handles, no AcDb subclass markers — minimal is most reliable. */
+  L.push(
+    '0','SECTION','2','HEADER',
+    '9','$ACADVER','1','AC1015',
+    '9','$INSUNITS','70','4',
+    '0','ENDSEC',
+    '0','SECTION','2','TABLES',
+    '0','TABLE','2','LAYER','70',String(layers.length)
+  );
+  layers.forEach(([nm,col])=>
+    L.push('0','LAYER','2',nm,'70','0','62',String(col),'6','Continuous'));
+  L.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+
+  /* ── Entity helpers ──────────────────────────────────────────────────── */
+  const line=(lay,x1,y1,x2,y2)=>L.push(
+    '0','LINE','8',lay,
+    '10',(x1*K).toFixed(1),'20',(y1*K).toFixed(1),
+    '11',(x2*K).toFixed(1),'21',(y2*K).toFixed(1));
   const poly=(lay,pts,oxx=0,oyy=0)=>{ if(pts.length<2)return;
-    L.push('0','POLYLINE','5',hn(),'8',lay,'66','1','70','1');
-    pts.forEach(([x,y])=>L.push('0','VERTEX','5',hn(),'8',lay,'10',((x+oxx)*K).toFixed(1),'20',((y+oyy)*K).toFixed(1)));
-    L.push('0','SEQEND','5',hn(),'8',lay); };
-  const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
-  const text=(lay,x,y,t,hgt=0.3)=>L.push('0','TEXT','5',hn(),'8',lay,'10',(x*K).toFixed(1),'20',(y*K).toFixed(1),'40',(hgt*K).toFixed(1),'1',t);
-  const face=(lay,p)=>{L.push('0','3DFACE','5',hn(),'8',lay);for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));}};
-  const arc=(lay,cx,cy,r,a0,a1)=>L.push('0','ARC','5',hn(),'8',lay,'10',(cx*K).toFixed(1),'20',(cy*K).toFixed(1),'40',(r*K).toFixed(1),'50',a0.toFixed(2),'51',a1.toFixed(2));
+    L.push('0','POLYLINE','8',lay,'66','1','70','1');
+    pts.forEach(([x,y])=>L.push('0','VERTEX','8',lay,
+      '10',((x+oxx)*K).toFixed(1),'20',((y+oyy)*K).toFixed(1)));
+    L.push('0','SEQEND','8',lay); };
+  const rect=(lay,x,y,w,d,oxx=0,oyy=0)=>
+    poly(lay,[[x,y],[x+w,y],[x+w,y+d],[x,y+d]],oxx,oyy);
+  const text=(lay,x,y,t,hgt=0.3)=>L.push(
+    '0','06_Annotation::Labels','8',lay,
+    '10',(x*K).toFixed(1),'20',(y*K).toFixed(1),
+    '40',(hgt*K).toFixed(1),'1',t);
+  const face=(lay,p)=>{ L.push('0','3DFACE','8',lay);
+    for(let i=0;i<4;i++){const q=p[Math.min(i,p.length-1)];
+      L.push(String(10+i),(q[0]*K).toFixed(1),String(20+i),(q[1]*K).toFixed(1),String(30+i),(q[2]*K).toFixed(1));} };
+  const arc=(lay,cx,cy,r,a0,a1)=>L.push(
+    '0','ARC','8',lay,
+    '10',(cx*K).toFixed(1),'20',(cy*K).toFixed(1),
+    '40',(r*K).toFixed(1),'50',a0.toFixed(2),'51',a1.toFixed(2));
 
   // de-duplicated wall centreline (shared party walls coincide)
   const seenW=new Set();
@@ -2254,17 +2286,17 @@ function dxfExport(m){
   plans.forEach(([key,oy])=>{
     const lvl = key==='sb'? m.levels.find(l=>l.isSB): m.levels.find(l=>!l.isSB);
     if(!lvl)return;
-    if(m.site && m.site.context) m.site.context.forEach(p=>poly('CONTEXT',p,0,oy));
-    if(m.site && m.site.poly) poly('SITE',m.site.poly,0,oy); else rect('SITE',0,oy,m.F,m.D);
-    const env=lvl.envelope; rect('BUILDABLE',env.x0,oy+env.y0,env.x1-env.x0,env.y1-env.y0);
-    const f=lvl.frame; if(lvl.pulled) rect('SETBACK',f.x0,oy+f.y0,f.x1-f.x0,f.y1-f.y0);
-    for(let gx=0;gx<=m.F+1e-6;gx+=GRID) line('GRID',gx,oy,gx,oy+m.D);
-    for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
-    (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
-    if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
-    const RL={bed:'ROOMS::BED',kitchen:'ROOMS::KIT',pod:'ROOMS::POD'};
+    if(m.site && m.site.context) m.site.context.forEach(p=>poly('00_Site::Context',p,0,oy));
+    if(m.site && m.site.poly) poly('00_Site::Boundary',m.site.poly,0,oy); else rect('00_Site::Boundary',0,oy,m.F,m.D);
+    const env=lvl.envelope; rect('00_Site::Buildable',env.x0,oy+env.y0,env.x1-env.x0,env.y1-env.y0);
+    const f=lvl.frame; if(lvl.pulled) rect('00_Site::Setback',f.x0,oy+f.y0,f.x1-f.x0,f.y1-f.y0);
+    for(let gx=0;gx<=m.F+1e-6;gx+=GRID) line('00_Site::Grid',gx,oy,gx,oy+m.D);
+    for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('00_Site::Grid',0,oy+gy,m.F,oy+gy);
+    (lvl.corrRects||[]).forEach(cr=>rect('01_FloorPlate::Corridor',cr.x,oy+cr.y,cr.wx,cr.wy));
+    if(lvl.court){ rect('01_FloorPlate::Court',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('01_FloorPlate::Court',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'01_FloorPlate::Court',0.4); }
+    const RL={bed:'04_Rooms::Bedroom',kitchen:'04_Rooms::Kitchen',pod:'04_Rooms::Bathroom'};
     lvl.units.forEach(u=>{
-      const lay='APTS::'+u.type.replace('b','')+'BED';
+      const lay='02_Apartments::'+{'b1':'1Bed','b2':'2Bed','b3':'3Bed'}[u.type];
       const n=u.nrm||[0,-1];   // facade normal — declared once, used by ROOMS::LIVING, walls, and partitions
       const vF=n[1]!==0;
       // apartment outline on APTS layer
@@ -2278,46 +2310,46 @@ function dxfExport(m){
         const p4=(t,d)=>L2Wpt(u,n,t,d);
         const sv=lp.svcStart||lp.D-2.4;
         // 1. Living column: t=BW..W, full depth (0..D)
-        poly('ROOMS::LIVING',[p4(lp.BW,0),p4(lp.effectiveW,0),p4(lp.effectiveW,lp.D),p4(lp.BW,lp.D)].map(([x,y])=>[x,oy+y]));
+        poly('04_Rooms::Living',[p4(lp.BW,0),p4(lp.effectiveW,0),p4(lp.effectiveW,lp.D),p4(lp.BW,lp.D)].map(([x,y])=>[x,oy+y]));
         // 2. Open-plan zone behind beds (between bed back wall and service zone)
         if(sv-lp.bd > 0.3)
-          poly('ROOMS::LIVING',[p4(0,lp.bd),p4(lp.BW,lp.bd),p4(lp.BW,sv),p4(0,sv)].map(([x,y])=>[x,oy+y]));
+          poly('04_Rooms::Living',[p4(0,lp.bd),p4(lp.BW,lp.bd),p4(lp.BW,sv),p4(0,sv)].map(([x,y])=>[x,oy+y]));
       } else {
         // fallback: full apt outline
-        if(u.footprint&&u.footprint.length>1){ const c=lpoly(u.footprint[0],u.footprint[1],u.nrm); poly('ROOMS::LIVING',c.map(([x,y])=>[x,oy+y])); }
-        else rect('ROOMS::LIVING',u.x,oy+u.y,u.wx,u.wy);
+        if(u.footprint&&u.footprint.length>1){ const c=lpoly(u.footprint[0],u.footprint[1],u.nrm); poly('04_Rooms::Living',c.map(([x,y])=>[x,oy+y])); }
+        else rect('04_Rooms::Living',u.x,oy+u.y,u.wx,u.wy);
       }
-      text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
+      text('06_Annotation::Labels',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
       // individual rooms (bed, pod, kit) — living is the apt outline above
       if(u.plan&&u.plan.rooms) u.plan.rooms.filter(r=>r.kind!=='living').forEach(r=>{
-        rect(RL[r.kind]||'ROOMS::BED', r.x, oy+r.y, r.wx, r.wy);
-        if(r.label) text('TEXT', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
+        rect(RL[r.kind]||'04_Rooms::Bedroom', r.x, oy+r.y, r.wx, r.wy);
+        if(r.label) text('06_Annotation::Labels', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
       // facade windows
-      if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('WINDOW', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
+      if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('06_Annotation::Windows', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
       // doors (leaf + swing arc)
       if(u.plan&&u.plan.doors) u.plan.doors.forEach(d=>{ const [px,py]=d.p, n=d.n||[0,-1];
         const tv=(n[1]!==0)?[1,0]:[0,1], sv=[-n[0],-n[1]], r=0.85;
-        line('DOOR', px, oy+py, px+tv[0]*r, oy+py+tv[1]*r);
+        line('06_Annotation::Doors', px, oy+py, px+tv[0]*r, oy+py+tv[1]*r);
         const aL=Math.atan2(tv[1],tv[0])*180/Math.PI, aE=Math.atan2(sv[1],sv[0])*180/Math.PI;
         let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
-        arc('DOOR', px, oy+py, r, s, e); });
+        arc('06_Annotation::Doors', px, oy+py, r, s, e); });
       // building-system polylines
-      const s=u.svc; if(s){ rect('SERVICES::BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
-        rect('SERVICES::ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
-        s.bulkheads.forEach(b=>rect('SERVICES::BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
+      const s=u.svc; if(s){ rect('05_Services::Balcony',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
+        rect('05_Services::ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
+        s.bulkheads.forEach(b=>rect('05_Services::Bulkhead',b.x,oy+b.y,b.wx,b.wy)); }
       // ── WALL CENTRELINES ─────────────────────────────────────────────────────
       if(u.footprint&&u.footprint.length>1){
         const corners=lpoly(u.footprint[0],u.footprint[1],n);
         for(let ci=0;ci<corners.length;ci++){
           const [x1,y1]=corners[ci], [x2,y2]=corners[(ci+1)%corners.length];
-          const lay2=(vF?Math.abs(x2-x1)<1e-6:Math.abs(y2-y1)<1e-6)?'WALLS::PARTY':'WALLS::INTERNAL';
+          const lay2=(vF?Math.abs(x2-x1)<1e-6:Math.abs(y2-y1)<1e-6)?'03_Walls::Party':'03_Walls::Internal';
           wline(lay2,x1,oy+y1,x2,oy+y2);
         }
       } else {
-        if(vF){ wline('WALLS::PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
-                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
-        else  { wline('WALLS::PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
-                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
+        if(vF){ wline('03_Walls::Party',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('03_Walls::Party',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
+                wline('03_Walls::Internal',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('03_Walls::Internal',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
+        else  { wline('03_Walls::Party',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('03_Walls::Party',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
+                wline('03_Walls::Internal',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('03_Walls::Internal',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
       }
       // ── INTERNAL PARTITIONS from layoutParams (merged, no collinear) ──────
       const lp=u.layoutParams;
@@ -2325,45 +2357,45 @@ function dxfExport(m){
         const p=(t,d)=>L2Wpt(u,n,t,d);
         // 1. bed back wall — single merged line across the full bedroom band
         const b1=p(0,lp.bd), b2=p(lp.BW,lp.bd);
-        wline('WALLS::INTERNAL',b1[0],oy+b1[1],b2[0],oy+b2[1]);
+        wline('03_Walls::Internal',b1[0],oy+b1[1],b2[0],oy+b2[1]);
         // 2. inter-bedroom partitions (facade to bed back wall only)
         for(let bi=1;bi<lp.nBed;bi++){
           const i1=p(bi*lp.bedW,0), i2=p(bi*lp.bedW,lp.bd);
-          wline('WALLS::INTERNAL',i1[0],oy+i1[1],i2[0],oy+i2[1]);
+          wline('03_Walls::Internal',i1[0],oy+i1[1],i2[0],oy+i2[1]);
         }
         // NOTE: living/bedroom full-depth partition REMOVED — the bed back wall alone
         // defines the zone boundary; adding a full partition created a room that needs a door.
         // 3. pod perimeter at corridor end
-        if(u.svc&&u.svc.pod) wbox('WALLS::INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+        if(u.svc&&u.svc.pod) wbox('03_Walls::Internal',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
       }
     });
-    lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy);
+    lvl.cores.forEach(c=>{ rect('01_FloorPlate::Core',c.x,oy+c.y,c.wx,c.wy);
       const cf=coreFitout(c);
-      rect('CORE',cf.stair.x,oy+cf.stair.y,cf.stair.wx,cf.stair.wy);
-      cf.treads.forEach(t=> line('CORE', t[0][0], oy+t[0][1], t[1][0], oy+t[1][1]));
-      rect('CORE',cf.lift.x,oy+cf.lift.y,cf.lift.wx,cf.lift.wy);
-      line('CORE',cf.lift.x,oy+cf.lift.y,cf.lift.x+cf.lift.wx,oy+cf.lift.y+cf.lift.wy);
-      line('CORE',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
-      text('TEXT',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
-      text('TEXT',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
-      wbox('WALLS::CORE',c.x,oy+c.y,c.wx,c.wy); });
+      rect('01_FloorPlate::Core',cf.stair.x,oy+cf.stair.y,cf.stair.wx,cf.stair.wy);
+      cf.treads.forEach(t=> line('01_FloorPlate::Core', t[0][0], oy+t[0][1], t[1][0], oy+t[1][1]));
+      rect('01_FloorPlate::Core',cf.lift.x,oy+cf.lift.y,cf.lift.wx,cf.lift.wy);
+      line('01_FloorPlate::Core',cf.lift.x,oy+cf.lift.y,cf.lift.x+cf.lift.wx,oy+cf.lift.y+cf.lift.wy);
+      line('01_FloorPlate::Core',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
+      text('06_Annotation::Labels',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
+      text('06_Annotation::Labels',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
+      wbox('03_Walls::Core',c.x,oy+c.y,c.wx,c.wy); });
     // street-frontage names
     const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
     if(fr){ const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' FRONTAGE');
-      if(fr.front) text('STREET_TEXT',2,oy-1.2,cap('front'),0.6);
-      if(fr.rear)  text('STREET_TEXT',2,oy+m.D+1.6,cap('rear'),0.6);
-      if(fr.left)  text('STREET_TEXT',-1.2,oy+m.D/2,cap('left'),0.6);
-      if(fr.right) text('STREET_TEXT',m.F+1.2,oy+m.D/2,cap('right'),0.6); }
-    text('TEXT',0,oy+m.D+3.0,(key==='sb'?'SETBACK LEVEL':'TYPICAL FLOOR')+'  ['+((m.P.kind&&m.P.kind.label)||'')+']',0.6);
+      if(fr.front) text('06_Annotation::Labels',2,oy-1.2,cap('front'),0.6);
+      if(fr.rear)  text('06_Annotation::Labels',2,oy+m.D+1.6,cap('rear'),0.6);
+      if(fr.left)  text('06_Annotation::Labels',-1.2,oy+m.D/2,cap('left'),0.6);
+      if(fr.right) text('06_Annotation::Labels',m.F+1.2,oy+m.D/2,cap('right'),0.6); }
+    text('06_Annotation::Labels',0,oy+m.D+3.0,(key==='sb'?'SETBACK LEVEL':'TYPICAL FLOOR')+'  ['+((m.P.kind&&m.P.kind.label)||'')+']',0.6);
   });
   // ── 3D massing: offset +X (solid faces; outline rings are closed polylines) ──
   const ox=m.F+10;
   m.levels.forEach(l=>{ const f=l.frame, z0=l.z, z1=l.z+l.h*0.94;
     const c=[[f.x0,f.y0],[f.x1,f.y0],[f.x1,f.y1],[f.x0,f.y1]].map(p=>[p[0]+ox,p[1]]);
-    face('MASS_3D',[[c[0][0],c[0][1],z1],[c[1][0],c[1][1],z1],[c[2][0],c[2][1],z1],[c[3][0],c[3][1],z1]]);
-    face('MASS_3D',[[c[0][0],c[0][1],z0],[c[1][0],c[1][1],z0],[c[2][0],c[2][1],z0],[c[3][0],c[3][1],z0]]);
+    face('07_Massing',[[c[0][0],c[0][1],z1],[c[1][0],c[1][1],z1],[c[2][0],c[2][1],z1],[c[3][0],c[3][1],z1]]);
+    face('07_Massing',[[c[0][0],c[0][1],z0],[c[1][0],c[1][1],z0],[c[2][0],c[2][1],z0],[c[3][0],c[3][1],z0]]);
     for(let i=0;i<4;i++){const a=c[i],b=c[(i+1)%4];
-      face('MASS_3D',[[a[0],a[1],z0],[b[0],b[1],z0],[b[0],b[1],z1],[a[0],a[1],z1]]);}
+      face('07_Massing',[[a[0],a[1],z0],[b[0],b[1],z0],[b[0],b[1],z1],[a[0],a[1],z1]]);}
   });
   L.push('0','ENDSEC','0','EOF');
   download(L.join('\r\n'),'massing.dxf','application/dxf');
