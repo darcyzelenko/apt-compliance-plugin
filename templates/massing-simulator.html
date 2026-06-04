@@ -974,7 +974,7 @@
     <div class="grp">
       <h3>Setbacks &amp; envelope</h3>
       <div class="row2">
-        <div class="field"><label>Front (street) <span class="val" id="vfront">5.0</span></label><input type="range" id="front" min="0" max="12" step="0.6" value="5.4"></div>
+        <div class="field"><label>Front (street) <span class="val" id="vfront">3.6</span></label><input type="range" id="front" min="0" max="12" step="0.6" value="5.4"></div>
         <div class="field"><label>Rear <span class="val" id="vrear">4.8</span></label><input type="range" id="rear" min="0" max="12" step="0.6" value="4.8"></div>
       </div>
       <div class="row2">
@@ -2240,16 +2240,70 @@ function dxfExport(m){
      and Rhino's importer applies the '_' hierarchy logic.
      No entity handles, no AcDb subclass markers — minimal is most reliable. */
   L.push(
-    '0','SECTION','2','HEADER',
-    '9','$ACADVER','1','AC1015',
-    '9','$INSUNITS','70','4',
+    '0','SECTION',
+    '2','HEADER',
+    '9','$ACADVER',
+    '1','AC1009',
+    '9','$INSUNITS',
+    '70','4',
     '0','ENDSEC',
-    '0','SECTION','2','TABLES',
-    '0','TABLE','2','LAYER','70',String(layers.length)
+
+    '0','SECTION',
+    '2','TABLES',
+
+    '0','TABLE',
+    '2','LTYPE',
+    '70','1',
+    '0','LTYPE',
+    '2','CONTINUOUS',
+    '70','0',
+    '3','Solid line',
+    '72','65',
+    '73','0',
+    '40','0.0',
+    '0','ENDTAB',
+
+    '0','TABLE',
+    '2','STYLE',
+    '70','1',
+    '0','STYLE',
+    '2','STANDARD',
+    '70','0',
+    '40','0.0',
+    '41','1.0',
+    '50','0.0',
+    '71','0',
+    '42','2.5',
+    '3','txt',
+    '4','',
+    '0','ENDTAB',
+
+    '0','TABLE',
+    '2','LAYER',
+    '70',String(layers.length)
   );
-  layers.forEach(([nm,col])=>
-    L.push('0','LAYER','2',nm,'70','0','62',String(col),'6','CONTINUOUS'));
-  L.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+
+  layers.forEach(([nm,col]) =>
+    L.push(
+    '0','LAYER',
+    '2',nm,
+    '70','0',
+    '62',String(col),
+    '6','CONTINUOUS'
+    )
+  );
+
+  L.push(
+    '0','ENDTAB',
+    '0','ENDSEC',
+
+    '0','SECTION',
+    '2','BLOCKS',
+    '0','ENDSEC',
+
+    '0','SECTION',
+    '2','ENTITIES'
+  );
 
   /* ── Entity helpers ──────────────────────────────────────────────────── */
   const line=(lay,x1,y1,x2,y2)=>L.push(
