@@ -228,16 +228,15 @@
       windows.push({ t0: i * bedW + 0.3, t1: (i + 1) * bedW - 0.3, kind: 'bed' });
       doors.push({ t: i * bedW + bedW / 2, d: bd });
     }
-    rooms.push(rect(BW, 0, LW, D, 'living', 'LIVING'));
     windows.push({ t0: BW + 0.4, t1: W - 0.4, kind: 'living' });
     const podW = Math.min(C.podW, BW), podT = Math.max(0, BW - podW);
-    rooms.push(rect(podT, bd + 0.1, podW, Math.min(C.podD, D - bd - C.entryD - 0.2), 'pod', 'POD'));
-    doors.push({ t: podT + podW * 0.5, d: bd + 0.1 });
-    rooms.push(rect(BW, bd + 0.1, C.kitW, C.kitD, 'kitchen', 'KIT'));
+    const svcD = Math.min(C.podD, D * 0.28);
+    const svcStart = D - C.entryD - svcD;
+    rooms.push(rect(podT, svcStart, podW, svcD, 'pod', 'POD'));
+    doors.push({ t: podT + podW * 0.5, d: svcStart });
+    rooms.push(rect(BW, Math.max(svcStart, D - C.entryD - C.kitD), C.kitW, C.kitD, 'kitchen', 'KIT'));
     const entW = Math.min(1.6, BW);
-    rooms.push(rect(0, D - C.entryD, entW, C.entryD, 'entry', 'ENTRY'));
     doors.push({ t: entW * 0.5, d: D });
-    rooms.push(rect(0, bd, Math.max(0.3, podT), D - bd, 'hall', ''));
     return { rooms, windows, doors, snorkel, livingFrontage: LW, bedFrontage: BW, bedDepth: bd };
   }
 
