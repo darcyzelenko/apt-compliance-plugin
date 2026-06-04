@@ -478,6 +478,344 @@
 });
 
 </script>
+<script>
+/* floorplate-engine.js — inlined. Source: floorplate-engine.js v0.1
+   Handles all floor plan geometry: tileRow, flexFill, applySwalls, layoutLevel.
+   Outputs raw unit footprints; the main script runs attachServices on the final widths. */
+/* ============================================================================
+   floorplate-engine.js  —  Floor Plate Generation Engine  v0.1
+
+   Generates apartment floor plan layouts from site dimensions, setbacks,
+   typology, mix and core configuration.
+
+   Pure / stateless: no DOM, no Three.js, no room-layout (that stays in the
+   host app via attachServices / layout-engine). Returns raw unit footprints
+   with world positions so the host can post-process rooms on correct widths.
+
+   UMD: works as browser global (FloorplateEngine) or Node require().
+   ============================================================================ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.FloorplateEngine = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const GRID = 0.6;
+  const snap  = (v, g) => Math.round(v / (g || GRID)) * (g || GRID);
+  const floorG = v => Math.floor(v / GRID + 1e-6) * GRID;
+  const clamp  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  /* ── Typology definitions ────────────────────────────────────────────────── */
+  const DEV_KINDS = {
+    double_loaded : { label: 'Double-loaded corridor', core: 'blade', circ: 'central'  },
+    single_loaded : { label: 'Single-loaded corridor', core: 'blade', circ: 'side'     },
+    multi_core    : { label: 'Multi-core',             core: 'blade', circ: 'central'  },
+    point_stair   : { label: 'Point stair',            core: 'point', circ: 'lobby'    },
+    through_double: { label: 'Through double',         core: 'blade', circ: 'central'  },
+    courtyard     : { label: 'Courtyard',              core: 'point', circ: 'gallery'  },
+  };
+
+  /* ── Geometry primitives ─────────────────────────────────────────────────── */
+  const R = (x, y, wx, wy, kind) => ({ x, y, wx, wy, kind });
+
+  function buildFrame(bx0, by0, bx1, by1) {
+    let W = floorG(bx1 - bx0), D = floorG(by1 - by0);
+    bx1 = bx0 + W; by1 = by0 + D;
+    const alongX = W >= D;
+    return { x0:bx0, y0:by0, x1:bx1, y1:by1, len:alongX?W:D, depth:alongX?D:W, alongX };
+  }
+
+  function mapRect(frame, u, v, du, dv, meta) {
+    let x, y, wx, wy;
+    if (frame.alongX) { x = frame.x0+u; y = frame.y0+v; wx = du; wy = dv; }
+    else              { x = frame.x0+v; y = frame.y0+u; wx = dv; wy = du; }
+    return Object.assign({ x, y, wx, wy }, meta);
+  }
+
+  /* ── Minimum viable unit width (facade direction) ───────────────────────── */
+  const N_BEDS = { b1:1, b2:2, b3:3 };
+  const minViableW = t => (N_BEDS[t] || 1) * 2.4 + 3.6;
+
+  /* ── Orientation ─────────────────────────────────────────────────────────── */
+  function northnessOf(nrm, northVec) {
+    const n = northVec || [0, 1];
+    return nrm[0]*n[0] + nrm[1]*n[1];
+  }
+
+  /* ── Tile a single row ───────────────────────────────────────────────────── */
+  function tileRow(len, aptD, areas, shares, counts, frame, vOff, level, wscale) {
+    wscale = wscale || 1;
+    const fr = t => Math.max(
+      snap(Math.min(14, Math.max(3, ((areas[t] || 70) / aptD) * wscale))),
+      minViableW(t));
+    const units = []; let u = 0;
+    while (true) {
+      const total = counts.b1 + counts.b2 + counts.b3;
+      const order = ['b1', 'b2', 'b3'].sort((a, b) => {
+        const da = (total ? counts[a]/total : 0) - shares[a];
+        const db = (total ? counts[b]/total : 0) - shares[b];
+        return da - db;
+      });
+      let placed = null;
+      for (const t of order) {
+        if (shares[t] <= 0) continue;
+        if (u + fr(t) <= len + 1e-6) { placed = t; break; }
+      }
+      if (!placed) {
+        for (const t of ['b1', 'b2', 'b3']) {
+          if (shares[t] > 0 && u + fr(t) <= len + 1e-6) { placed = t; break; }
+        }
+      }
+      if (!placed) break;
+      const w = fr(placed);
+      units.push(mapRect(frame, u, vOff, w, aptD, { type: placed, level }));
+      counts[placed]++; u += w;
+    }
+    return units;
+  }
+
+  /* ── Flex fill — iterative proportional width distribution ──────────────── */
+  function flexFill(units, spanLen, frame, aptD, areas) {
+    if (!units.length || spanLen <= 0) return;
+    const minWf = u => minViableW(u.type);
+    const maxWf = u => Math.min(16, Math.max(minWf(u), ((areas[u.type] || 70) / aptD) * 2));
+    let ww = units.map(u => frame.alongX ? u.wx : u.wy);
+    for (let iter = 0; iter < 12; iter++) {
+      const used = ww.reduce((a, b) => a + b, 0), rem = spanLen - used;
+      if (Math.abs(rem) < 1e-4) break;
+      const canFlex = ww.map((w, i) => rem > 0 ? w < maxWf(units[i]) - 1e-6 : w > minWf(units[i]) + 1e-6);
+      const nf = canFlex.filter(Boolean).length; if (!nf) break;
+      const d = rem / nf;
+      ww = ww.map((w, i) => canFlex[i] ? Math.max(minWf(units[i]), Math.min(maxWf(units[i]), w + d)) : w);
+    }
+    const start = frame.alongX ? units[0].x : units[0].y; let pos = start;
+    units.forEach((u, i) => {
+      if (frame.alongX) { u.x = pos; u.wx = ww[i]; }
+      else              { u.y = pos; u.wy = ww[i]; }
+      pos += ww[i];
+    });
+  }
+
+  /* ── S-wall party wall negotiation ──────────────────────────────────────── */
+  function applySwalls(units, aptD, frame, rowNrm) {
+    if (units.length < 2) return;
+    const STEP = 1.2, BAND = aptD * 0.5;
+    const horiz = rowNrm[1] !== 0;
+    const facadeAtLow = horiz ? rowNrm[1] < 0 : rowNrm[0] < 0;
+    for (let i = 0; i < units.length - 1; i++) {
+      const A = units[i], B = units[i+1];
+      const minWA = minViableW(A.type), minWB = minViableW(B.type);
+      const Aw = horiz ? A.wx : A.wy, Bw = horiz ? B.wx : B.wy;
+      if (Aw > minWA + 1.5 || Bw < minWB + STEP - 1e-6) continue;
+      if (horiz) {
+        const sY0 = facadeAtLow ? A.y : A.y + aptD - BAND;
+        const dY0 = facadeAtLow ? A.y + BAND : A.y;
+        A.footprint = [{ x:A.x,          y:sY0, wx:Aw+STEP, wy:BAND       },
+                       { x:A.x,          y:dY0, wx:Aw-STEP, wy:aptD-BAND  }];
+        B.footprint = [{ x:A.x+Aw+STEP,  y:sY0, wx:Bw-STEP, wy:BAND       },
+                       { x:A.x+Aw-STEP,  y:dY0, wx:Bw+STEP, wy:aptD-BAND  }];
+      } else {
+        const sX0 = facadeAtLow ? A.x : A.x + aptD - BAND;
+        const dX0 = facadeAtLow ? A.x + BAND : A.x;
+        A.footprint = [{ x:sX0, y:A.y,          wx:BAND,      wy:Aw+STEP },
+                       { x:dX0, y:A.y,          wx:aptD-BAND, wy:Aw-STEP }];
+        B.footprint = [{ x:sX0, y:A.y+Aw+STEP,  wx:BAND,      wy:Bw-STEP },
+                       { x:dX0, y:A.y+Aw-STEP,  wx:aptD-BAND, wy:Bw+STEP }];
+      }
+      A.shallowW = Aw + STEP;
+      B.shallowW = Bw - STEP;
+    }
+  }
+
+  /* ── Tile a courtyard side (simple row, no services) ────────────────────── */
+  function tileWorldSide(ox, oy, dir, len, depth, inward, areas, shares, counts, level, nrm, wscale) {
+    const fr = t => snap(Math.min(14, Math.max(3, ((areas[t]||70) / depth) * (wscale||1))));
+    const out = []; let u = 0;
+    while (true) {
+      const tot = counts.b1 + counts.b2 + counts.b3;
+      const order = ['b1','b2','b3'].sort((a,b) =>
+        ((tot?counts[a]/tot:0)-shares[a]) - ((tot?counts[b]/tot:0)-shares[b]));
+      let placed = null;
+      for (const t of order) { if (shares[t]>0 && u+fr(t)<=len+1e-6) { placed=t; break; } }
+      if (!placed) for (const t of ['b1','b2','b3']) { if (shares[t]>0 && u+fr(t)<=len+1e-6) { placed=t; break; } }
+      if (!placed) break;
+      const w = fr(placed);
+      const ax = ox+dir[0]*u, ay = oy+dir[1]*u;
+      const x0 = ax+Math.min(0,dir[0]*w)+Math.min(0,inward[0]*depth);
+      const y0 = ay+Math.min(0,dir[1]*w)+Math.min(0,inward[1]*depth);
+      const wx = Math.abs(dir[0]*w)+Math.abs(inward[0]*depth);
+      const wy = Math.abs(dir[1]*w)+Math.abs(inward[1]*depth);
+      out.push({ x:x0, y:y0, wx, wy, type:placed, level, nrm });
+      counts[placed]++; u += w;
+    }
+    return out;
+  }
+
+  /* ── Layout one floor level ──────────────────────────────────────────────── */
+  function layoutLevel(frame, opts, shares, counts, level, isSB, coreRef) {
+    const {
+      corr    = 1.8,
+      coreLen = 6.0,
+      devkind = 'double_loaded',
+      northVec = [0, 1],
+      areas   = { b1:50, b2:70, b3:90 },
+      minD    = 6,
+      maxD    = 10,
+    } = opts;
+
+    const kind = DEV_KINDS[devkind] || DEV_KINDS.double_loaded;
+    const CR   = coreRef || frame;
+    const northness = nrm => northnessOf(nrm, northVec);
+    const vU   = frame.alongX ? [0,1] : [1,0];
+    const negV = [-vU[0], -vU[1]];
+
+    const canDouble = (frame.depth - corr) / 2 >= minD;
+    const single    = (kind.circ === 'side') || !canDouble;
+    const aptD      = single
+      ? floorG(Math.min(maxD, frame.depth - corr))
+      : floorG(Math.min(maxD, (frame.depth - corr) / 2));
+    const usedDepth = single ? aptD + corr : 2 * aptD + corr;
+    const dv0 = Math.max(0, (frame.depth - usedDepth) / 2);
+    const eff = {
+      alongX: frame.alongX, len: frame.len, depth: usedDepth,
+      x0: frame.x0 + (frame.alongX ? 0 : dv0), y0: frame.y0 + (frame.alongX ? dv0 : 0),
+      x1: frame.x1 - (frame.alongX ? 0 : dv0), y1: frame.y1 - (frame.alongX ? dv0 : 0),
+    };
+    const pulled = usedDepth < frame.depth - 1e-6;
+
+    /* COURTYARD */
+    if (devkind === 'courtyard') {
+      const { x0:X0, y0:Y0, x1:X1, y1:Y1 } = frame;
+      const W = X1-X0, Dp = Y1-Y0;
+      const rd = floorG(Math.min(maxD, Math.max(minD, 7.8)));
+      if (W - 2*rd >= minD && Dp - 2*rd >= minD) {
+        let units = [];
+        const nOpts = { areas, northVec };
+        const ws = nrm => 1 - 0.18 * northnessOf(nrm, northVec);
+        units = units.concat(tileWorldSide(X0+rd,Y0, [1,0], W-2*rd, rd, [0,1],  areas,shares,counts,level,[0,-1],ws([0,-1])));
+        units = units.concat(tileWorldSide(X0+rd,Y1, [1,0], W-2*rd, rd, [0,-1], areas,shares,counts,level,[0, 1],ws([0, 1])));
+        units = units.concat(tileWorldSide(X0,Y0+rd,  [0,1], Dp-2*rd,rd, [1,0], areas,shares,counts,level,[-1,0],ws([-1,0])));
+        units = units.concat(tileWorldSide(X1,Y0+rd,  [0,1], Dp-2*rd,rd, [-1,0],areas,shares,counts,level,[1, 0],ws([ 1,0])));
+        const cores = [R(CR.x0,CR.y0,coreLen,rd,'core'), R(CR.x1-coreLen,CR.y1-rd,coreLen,rd,'core')];
+        const court = R(X0+rd, Y0+rd, W-2*rd, Dp-2*rd, 'court');
+        return { units, cores, corrRect:court, corrRects:[], aptD:rd, corr, coreCount:2, double:false,
+          frame:{...eff,x0:X0,y0:Y0,x1:X1,y1:Y1}, envelope:frame, pulled:false, level, isSB, devkind, court };
+      }
+    }
+
+    /* BAR / BLADE */
+    const point      = kind.core === 'point';
+    const bladeDepth = Math.min(eff.depth, corr + 4.0);
+    const bladeVst   = Math.max(0, aptD - (bladeDepth - corr) / 2);
+    const coreW      = point ? Math.min(eff.depth, 6.0) : bladeDepth;
+    let coreCount    = point ? Math.max(1, Math.round(CR.len/24)) : Math.max(1, Math.ceil(CR.len/45));
+    if (devkind === 'point_stair') coreCount = 1;
+    const refStart = CR.alongX ? CR.x0 : CR.y0;
+    const effStart = eff.alongX ? eff.x0 : eff.y0;
+    const cores = [], coreSpots = [];
+    for (let i = 0; i < coreCount; i++) {
+      const cWorld = refStart + CR.len * (i+1) / (coreCount+1);
+      const c = snap((cWorld - effStart) - coreLen/2);
+      coreSpots.push([c, c+coreLen]);
+      if (point) { const v = (eff.depth-coreW)/2; cores.push(mapRect(eff,c,v,coreLen,coreW,{kind:'core'})); }
+      else        cores.push(mapRect(eff,c,bladeVst,coreLen,coreW,{kind:'core'}));
+    }
+    coreSpots.sort((a,b) => a[0]-b[0]);
+    const free = []; let cur = 0;
+    for (const [a,b] of coreSpots) { if (a-cur>0.6) free.push([cur,a]); cur=Math.max(cur,b); }
+    if (eff.len - cur > 0.6) free.push([cur, eff.len]);
+
+    const rows  = single ? [{v:0,nrm:negV}] : [{v:0,nrm:negV},{v:aptD+corr,nrm:vU}];
+    let units = [];
+    rows.forEach(row => {
+      const wscale = 1 - 0.18 * northness(row.nrm);
+      for (const [a,b] of free) {
+        const sub = tileRow(b-a, aptD, areas, shares, counts, eff, row.v, level, wscale);
+        // world-position shift
+        sub.forEach(s => { if (eff.alongX) s.x += a; else s.y += a; s.nrm = row.nrm; });
+        // flex-fill to eliminate wasted space (widths finalised here, before host runs rooms)
+        flexFill(sub, b-a, eff, aptD, areas);
+        // S-wall party wall steps
+        applySwalls(sub, aptD, eff, row.nrm);
+        units = units.concat(sub);
+      }
+    });
+
+    const corrRect = mapRect(eff, 0, aptD, eff.len, corr, { kind:'corridor' });
+    return { units, cores, corrRect, corrRects:[corrRect], aptD, corr, coreCount, double:!single,
+      frame:eff, envelope:frame, pulled, level, isSB, devkind };
+  }
+
+  /* ── Top-level entry point ───────────────────────────────────────────────── */
+  function generateFloorplan(input) {
+    const {
+      F = 30, D = 38,
+      setbacks = {},
+      corridor = 1.8, coreLen = 6.0,
+      storeys = 5, f2f = 3.1, dig = 0,
+      mix    = { b1:30, b2:50, b3:20 },
+      areas  = { b1:50, b2:70, b3:90 },
+      devkind = 'double_loaded',
+      northVec = [0, 1],
+      minD = 6, maxD = 10,
+    } = input;
+
+    const sb = setbacks;
+    const bx0 = sb.left  ?? sb.side  ?? 3;
+    const by0 = sb.front ?? 5.4;
+    const bx1 = F - (sb.right ?? sb.side ?? 3);
+    const by1 = D - (sb.rear  ?? 4.8);
+    const siteArea = F * D;
+
+    if (bx1 - bx0 < 3 || by1 - by0 < 3) {
+      return { levels:[], typFrame:null, sbFrame:null, siteArea, counts:{b1:0,b2:0,b3:0}, total:0,
+               warnings:['Setbacks exceed site — no buildable envelope.'] };
+    }
+
+    const mixTotal = (mix.b1||0)+(mix.b2||0)+(mix.b3||0) || 1;
+    const shares   = { b1:(mix.b1||0)/mixTotal, b2:(mix.b2||0)/mixTotal, b3:(mix.b3||0)/mixTotal };
+    const counts   = { b1:0, b2:0, b3:0 };
+
+    const typFrame = buildFrame(bx0, by0, bx1, by1);
+    const upper = sb.upper ?? 3;
+    const ubx0 = bx0+upper, uby0 = by0+upper, ubx1 = bx1-upper, uby1 = by1-upper;
+    const haveSB = storeys > 1 && ubx1 > ubx0 && uby1 > uby0;
+    const sbFrame = haveSB ? buildFrame(ubx0, uby0, ubx1, uby1) : typFrame;
+    const coreRef = haveSB ? sbFrame : typFrame;
+
+    const opts = { corr:corridor, coreLen, devkind, northVec, areas, minD, maxD };
+    const levels = [];
+    for (let s = 0; s < storeys; s++) {
+      const isSB = (s === storeys-1) && haveSB;
+      const fr   = isSB ? sbFrame : typFrame;
+      const lvl  = layoutLevel(fr, opts, shares, counts, s, isSB, coreRef);
+      levels.push(Object.assign(lvl, { z: s*f2f - dig, h: f2f }));
+    }
+
+    // recount from placed units
+    counts.b1=counts.b2=counts.b3=0;
+    levels.forEach(l => l.units.forEach(u => counts[u.type]++));
+    const total = counts.b1+counts.b2+counts.b3;
+
+    const warnings = [];
+    if (total === 0) warnings.push('No apartments placed — check mix or setbacks.');
+    ['b1','b2','b3'].forEach(t => {
+      const got = total ? counts[t]/total : 0;
+      if (Math.abs(got - shares[t]) > 0.15 && shares[t] > 0)
+        warnings.push(`${t.replace('b','')}-bed: ${Math.round(got*100)}% landed vs ${Math.round(shares[t]*100)}% target`);
+    });
+
+    return { version:'0.1', levels, typFrame, sbFrame, coreRef, siteArea, counts, total,
+             targetMix:shares, warnings };
+  }
+
+  return {
+    version: '0.1', GRID, DEV_KINDS,
+    generateFloorplan, layoutLevel, buildFrame, mapRect, tileRow, flexFill, applySwalls,
+  };
+});
+
+</script>
 <style>
   :root{
     --bg:#0e1014; --panel:#161a20; --panel2:#1c222b; --line:#2a313c; --line2:#39434f;
@@ -1061,7 +1399,7 @@ function layoutApartment(W,D,type){
   windows.push({t0:BW+0.4, t1:W-0.4});
   // pod: deep (behind bedrooms), right end of the back band, adjacent to living column
   const podW=Math.min(podWmax, BW), podT=Math.max(0, BW-podW);
-  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'SERVICES::POD'});
+  rooms.push({t:podT, d:bd+0.1, wt:podW, wd:Math.min(podD,D-bd-entryD-0.2), kind:'pod', label:'SERVICES_POD'});
   doors.push({t:podT-0.0+podW*0.5, d:bd+0.1});      // hall -> pod
   // kitchen: long edge perpendicular to facade, sharing the pod wall (t=BW)
   rooms.push({t:BW, d:bd+0.1, wt:kitW, wd:kitD, kind:'kitchen', label:'KIT'});
@@ -1330,78 +1668,86 @@ function layoutLevel(frame, P, shares, counts, level, isSB, coreRef){
 function generate(){
   try { _generate(); } catch(err) {
     console.error('FORMWORK generate() error:', err);
-    renderEmpty('Layout error: '+err.message+' — check console for details.');
+    renderEmpty('Layout error: '+err.message+' — check browser console for the stack trace.');
   }
 }
 function _generate(){
   const P=params();
   const F=lots.reduce((s,l)=>s+l.f,0), D=Math.max(...lots.map(l=>l.d));
   const siteArea=F*D;
-  // buildable rect (axis-aligned; front = min-Y street edge)
-  let bx0=P.side, by0=P.front, bx1=F-P.side, by1=D-P.rear;
   const warns=[];
-  if(bx1-bx0<3 || by1-by0<3){
-    renderEmpty('Setbacks exceed the site — no buildable envelope.'); return;
+
+  // ── Floor plan geometry via FloorplateEngine ──────────────────────────────
+  // flexFill and applySwalls run inside the engine, so every unit's wx/wy is
+  // finalised before attachServices computes rooms — no room-boundary crossover.
+  const FE = window.FloorplateEngine;
+  if(!FE) throw new Error('FloorplateEngine not loaded');
+
+  const fp = FE.generateFloorplan({
+    F, D,
+    setbacks:{ front:P.front, rear:P.rear, left:P.side, right:P.side, upper:P.upper },
+    corridor:P.corr, coreLen:P.coreLen,
+    storeys:P.storeys, f2f:P.f2f, dig:P.dig,
+    mix:P.mix, areas:P.area,
+    devkind:P.devkind, northVec:northVec(),
+    minD:P.minD||6, maxD:P.maxD||10,
+  });
+
+  if(!fp.levels.length){
+    renderEmpty(fp.warnings[0]||'Setbacks exceed the site — no buildable envelope.'); return;
   }
-  const shares={b1:P.mix.b1,b2:P.mix.b2,b3:P.mix.b3};
-  const ms=shares.b1+shares.b2+shares.b3||1; shares.b1/=ms;shares.b2/=ms;shares.b3/=ms;
-  const counts={b1:0,b2:0,b3:0};
 
-  const typFrame=buildFrame(bx0,by0,bx1,by1);
-  const sbFrame =buildFrame(bx0+P.upper,by0+P.upper,bx1-P.upper,by1-P.upper);
-
-  const haveSB = P.storeys>1 && (sbFrame.x1>sbFrame.x0 && sbFrame.y1>sbFrame.y0);
-  const coreRef = haveSB? sbFrame : typFrame;   // narrower frame -> cores valid on every level
+  // ── Room layout + services (run on final widths from the engine) ──────────
+  const clipPoly = (siteGeo&&siteGeo.poly)?siteGeo.poly:null;
+  const counts={b1:0,b2:0,b3:0}; let nla=0, gfa=0;
   const nTyp=Math.max(0,P.storeys-1);
-  const clipPoly = (siteGeo && siteGeo.poly) ? siteGeo.poly : null;
-  const levels=[];
-  let gfa=0;
-  for(let s=0;s<P.storeys;s++){
-    const isSB = (s===P.storeys-1) && haveSB;
-    const fr = isSB? sbFrame : typFrame;
-    const lvl=layoutLevel(fr,P,shares,counts,s,isSB,coreRef);
-    // keep the building inside a jagged title boundary: drop units that fall outside
-    if(clipPoly) lvl.units = lvl.units.filter(u=>rectCornersInPoly(u,clipPoly));
-    const z = s*P.f2f - P.dig;
+
+  const levels = fp.levels.map(lvl=>{
+    // attachServices sets u.svc, u.plan, u.score, u.layoutParams on each unit
+    lvl.units.forEach(u=>attachServices(u,u.nrm,P));
+    if(clipPoly) lvl.units=lvl.units.filter(u=>rectCornersInPoly(u,clipPoly));
     const E=lvl.frame;
-    const cp = clipPoly? clipPolyByRect(clipPoly,E.x0,E.y0,E.x1,E.y1) : null;
-    const courtA = lvl.court? lvl.court.wx*lvl.court.wy : 0;
-    const plateArea = Math.max(0, (cp&&cp.length>=3? polyArea(cp) : (E.x1-E.x0)*(E.y1-E.y0)) - courtA);
-    lvl.plateArea = plateArea; gfa += plateArea;
-    levels.push(Object.assign(lvl,{z, h:P.f2f, fArea:plateArea}));
-  }
-  // recompute mix + NLA from the units that actually survived clipping
-  counts.b1=counts.b2=counts.b3=0; let nla=0;
-  levels.forEach(l=>l.units.forEach(u=>{ counts[u.type]++; nla+=u.wx*u.wy; }));
+    const cp=clipPoly?clipPolyByRect(clipPoly,E.x0,E.y0,E.x1,E.y1):null;
+    const courtA=lvl.court?lvl.court.wx*lvl.court.wy:0;
+    const plateArea=Math.max(0,(cp&&cp.length>=3?polyArea(cp):(E.x1-E.x0)*(E.y1-E.y0))-courtA);
+    lvl.plateArea=plateArea; gfa+=plateArea;
+    lvl.units.forEach(u=>{ counts[u.type]++; nla+=u.wx*u.wy; });
+    return lvl;
+  });
+
   const total=counts.b1+counts.b2+counts.b3;
   let typU=0; levels.forEach(l=>{ if(!l.isSB) typU+=l.units.length; });
-  const upf = nTyp? Math.round(typU/nTyp) : (levels[0]?levels[0].units.length:0);
+  const upf=nTyp?Math.round(typU/nTyp):(levels[0]?levels[0].units.length:0);
 
-  // engine design quality: mean apartment layout score + hard-fail / conflict tallies
-  let scoreSum=0, scoreN=0, invalidN=0, conflictN=0, engineUsed=false;
-  levels.forEach(l=>l.units.forEach(u=>{ if(u.score!=null){ engineUsed=true; scoreSum+=u.score; scoreN++;
-    if(u.valid===false) invalidN++; conflictN+=(u.conflicts?u.conflicts.filter(c=>c.sev>=2).length:0); } }));
-  const designScore = scoreN? scoreSum/scoreN : null;
+  // design score
+  let scoreSum=0,scoreN=0,invalidN=0,conflictN=0,engineUsed=false;
+  levels.forEach(l=>l.units.forEach(u=>{ if(u.score!=null){
+    engineUsed=true; scoreSum+=u.score; scoreN++;
+    if(u.valid===false)invalidN++;
+    conflictN+=(u.conflicts?u.conflicts.filter(c=>c.sev>=2).length:0); }}));
+  const designScore=scoreN?scoreSum/scoreN:null;
 
   // metrics
-  const groundArea=levels[0]?levels[0].plateArea:0;
-  const fsr=gfa/siteArea, cov=100*groundArea/siteArea, eff=gfa? 100*nla/gfa:0;
-  const upc = upf/Math.max(1, levels[0]?levels[0].coreCount:1);
+  const groundArea=levels[0]?levels[0].plateArea||0:0;
+  const fsr=gfa/siteArea, cov=100*groundArea/siteArea, eff=gfa?100*nla/gfa:0;
+  const upc=upf/Math.max(1,levels[0]?levels[0].coreCount:1);
 
   // warnings
   if(P.storeys>6) warns.push(['warn','Above mid-rise',`${P.storeys} storeys exceeds the 6-storey mid-rise target.`]);
-  if(levels.some(l=>l.pulled)) warns.push(['warn','Plate pulled back',`Envelope deeper than 2×${P.maxD} m + corridor; plate held to ${(levels[0].double?2:1)*levels[0].aptD+P.corr|0} m for daylight and the remainder left as setback. Consider a light court to use the full envelope.`]);
-  if(levels[0] && !levels[0].double) warns.push(['warn','Single-loaded',`Plate too shallow to double-load — corridor serves one side only.`]);
-  if(upc>P.unitsPerCore) warns.push(['bad','Core overload',`≈${upf} apts/floor on ${levels[0].coreCount} core(s) = ${upc.toFixed(1)}/core (>${P.unitsPerCore}). Add a core.`]);
-  // mix deviation
-  ['b1','b2','b3'].forEach(t=>{ const got=total?counts[t]/total:0; if(Math.abs(got-shares[t])>0.12 && shares[t]>0)
-    warns.push(['warn','Mix drift',`${t.replace('b','')}-bed landed at ${(got*100).toFixed(0)}% vs ${(shares[t]*100).toFixed(0)}% target (grid/geometry constraint).`]); });
-  if(total>0 && warns.filter(w=>w[0]==='bad').length===0) warns.unshift(['ok','Feasible',`${total} apartments fit the envelope on the 600 mm grid.`]);
-  if(invalidN>0) warns.push(['warn','Layout conflicts',`${invalidN} apartment(s) fail a hard layout check (e.g. min room dimension) — flagged red on the floor plan.`]);
+  if(levels.some(l=>l.pulled)) warns.push(['warn','Plate pulled back','Envelope deeper than max apt depth; plate held back for daylight.']);
+  if(levels[0]&&!levels[0].double) warns.push(['warn','Single-loaded','Plate too shallow for double-loaded corridor.']);
+  if(upc>P.unitsPerCore) warns.push(['bad','Core overload',`≈${upf} apts/floor on ${levels[0].coreCount} core(s) = ${upc.toFixed(1)}/core. Add a core.`]);
+  const shares=fp.targetMix;
+  ['b1','b2','b3'].forEach(t=>{ const got=total?counts[t]/total:0;
+    if(Math.abs(got-shares[t])>0.12&&shares[t]>0)
+      warns.push(['warn','Mix drift',`${t.replace('b','')}B: ${(got*100).toFixed(0)}% vs ${(shares[t]*100).toFixed(0)}% target.`]); });
+  fp.warnings.forEach(w=>warns.push(['warn','Floorplate',w]));
+  if(total>0&&warns.filter(w=>w[0]==='bad').length===0) warns.unshift(['ok','Feasible',`${total} apartments fit the envelope.`]);
+  if(invalidN>0) warns.push(['warn','Layout conflicts',`${invalidN} unit(s) flag a hard layout check — shown in red.`]);
 
-  const model={P,F,D,siteArea,typFrame,sbFrame,levels,counts,total,upf,upc,
+  const model={P,F,D,siteArea,typFrame:fp.typFrame,sbFrame:fp.sbFrame,levels,counts,total,upf,upc,
     designScore,engineUsed,invalidN,conflictN,
-    metrics:{fsr,cov,eff,gfa,nla,groundArea,height:P.storeys*P.f2f}, warns, site:siteGeo};
+    metrics:{fsr,cov,eff,gfa,nla,groundArea,height:P.storeys*P.f2f},warns,site:siteGeo};
   lastModel=model;
   paintMetrics(model); build3D(model); paintPlan(model);
   return model;
@@ -1580,6 +1926,7 @@ function streetLabels3D(m,cx,cy){
 }
 
 function build3D(m){
+  if(!glRoot || !scene){ console.warn('FORMWORK: 3D not ready, skipping build3D'); return; }
   clearGroup();
   const cx=m.F/2, cy=m.D/2;                      // recentre; plan-y -> three-z
   orbit.ty=m.metrics.height*0.35;
@@ -1845,10 +2192,10 @@ function dxfExport(m){
   const K=1000; // metres -> mm
   const L=[];
   const layers=[['SITE',5],['CONTEXT',8],['BUILDABLE',8],['SETBACK',253],['GRID',251],['CORRIDOR',8],['CORE',9],
-    ['APTS::1BED',3],['APTS::2BED',2],['APTS::3BED',1],['TEXT',7],['MASS_3D',4],
-    ['SERVICES::BALCONY',150],['SERVICES::POD',211],['SERVICES::ESM',41],['SERVICES::KITCHEN',31],['SERVICES::BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
-    ['WALLS::CORE',9],['WALLS::PARTY',1],['WALLS::INTERNAL',4],
-    ['ROOMS::BED',130],['ROOMS::LIVING',134],['ROOMS::ENTRY',252],['ROOMS::HALL',250],['DOOR',7],['WINDOW',141]];
+    ['APTS_1BED',3],['APTS_2BED',2],['APTS_3BED',1],['TEXT',7],['MASS_3D',4],
+    ['SERVICES_BALCONY',150],['SERVICES_POD',211],['SERVICES_ESM',41],['SERVICES_KITCHEN',31],['SERVICES_BULKHEAD',252],['COURT',254],['STREET_TEXT',6],
+    ['WALLS_CORE',9],['WALLS_PARTY',1],['WALLS_INTERNAL',4],
+    ['ROOMS_BED',130],['ROOMS_LIVING',134],['ROOMS_ENTRY',252],['ROOMS_HALL',250],['DOOR',7],['WINDOW',141]];
   // R12 header — lenient, universally importable; closed POLYLINE = single closed curve
   L.push('0','SECTION','2','HEADER','9','$ACADVER','1','AC1009','9','$INSUNITS','70','4','0','ENDSEC');
   L.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
@@ -1885,7 +2232,7 @@ function dxfExport(m){
     for(let gy=0;gy<=m.D+1e-6;gy+=GRID) line('GRID',0,oy+gy,m.F,oy+gy);
     (lvl.corrRects||[]).forEach(cr=>rect('CORRIDOR',cr.x,oy+cr.y,cr.wx,cr.wy));
     if(lvl.court){ rect('COURT',lvl.court.x,oy+lvl.court.y,lvl.court.wx,lvl.court.wy); text('COURT',lvl.court.x+0.3,oy+lvl.court.y+lvl.court.wy-0.6,'COURT',0.4); }
-    const RL={bed:'ROOMS::BED',living:'ROOMS::LIVING',kitchen:'SERVICES::KITCHEN',pod:'SERVICES::POD'};
+    const RL={bed:'ROOMS_BED',living:'ROOMS_LIVING',kitchen:'SERVICES_KITCHEN',pod:'SERVICES_POD'};
     lvl.units.forEach(u=>{
       const lay='APTS::'+u.type.replace('b','')+'BED';
       // apartment outline: L-shaped poly for S-wall units, closed rect otherwise
@@ -1897,7 +2244,7 @@ function dxfExport(m){
       }
       text('TEXT',u.x+0.3,oy+u.y+u.wy-0.6,u.type.replace('b','')+'B '+(u.wx*u.wy).toFixed(0),0.35);
       // room fills
-      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOMS::LIVING', r.x, oy+r.y, r.wx, r.wy);
+      if(u.plan&&u.plan.rooms) u.plan.rooms.forEach(r=>{ rect(RL[r.kind]||'ROOMS_LIVING', r.x, oy+r.y, r.wx, r.wy);
         if(r.label) text('TEXT', r.x+0.2, oy+r.y+0.6, r.label, 0.25); });
       // facade windows
       if(u.plan&&u.plan.windows) u.plan.windows.forEach(w=> line('WINDOW', w.a[0], oy+w.a[1], w.b[0], oy+w.b[1]));
@@ -1909,9 +2256,9 @@ function dxfExport(m){
         let dccw=((aE-aL)%360+360)%360, s=aL, e=aE; if(dccw>180){s=aE;e=aL;}
         arc('DOOR', px, oy+py, r, s, e); });
       // building-system polylines
-      const s=u.svc; if(s){ rect('SERVICES::BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
-        rect('SERVICES::ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
-        s.bulkheads.forEach(b=>rect('SERVICES::BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
+      const s=u.svc; if(s){ rect('SERVICES_BALCONY',s.balcony.x,oy+s.balcony.y,s.balcony.wx,s.balcony.wy);
+        rect('SERVICES_ESM',s.esm.x,oy+s.esm.y,s.esm.wx,s.esm.wy);
+        s.bulkheads.forEach(b=>rect('SERVICES_BULKHEAD',b.x,oy+b.y,b.wx,b.wy)); }
       // ── WALL CENTRELINES ── party walls (between dwellings) from footprint edges
       const vF=u.nrm&&u.nrm[1]!==0;
       const n=u.nrm||[0,-1];
@@ -1921,14 +2268,14 @@ function dxfExport(m){
         for(let ci=0;ci<corners.length;ci++){
           const [x1,y1]=corners[ci], [x2,y2]=corners[(ci+1)%corners.length];
           // classify: corners moving along facade direction = interior partition; depth = party/facade
-          const lay2 = (vF?Math.abs(x2-x1)<1e-6:Math.abs(y2-y1)<1e-6) ? 'WALLS::PARTY' : 'WALLS::INTERNAL';
+          const lay2 = (vF?Math.abs(x2-x1)<1e-6:Math.abs(y2-y1)<1e-6) ? 'WALLS_PARTY' : 'WALLS_INTERNAL';
           wline(lay2,x1,oy+y1,x2,oy+y2);
         }
       } else {
-        if(vF){ wline('WALLS::PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
-                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
-        else  { wline('WALLS::PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS::PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
-                wline('WALLS::INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS::INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
+        if(vF){ wline('WALLS_PARTY',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_PARTY',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy);
+                wline('WALLS_INTERNAL',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_INTERNAL',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy); }
+        else  { wline('WALLS_PARTY',u.x,oy+u.y,u.x+u.wx,oy+u.y); wline('WALLS_PARTY',u.x,oy+u.y+u.wy,u.x+u.wx,oy+u.y+u.wy);
+                wline('WALLS_INTERNAL',u.x,oy+u.y,u.x,oy+u.y+u.wy); wline('WALLS_INTERNAL',u.x+u.wx,oy+u.y,u.x+u.wx,oy+u.y+u.wy); }
       }
       // ── INTERNAL PARTITION LINES from layoutParams (merged — no collinear segments) ──
       const lp=u.layoutParams;
@@ -1936,17 +2283,17 @@ function dxfExport(m){
         const p=(t,d)=>L2Wpt(u,n,t,d);
         // 1. bed back wall (one merged line across all bedrooms)
         const b1=p(0,lp.bd), b2=p(lp.BW,lp.bd);
-        wline('WALLS::INTERNAL',b1[0],oy+b1[1],b2[0],oy+b2[1]);
+        wline('WALLS_INTERNAL',b1[0],oy+b1[1],b2[0],oy+b2[1]);
         // 2. living / bedroom partition (one vertical or horizontal line, full depth)
         const l1=p(lp.BW,0), l2=p(lp.BW,lp.D);
-        wline('WALLS::INTERNAL',l1[0],oy+l1[1],l2[0],oy+l2[1]);
+        wline('WALLS_INTERNAL',l1[0],oy+l1[1],l2[0],oy+l2[1]);
         // 3. inter-bedroom partitions (one per wall, from facade to bed back wall)
         for(let bi=1;bi<lp.nBed;bi++){
           const i1=p(bi*lp.bedW,0), i2=p(bi*lp.bedW,lp.bd);
-          wline('WALLS::INTERNAL',i1[0],oy+i1[1],i2[0],oy+i2[1]);
+          wline('WALLS_INTERNAL',i1[0],oy+i1[1],i2[0],oy+i2[1]);
         }
         // 4. pod perimeter (compact; won't have collinear issues)
-        if(u.svc&&u.svc.pod) wbox('WALLS::INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
+        if(u.svc&&u.svc.pod) wbox('WALLS_INTERNAL',u.svc.pod.x,oy+u.svc.pod.y,u.svc.pod.wx,u.svc.pod.wy);
       }
     });
     lvl.cores.forEach(c=>{ rect('CORE',c.x,oy+c.y,c.wx,c.wy);
@@ -1958,7 +2305,7 @@ function dxfExport(m){
       line('CORE',cf.lift.x+cf.lift.wx,oy+cf.lift.y,cf.lift.x,oy+cf.lift.y+cf.lift.wy);
       text('TEXT',cf.stair.x+0.2,oy+cf.stair.y+cf.stair.wy/2,'STAIR',0.3);
       text('TEXT',cf.lift.x+0.2,oy+cf.lift.y+cf.lift.wy/2,'LIFT',0.3);
-      wbox('WALLS::CORE',c.x,oy+c.y,c.wx,c.wy); });
+      wbox('WALLS_CORE',c.x,oy+c.y,c.wx,c.wy); });
     // street-frontage names
     const fr=m.site&&m.site.frontages, st=(m.site&&m.site.streets)||{};
     if(fr){ const cap=k=>st[k]||(k.charAt(0).toUpperCase()+k.slice(1)+' FRONTAGE');
@@ -2107,8 +2454,10 @@ planCv.addEventListener('touchmove',e=>{e.preventDefault();if(!planTouch)return;
   }},{passive:false});
 planCv.addEventListener('touchend',()=>planTouch=null);
 
-renderLots(); syncMix(); populateDevKinds('row'); initGL();
+renderLots(); syncMix(); populateDevKinds('row');
+try { initGL(); } catch(e){ console.warn('FORMWORK: 3D view unavailable —', e.message); }
 // double-rAF: first frame commits layout, second frame paints with real dimensions
+// Scheduled AFTER initGL's try-catch so it always fires even when WebGL is unavailable
 requestAnimationFrame(()=>requestAnimationFrame(generate));
 </script>
 </body>
