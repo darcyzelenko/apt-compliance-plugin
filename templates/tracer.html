@@ -2,1347 +2,1214 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<title>Plan Tracer — Apt. Compliance</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Tracer — floor plan to rooms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-:root{
-  --bg:#f5f4f2;--surf:#fff;--surf2:#f0eeec;--bd:#e2dfd9;--bd2:#ccc9c2;
-  --tx:#1a1916;--dim:#6b6860;--mut:#a8a49e;
-  --pass:#1a7a4a;--pbg:#edf7f2;--pbd:#a3d9bc;
-  --fail:#c0392b;--fbg:#fdf0ee;--fbd:#f5b8b1;
-  --warn:#b45309;--wbg:#fef9f0;--wbd:#f0c070;
-  --acc:#e85d25;--acc2:#c44d1a;--r:6px;
-}
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--tx);font-family:'Inter',sans-serif;font-size:13px;display:flex;flex-direction:column}
-header{background:var(--tx);height:50px;display:flex;align-items:center;gap:1rem;padding:0 1.25rem;flex-shrink:0;z-index:200}
-.logo-mark{width:18px;height:18px;background:var(--acc);clip-path:polygon(0 0,100% 0,100% 65%,50% 100%,0 65%);flex-shrink:0}
-header h1{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.5)}
-header h1 strong{color:#fff}
-.hflex{flex:1}
-.hback{font-size:11px;color:rgba(255,255,255,.5);text-decoration:none;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:.25rem .6rem;white-space:nowrap}
-.hback:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+  :root{
+    --paper:#F2EEE5;
+    --paper-2:#E8E2D5;
+    --ink:#15191C;
+    --ink-soft:#4A5258;
+    --line:#C9C0AE;
+    --accent:#E8542B;
+    --accent-soft:#F6C9B8;
+    --ok:#2F7D4F;
+    --warn:#B5781A;
+    --shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 30px rgba(20,30,40,.10);
+    --r:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:'Archivo',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    overflow:hidden;
+    position:fixed;width:100%;
+    background-image:
+      linear-gradient(rgba(201,192,174,.35) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(201,192,174,.35) 1px,transparent 1px);
+    background-size:26px 26px;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
 
-/* Layout */
-.layout{display:grid;grid-template-columns:252px 1fr 224px;flex:1;overflow:hidden;min-height:0}
-@media(max-width:700px){.layout{grid-template-columns:1fr}.tools,.props{display:none}}
+  /* ---------- header ---------- */
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:40;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:calc(env(safe-area-inset-top) + 12px) 18px 12px;
+    background:linear-gradient(180deg,var(--paper) 60%,rgba(242,238,229,0));
+  }
+  .brand{display:flex;align-items:baseline;gap:8px;}
+  .brand h1{
+    font-size:21px;font-weight:800;letter-spacing:-.5px;margin:0;
+  }
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;transform:translateY(-2px);}
+  .brand small{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-soft);}
+  .hbtn{
+    font-family:'IBM Plex Mono';font-size:11px;font-weight:500;letter-spacing:.5px;
+    border:1.5px solid var(--ink);background:transparent;color:var(--ink);
+    padding:7px 12px;border-radius:9px;cursor:pointer;text-transform:uppercase;
+  }
+  .hbtn:active{background:var(--ink);color:var(--paper);}
 
-/* Left tools */
-.tools{background:var(--surf);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
-.tsec{padding:.7rem .85rem;border-bottom:1px solid var(--bd);flex-shrink:0}
-.tlabel{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin-bottom:.45rem}
-.fdrop{border:1.5px dashed var(--bd2);border-radius:4px;padding:.55rem;text-align:center;cursor:pointer;position:relative;background:var(--surf2)}
-.fdrop:hover,.fdrop.over{border-color:var(--acc);background:rgba(232,93,37,.04)}
-.fdrop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.fdrop p{font-size:10px;color:var(--dim)}
-.irow{display:flex;gap:.3rem}
-.irow input{flex:1;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:10px;padding:.28rem .4rem;outline:none}
-.irow input::placeholder{color:var(--mut)}
-.irow input:focus{border-color:var(--acc)}
-.irow button{flex-shrink:0;padding:.26rem .5rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:10px;font-weight:600;cursor:pointer}
-.imp-ok{font-size:9px;color:var(--pass);margin-top:.2rem}
-.imp-err{font-size:9px;color:var(--fail);margin-top:.2rem}
-.slider-row{display:flex;align-items:center;gap:.4rem;font-size:10px;color:var(--dim)}
-.slider-row input[type=range]{flex:1;accent-color:var(--acc);height:3px}
-.scale-ok{font-size:9px;color:var(--pass)}
-.scale-none{font-size:9px;color:var(--mut)}
-.scale-pending{font-size:9px;color:var(--warn);animation:blink 1s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+  /* ---------- stage ---------- */
+  #stage{position:fixed;inset:0;padding-top:64px;display:flex;flex-direction:column;}
 
-/* Mode grid */
-.mode-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.22rem;margin-bottom:.35rem}
-.mbtn{padding:.38rem .15rem;border:1.5px solid var(--bd);border-radius:4px;background:var(--surf2);color:var(--dim);font-size:9px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s;line-height:1.3;user-select:none;touch-action:manipulation}
-.mbtn:hover{border-color:var(--bd2);color:var(--tx)}
-.mbtn.active{border-color:var(--acc);background:rgba(232,93,37,.08);color:var(--acc);font-weight:700}
-.mico{font-size:14px;display:block;margin-bottom:.1rem}
-.kshort{font-size:8px;opacity:.6}
+  /* ---------- upload screen ---------- */
+  #upload{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:22px;text-align:center;}
+  .drop{
+    width:100%;max-width:440px;aspect-ratio:4/5;max-height:52vh;
+    border:2px dashed var(--line);border-radius:22px;
+    background:rgba(255,255,255,.5);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    cursor:pointer;transition:.18s;position:relative;overflow:hidden;
+  }
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft);}
+  .drop svg{width:46px;height:46px;stroke:var(--ink);stroke-width:1.5;fill:none;}
+  .drop .big{font-size:19px;font-weight:700;letter-spacing:-.3px;}
+  .drop .sub{font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-soft);max-width:240px;line-height:1.5;}
+  .corner{position:absolute;width:22px;height:22px;border:2.5px solid var(--accent);}
+  .corner.tl{top:14px;left:14px;border-right:0;border-bottom:0;}
+  .corner.tr{top:14px;right:14px;border-left:0;border-bottom:0;}
+  .corner.bl{bottom:14px;left:14px;border-right:0;border-top:0;}
+  .corner.br{bottom:14px;right:14px;border-left:0;border-top:0;}
+  .uprow{display:flex;gap:12px;width:100%;max-width:440px;}
+  .btn{
+    flex:1;font-family:'Archivo';font-weight:700;font-size:15px;letter-spacing:-.2px;
+    padding:15px 18px;border-radius:13px;border:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:9px;
+  }
+  .btn svg{width:19px;height:19px;stroke:currentColor;stroke-width:1.8;fill:none;}
+  .btn-primary{background:var(--ink);color:var(--paper);box-shadow:var(--shadow);}
+  .btn-primary:active{transform:translateY(1px);}
+  .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--ink);}
+  .btn-accent{background:var(--accent);color:#fff;box-shadow:var(--shadow);}
+  .btn:disabled{opacity:.4;pointer-events:none;}
+  .hint-line{font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);letter-spacing:.3px;}
 
-/* Boolean toolbar — floats above canvas when 2 polys selected */
-.bool-bar{position:absolute;z-index:100;background:var(--tx);border-radius:8px;padding:.4rem .5rem;display:flex;gap:.3rem;box-shadow:0 4px 20px rgba(0,0,0,.35);display:none}
-.bb-btn{padding:.3rem .6rem;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;color:#fff;transition:opacity .15s}
-.bb-btn:hover{opacity:.85}
-.bb-union{background:#1a7a4a}
-.bb-diff{background:#c0392b}
-.bb-int{background:#b45309}
-.bb-cancel{background:rgba(255,255,255,.15);font-size:10px}
+  /* ---------- workspace ---------- */
+  #work{flex:1;position:relative;display:none;}
+  #canvasWrap{
+    position:absolute;inset:0;bottom:0;
+    display:flex;align-items:center;justify-content:center;
+    padding:8px 8px 0;overflow:hidden;touch-action:none;
+  }
+  .imgbox{position:relative;display:inline-block;box-shadow:var(--shadow);border-radius:6px;overflow:hidden;background:#fff;transform-origin:0 0;will-change:transform;}
+  #planImg{display:block;max-width:100%;max-height:100%;user-select:none;-webkit-user-drag:none;}
+  #overlay{position:absolute;top:0;left:0;touch-action:none;}
 
-/* Tool row */
-.tool-row{display:flex;gap:.22rem;flex-wrap:wrap;margin-bottom:.28rem}
-.tbtn{padding:.32rem .45rem;border:1px solid var(--bd);border-radius:4px;background:var(--surf2);color:var(--dim);font-size:10px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;touch-action:manipulation}
-.tbtn:hover{border-color:var(--bd2);color:var(--tx)}
-.tbtn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
-.tbtn.primary:hover{background:var(--acc2)}
-.tbtn.danger{border-color:var(--fbd);color:var(--fail)}
-.tbtn.danger:hover{background:var(--fail);color:#fff;border-color:var(--fail)}
-.tbtn:disabled{opacity:.35;cursor:not-allowed}
+  /* zoom controls */
+  #zoomctl{position:absolute;top:12px;right:12px;z-index:22;display:flex;flex-direction:column;gap:6px;}
+  #zoomctl button{width:38px;height:38px;border-radius:10px;border:1.5px solid var(--line);background:rgba(242,238,229,.92);cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);}
+  #zoomctl svg{width:18px;height:18px;stroke:var(--ink);stroke-width:2;fill:none;}
+  #zoomctl button:active{background:var(--paper-2);}
 
-/* Layer list */
-.layer-list{display:flex;flex-direction:column;gap:.16rem;max-height:210px;overflow-y:auto}
-.lbtn{display:flex;align-items:center;gap:.4rem;padding:.25rem .38rem;border-radius:4px;cursor:pointer;border:1.5px solid transparent;font-size:10px;font-weight:500;touch-action:manipulation}
-.lbtn:hover{background:var(--surf2)}.lbtn.active{border-color:currentColor;background:rgba(255,255,255,.7)}
-.lswatch{width:8px;height:8px;border-radius:2px;flex-shrink:0}
-.lgrp{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mut);padding:.15rem .2rem .04rem;margin-top:.18rem}
+  /* loading */
+  #loading{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(242,238,229,.85);backdrop-filter:blur(3px);z-index:20;}
+  .scan{width:130px;height:130px;border:2px solid var(--line);border-radius:12px;position:relative;overflow:hidden;}
+  .scan::after{content:'';position:absolute;left:0;right:0;height:30%;top:-30%;background:linear-gradient(180deg,transparent,var(--accent-soft),transparent);animation:scan 1.3s ease-in-out infinite;}
+  @keyframes scan{0%{top:-30%}100%{top:100%}}
+  #loadtext{font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.5px;color:var(--ink-soft);}
 
-/* Canvas */
-.canvas-area{position:relative;background:#d4d0ca;overflow:hidden;flex:1}
-#mc{position:absolute;top:0;left:0;touch-action:none}
-#mc.sel{cursor:default}#mc.pan{cursor:grab}#mc.panning{cursor:grabbing}#mc.rect{cursor:crosshair}
-.hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(26,25,22,.72);color:#fff;font-size:10px;padding:.24rem .65rem;border-radius:20px;pointer-events:none;white-space:nowrap;max-width:90%;text-align:center}
-.zoom-ctrls{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:.25rem}
-.zcbtn{width:30px;height:30px;background:var(--surf);border:1px solid var(--bd);border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;font-weight:600;color:var(--dim);touch-action:manipulation}
-.zcbtn:hover{border-color:var(--acc);color:var(--acc)}
-.coords-display{position:absolute;bottom:10px;right:12px;font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(255,255,255,.5);background:rgba(26,25,22,.5);padding:.18rem .4rem;border-radius:3px}
+  /* ---------- bottom sheet ---------- */
+  #sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:30;
+    background:var(--paper);border-top:1.5px solid var(--line);
+    border-radius:20px 20px 0 0;box-shadow:0 -8px 30px rgba(20,30,40,.12);
+    padding:10px 16px calc(env(safe-area-inset-bottom) + 14px);
+    transform:translateY(0);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    display:none;
+    max-height:80vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  }
+  #sheet.floating{max-height:80vh;overflow-y:auto;}
+  #sheet.collapsed{transform:translateY(calc(100% - 46px));}
+  .grab-zone{padding:8px 0 12px;margin:-8px 0 4px;cursor:grab;display:flex;flex-direction:column;align-items:center;gap:4px;touch-action:none;}
+  .grab-zone:active{cursor:grabbing;}
+  #sheet.floating{left:auto;right:auto;bottom:auto;transform:none;width:360px;max-width:92vw;border:1.5px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(20,30,40,.22);}
+  .grab{width:42px;height:4px;background:var(--line);border-radius:3px;transition:.2s;}
+  .grab-zone:active .grab{background:var(--accent);width:52px;}
+  .peek{font-family:'IBM Plex Mono';font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-soft);opacity:0;height:0;transition:.2s;}
+  #sheet.collapsed .peek{opacity:1;height:auto;}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .sheet-head .count{font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-soft);letter-spacing:.5px;}
+  .sheet-head .title{font-size:16px;font-weight:800;letter-spacing:-.3px;}
 
-/* Right props */
-.props{background:var(--surf);border-left:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto}
-.no-sel{font-size:10px;color:var(--mut);text-align:center;padding:1.2rem .75rem}
-.shape-list{max-height:240px;overflow-y:auto}
-.si{display:flex;align-items:center;gap:.35rem;padding:.24rem .4rem;border-radius:4px;cursor:pointer;font-size:10px;border:1.5px solid transparent}
-.si:hover{background:var(--surf2)}.si.sel{border-color:var(--acc);background:rgba(232,93,37,.05)}
-.si2{border-color:var(--warn)!important;background:rgba(180,83,9,.05)!important}
-.si-sw{width:8px;height:8px;border-radius:2px;flex-shrink:0}
-.si-lbl{flex:1;font-weight:500}.si-del{color:var(--mut);font-size:11px;cursor:pointer;padding:0 .1rem}
-.si-del:hover{color:var(--fail)}
-.pf{display:flex;flex-direction:column;gap:.18rem;margin-bottom:.4rem}
-.pf label{font-size:10px;font-weight:500;color:var(--dim)}
-.pf select{background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--tx);font-size:11px;padding:.25rem .35rem;width:100%;outline:none}
-.pf select:focus{border-color:var(--acc)}
-.stat-row{display:flex;justify-content:space-between;font-size:10px;padding:.18rem 0;border-bottom:1px solid var(--surf2);color:var(--dim)}
-.stat-row:last-child{border-bottom:none}
-.stat-val{font-family:'JetBrains Mono',monospace;color:var(--tx)}
-.bool-hint{background:var(--surf2);border:1px solid var(--bd);border-radius:4px;padding:.4rem .5rem;font-size:10px;color:var(--dim);margin-top:.4rem}
-.cr-pass{background:var(--pbg);border:1px solid var(--pbd);border-radius:4px;padding:.45rem .6rem;font-size:11px;color:var(--pass);margin-bottom:.35rem}
-.cr-fail{background:var(--fbg);border:1px solid var(--fbd);border-radius:4px;padding:.45rem .6rem;font-size:11px;color:var(--fail);margin-bottom:.35rem}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex:0 0 auto;font-family:'IBM Plex Mono';font-size:12px;font-weight:500;
+    padding:8px 12px;border-radius:10px;border:1.5px solid var(--line);
+    background:#fff;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;
+  }
+  .chip .sw{width:11px;height:11px;border-radius:3px;}
+  .chip.sel{border-color:var(--ink);background:var(--ink);color:var(--paper);}
 
-/* Modals */
-.overlay{position:fixed;inset:0;background:rgba(26,25,22,.5);z-index:500;display:none;align-items:center;justify-content:center}
-.overlay.open{display:flex}
-.modal{background:var(--surf);border-radius:10px;padding:1.25rem;max-width:370px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
-.modal h3{font-size:14px;font-weight:700;margin-bottom:.3rem}
-.modal p{font-size:11px;color:var(--dim);margin-bottom:.8rem;line-height:1.6}
-.modal input{width:100%;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;font-size:11px;padding:.32rem .45rem;outline:none;color:var(--tx)}
-.modal input:focus{border-color:var(--acc)}
-.mbns{display:flex;gap:.4rem;margin-top:.8rem;justify-content:flex-end}
-.mprim{padding:.36rem .8rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
-.mprim:hover{background:var(--acc2)}
-.mghst{padding:.36rem .8rem;background:transparent;border:1px solid var(--bd);border-radius:4px;color:var(--dim);font-size:12px;cursor:pointer}
-.mghst:hover{border-color:var(--bd2);color:var(--tx)}
+  /* selected room editor */
+  #editor{display:none;margin-top:4px;}
+  .ed-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .ed-label{font-family:'IBM Plex Mono';font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);min-width:48px;}
+  .relabel{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;flex:1;}
+  .relabel::-webkit-scrollbar{display:none;}
+  .rl{flex:0 0 auto;font-family:'IBM Plex Mono';font-size:11px;padding:7px 10px;border-radius:9px;border:1.5px solid var(--line);background:#fff;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+  .rl .sw{width:10px;height:10px;border-radius:3px;}
+  .rl.on{border-color:var(--ink);background:var(--paper-2);font-weight:600;}
+  .ed-actions{display:flex;gap:8px;}
+  .mini{font-family:'IBM Plex Mono';font-size:12px;font-weight:500;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:#fff;cursor:pointer;flex:1;display:flex;align-items:center;justify-content:center;gap:7px;}
+  .mini svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.8;fill:none;}
+  .mini.danger{color:var(--accent);border-color:var(--accent-soft);}
+  .mini:active{background:var(--paper-2);}
+
+  /* toolbar */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .tool{flex:1 1 28%;font-family:'Archivo';font-weight:700;font-size:12px;padding:11px 6px;border-radius:11px;border:1.5px solid var(--ink);background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;}
+  .tool.wide{flex:1 1 100%;flex-direction:row;justify-content:center;background:var(--paper-2);border-style:dashed;}
+  .tool svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.7;fill:none;}
+  .tool:active{background:var(--paper-2);}
+  .tool.primary{background:var(--accent);color:#fff;border-color:var(--accent);border-style:solid;}
+  .tool.on{background:var(--ink);color:var(--paper);border-color:var(--ink);border-style:solid;}
+
+  #banner{
+    display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    z-index:25;background:var(--accent);color:#fff;
+    font-family:'IBM Plex Mono';font-size:12px;font-weight:500;letter-spacing:.3px;
+    padding:9px 16px;border-radius:10px;box-shadow:var(--shadow);
+    max-width:90vw;text-align:center;line-height:1.4;
+  }
+
+  /* step bar */
+  #scaleRow{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:#fff;}
+  #scaleRow .scale-help{font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-soft);}
+  #scaleInput{width:74px;font-family:'IBM Plex Mono';font-size:14px;font-weight:600;padding:6px 8px;border:1.5px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);}
+  #scaleInput:focus{outline:none;border-color:var(--accent);}
+  #stepbar{display:flex;gap:6px;margin-bottom:12px;}
+  .step{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-soft);padding:7px 4px;border-radius:9px;border:1.5px solid var(--line);background:#fff;}
+  .step .dot{width:18px;height:18px;border-radius:50%;background:var(--line);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;}
+  .step.active{border-color:var(--ink);color:var(--ink);font-weight:600;}
+  .step.active .dot{background:var(--accent);}
+  .step.done .dot{background:var(--ok);}
+
+  /* AI refine bar */
+  #refineBar{display:none;gap:8px;margin-top:10px;}
+  #refineInput{flex:1;font-family:'IBM Plex Mono';font-size:13px;padding:11px 13px;border-radius:11px;border:1.5px solid var(--line);background:#fff;color:var(--ink);}
+  #refineInput:focus{outline:none;border-color:var(--accent);}
+  #refineSend{font-family:'Archivo';font-weight:700;font-size:13px;padding:0 16px;border-radius:11px;border:none;background:var(--ink);color:var(--paper);cursor:pointer;}
+
+  /* export panel */
+  #exportPanel{display:none;}
+  .ex-json{font-family:'IBM Plex Mono';font-size:10.5px;line-height:1.5;background:#fff;border:1.5px solid var(--line);border-radius:11px;padding:12px;max-height:30vh;overflow:auto;white-space:pre;color:var(--ink-soft);margin-bottom:10px;}
+
+  .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 18px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);font-family:'IBM Plex Mono';font-size:12px;padding:10px 16px;border-radius:10px;opacity:0;transition:.25s;z-index:90;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .err{font-family:'IBM Plex Mono';font-size:12px;color:var(--accent);text-align:center;padding:14px;line-height:1.5;}
+
+  @media(min-width:760px){
+    .drop{max-height:420px;}
+    #sheet{max-width:520px;left:50%;transform:translateX(-50%);border-radius:20px;bottom:18px;border:1.5px solid var(--line);}
+    #sheet.collapsed{transform:translateX(-50%) translateY(calc(100% - 46px + 18px));}
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo-mark"></div>
-  <h1><strong>Plan Tracer</strong> — Apt. Compliance</h1>
-  <div class="hflex"></div>
-  <a class="hback" href="/">← Back to Checker</a>
+  <div class="brand">
+    <h1>Tracer<span class="dot"></span></h1>
+    <small>floor plan → rooms</small>
+  </div>
+  <button class="hbtn" id="restartBtn" style="display:none" onclick="restart()">New</button>
 </header>
 
-<div class="layout">
+<div id="stage">
 
-<!-- ── Left tools ── -->
-<aside class="tools">
-
-  <div class="tsec">
-    <div class="tlabel">Import Floor Plan Image</div>
-    <div class="irow" style="margin-bottom:.35rem">
-      <input type="text" id="urlInput" placeholder="Paste direct image URL (see instructions below)">
-      <button onclick="loadFromUrl()">↗</button>
+  <!-- UPLOAD -->
+  <div id="upload">
+    <div class="drop" id="drop" onclick="pickFile()">
+      <span class="corner tl"></span><span class="corner tr"></span>
+      <span class="corner bl"></span><span class="corner br"></span>
+      <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      <div class="big">Drop a floor plan</div>
+      <div class="sub">Snap or upload a plan image — the AI traces the rooms for you</div>
     </div>
-    <div id="urlStatus"></div>
-    <div style="font-size:9px;color:var(--mut);margin-top:.3rem;line-height:1.5">
-      <strong>realestate.com.au:</strong> right-click the floor plan → <em>Copy image address</em> → paste above.<br>
-      <strong>Domain.com.au:</strong> right-click the floor plan → <em>Save image as</em> → upload below.
+    <div class="uprow">
+      <button class="btn btn-accent" onclick="pickCamera()">
+        <svg viewBox="0 0 24 24"><path d="M3 7h3l2-2h8l2 2h3v12H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Camera
+      </button>
+      <button class="btn btn-primary" onclick="pickFile()">
+        <svg viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/><path d="M12 4v12m0-12L8 8m4-4l4 4"/></svg>
+        Upload
+      </button>
     </div>
-    <div class="fdrop" id="fdrop" style="margin-top:.3rem">
-      <input type="file" id="imgFile" accept="image/*,.gif">
-      <p>or drop / click to upload from device</p>
-    </div>
+    <div class="hint-line">JPG · PNG · GIF — works best with a clear, straight-on plan</div>
   </div>
 
-  <div class="tsec">
-    <div class="tlabel">Background</div>
-    <div class="slider-row">
-      <span>Opacity</span>
-      <input type="range" id="bgOp" min="0" max="100" value="35" oninput="bgOpacity=+this.value/100;document.getElementById('bgOpV').textContent=this.value+'%';render()">
-      <span id="bgOpV" style="width:28px">35%</span>
-    </div>
-    <div style="margin-top:.4rem">
-      <button class="tbtn" onclick="startScale()" style="width:100%">⊹ Set Scale (click 2 points)</button>
-      <div id="scaleStatus" class="scale-none" style="margin-top:.22rem">No scale set — dimensions approximate</div>
-    </div>
-  </div>
-
-  <div class="tsec">
-    <div class="tlabel">Draw Mode</div>
-    <div class="mode-grid">
-      <div class="mbtn active" data-mode="poly" onclick="setMode('poly')">
-        <span class="mico">⬡</span>Polygon<br><span class="kshort">P</span>
-      </div>
-      <div class="mbtn" data-mode="rect" onclick="setMode('rect')">
-        <span class="mico">▭</span>Rectangle<br><span class="kshort">R</span>
-      </div>
-      <div class="mbtn" data-mode="line" onclick="setMode('line')">
-        <span class="mico">╱</span>Window/Door<br><span class="kshort">L</span>
-      </div>
-      <div class="mbtn" data-mode="select" onclick="setMode('select')">
-        <span class="mico">↖</span>Select<br><span class="kshort">S / V</span>
+  <!-- WORKSPACE -->
+  <div id="work">
+    <div id="canvasWrap">
+      <div class="imgbox" id="imgbox">
+        <img id="planImg" alt="floor plan">
+        <canvas id="overlay"></canvas>
       </div>
     </div>
-    <div style="font-size:9px;color:var(--mut);line-height:1.5">
-      <kbd style="background:var(--surf2);padding:0 3px;border-radius:2px;border:1px solid var(--bd)">Shift</kbd> = 90° lock · Right-drag = pan · Scroll = zoom<br>
-      Select 2 shapes → boolean operations appear
+    <div id="zoomctl">
+      <button onclick="zoomBy(1.25)" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button onclick="zoomBy(0.8)" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+      <button onclick="resetView()" aria-label="Fit"><svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"/></svg></button>
     </div>
-  </div>
-
-  <div class="tsec">
-    <div class="tlabel">Layer / Element Type</div>
-    <div class="layer-list" id="layerList"></div>
-  </div>
-
-  <div class="tsec" style="flex:1">
-    <div class="tlabel">Actions</div>
-    <div class="tool-row">
-      <button class="tbtn" onclick="undo()">↩ Undo</button>
-      <button class="tbtn" onclick="regularise()" title="Snap all vertices to nearest 90° grid">⊞ Regularise</button>
-      <button class="tbtn" onclick="deleteSelected()">✕ Del</button>
+    <div id="loading">
+      <div class="scan"></div>
+      <div id="loadtext">Reading the plan…</div>
     </div>
-    <div class="tool-row">
-      <button class="tbtn primary" onclick="runCheck()" id="runBtn" disabled>▶ Run Check</button>
-      <button class="tbtn" onclick="exportDXF()">↓ DXF</button>
-      <button class="tbtn" onclick="exportPNG()">↓ PNG</button>
-    </div>
-    <button class="tbtn" id="aiBtn" onclick="analyseWithAI()" disabled style="width:100%;margin-top:.1rem;background:var(--tx);color:#fff;border-color:var(--tx)">✦ Analyse with AI</button>
-    <div id="aiStatus" style="font-size:9px;color:var(--dim);margin-top:.2rem;line-height:1.4;display:none"></div>
-    <button class="tbtn danger" onclick="confirmClear()" style="width:100%;margin-top:.1rem">⊗ Clear All</button>
+    <div id="banner"></div>
   </div>
-
-</aside>
-
-<!-- ── Canvas ── -->
-<div class="canvas-area" id="canvasArea">
-  <canvas id="mc"></canvas>
-
-  <!-- Boolean operation toolbar — shown when 2 polys selected and overlapping -->
-  <div class="bool-bar" id="boolBar">
-    <button class="bb-btn bb-union" onclick="boolOp('union')" title="Merge both shapes into one">⊕ Union</button>
-    <button class="bb-btn bb-diff" onclick="boolOp('diff')" title="Cut shape B from shape A">⊖ Subtract</button>
-    <button class="bb-btn bb-int" onclick="boolOp('intersect')" title="Keep only the overlapping area">⊗ Intersect</button>
-    <button class="bb-btn bb-cancel" onclick="hideBoolBar()">✕</button>
-  </div>
-
-  <div class="hint" id="hint">Upload a floor plan image, then trace rooms over it</div>
-  <div class="zoom-ctrls">
-    <div class="zcbtn" onclick="zoom(1.2)">+</div>
-    <div class="zcbtn" onclick="zoom(0.8)">−</div>
-    <div class="zcbtn" onclick="resetView()" title="Fit to window">⊡</div>
-  </div>
-  <div class="coords-display" id="coordsDisplay">0.00, 0.00</div>
 </div>
 
-<!-- ── Right props ── -->
-<aside class="props">
-  <div class="tsec">
-    <div class="tlabel">Elements (<span id="shapeCount">0</span>)</div>
-    <div class="shape-list" id="shapeList"></div>
+<!-- BOTTOM SHEET -->
+<div id="sheet">
+  <div class="grab-zone" id="grabZone">
+    <div class="grab"></div>
+    <div class="peek" id="peekLabel">tap to expand · drag to move</div>
   </div>
-  <div class="tsec" id="propPanel">
-    <div class="tlabel">Properties</div>
-    <div class="no-sel">Select an element to edit</div>
-  </div>
-  <div style="padding:.7rem .85rem" id="checkResult" style="display:none"></div>
-</aside>
 
-</div>
+  <div id="errBox" class="err" style="display:none"></div>
 
-<!-- Modals -->
-<div class="overlay" id="scaleModal">
-  <div class="modal">
-    <h3>Set Scale</h3>
-    <p>You clicked two points. Enter the real-world distance between them to calibrate the scale.</p>
-    <input type="number" id="scaleDist" placeholder="Distance in metres" min="0.1" step="0.1" value="1">
-    <div class="mbns">
-      <button class="mghst" onclick="cancelScale()">Cancel</button>
-      <button class="mprim" onclick="confirmScale()">Set Scale</button>
+  <div id="mainView">
+    <div id="stepbar">
+      <div class="step" data-step="outline"><span class="dot">1</span>Outline</div>
+      <div class="step" data-step="seeds"><span class="dot">2</span>Rooms</div>
+      <div class="step" data-step="review"><span class="dot">3</span>Review</div>
+    </div>
+
+    <div id="scaleRow">
+      <span class="ed-label">Scale</span>
+      <span class="scale-help">Apartment width</span>
+      <input id="scaleInput" type="number" min="1" step="0.5" value="10" inputmode="decimal">
+      <span class="scale-help">m</span>
+    </div>
+
+    <div class="sheet-head">
+      <div class="title" id="sheetTitle">Rooms</div>
+      <div class="count" id="roomCount"></div>
+    </div>
+
+    <div class="chips" id="roomChips"></div>
+
+    <!-- per-room editor -->
+    <div id="editor">
+      <div class="ed-row">
+        <span class="ed-label">Type</span>
+        <div class="relabel" id="relabel"></div>
+      </div>
+      <div class="ed-actions">
+        <button class="mini" onclick="duplicateRoom()">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+          Duplicate
+        </button>
+        <button class="mini danger" onclick="deleteRoom()">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13"/></svg>
+          Delete
+        </button>
+        <button class="mini" onclick="deselect()">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+          Done
+        </button>
+      </div>
+    </div>
+
+    <!-- context actions (filled per step) -->
+    <div class="toolbar" id="actionRow"></div>
+
+    <!-- AI refine -->
+    <div id="refineBar">
+      <input id="refineInput" placeholder="e.g. you missed the kitchen…" />
+      <button id="refineSend" onclick="refineWithAI()">Go</button>
     </div>
   </div>
-</div>
-<div class="overlay" id="clearModal">
-  <div class="modal">
-    <h3>Clear everything?</h3>
-    <p>Removes all shapes and the background image. Cannot be undone.</p>
-    <div class="mbns">
-      <button class="mghst" onclick="document.getElementById('clearModal').classList.remove('open')">Cancel</button>
-      <button class="mprim" style="background:var(--fail)" onclick="doClear()">Clear All</button>
+
+  <!-- EXPORT -->
+  <div id="exportPanel">
+    <div class="sheet-head">
+      <div class="title">Export</div>
+      <button class="hbtn" onclick="closeExport()">Back</button>
+    </div>
+    <div class="ex-json mono" id="jsonOut"></div>
+    <div class="toolbar">
+      <button class="tool" onclick="copyJSON()">
+        <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+        Copy JSON
+      </button>
+      <button class="tool" onclick="downloadJSON()">
+        <svg viewBox="0 0 24 24"><path d="M12 4v12m0 0l-4-4m4 4l4-4"/><path d="M4 18h16"/></svg>
+        Download
+      </button>
+      <button class="tool primary" onclick="sendToChecker()">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14m-6-6l6 6-6 6"/></svg>
+        To checker
+      </button>
     </div>
   </div>
 </div>
+
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+<input type="file" id="camInput" accept="image/*" capture="environment" style="display:none">
+<div class="toast" id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════════
-// Layer definitions
-// ═══════════════════════════════════════════════════════════════════════════════
-const LAYERS=[
-  {key:'APT_ROOM_MAINBED',        label:'Main Bedroom',  color:'#6366f1',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_BED1',           label:'Bedroom 1',     color:'#8b5cf6',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_BED2',           label:'Bedroom 2',     color:'#a855f7',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_BED3',           label:'Bedroom 3',     color:'#c084fc',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_LIVING',         label:'Living Area',   color:'#1a7a4a',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_BATHROOM',       label:'Bathroom',      color:'#0ea5e9',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_ENSUITE',        label:'Ensuite',       color:'#06b6d4',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_LAUNDRY',        label:'Laundry',       color:'#64748b',type:'poly',group:'Rooms'},
-  {key:'APT_ROOM_ENTRY',          label:'Entry',         color:'#94a3b8',type:'poly',group:'Rooms'},
-  {key:'APT_STORAGE_DESIGNATED',  label:'Storage',       color:'#b45309',type:'poly',group:'Storage'},
-  {key:'APT_STORAGE_SERVICE',     label:'Cabinetry',     color:'#9a3a04',type:'poly',group:'Storage'},
-  {key:'APT_POS',                 label:'Balcony/POS',   color:'#14b8a6',type:'poly',group:'Outdoor'},
-  {key:'APT_POS_GROUND',          label:'Ground POS',    color:'#10b981',type:'poly',group:'Outdoor'},
-  {key:'APT_WINDOW_LIVING',       label:'Window — Living',   color:'#2563eb',type:'line',group:'Windows'},
-  {key:'APT_WINDOW_MAINBED',      label:'Window — Main Bed', color:'#3b82f6',type:'line',group:'Windows'},
-  {key:'APT_WINDOW_BED1',         label:'Window — Bed 1',    color:'#60a5fa',type:'line',group:'Windows'},
-  {key:'APT_WINDOW_BED2',         label:'Window — Bed 2',    color:'#93c5fd',type:'line',group:'Windows'},
-  {key:'APT_WINDOW_BED3',         label:'Window — Bed 3',    color:'#bfdbfe',type:'line',group:'Windows'},
-  {key:'APT_DOOR_ENTRY',          label:'Door — Entry',      color:'#b45309',type:'line',group:'Doors'},
-  {key:'APT_DOOR_ENTRY_MARKER',   label:'Entry Point (marker)',color:'#92400e',type:'line',group:'Doors'},
-  {key:'APT_DOOR_MAINBED',        label:'Door — Main Bed',   color:'#d97706',type:'line',group:'Doors'},
-  {key:'APT_DOOR_BATHROOM',       label:'Door — Bathroom',   color:'#f59e0b',type:'line',group:'Doors'},
-  {key:'APT_DOOR_POS',            label:'Door — Balcony',    color:'#14b8a6',type:'line',group:'Doors'},
-  {key:'APT_NORTH',               label:'North Arrow',       color:'#e85d25',type:'line',group:'Reference'},
-];
-const LMAP=Object.fromEntries(LAYERS.map(l=>[l.key,l]));
-let activeLayer=LAYERS[0];
+/* ============ CONFIG ============ */
+const API_BASE = "";
+const ANALYSE_URL = API_BASE + "/api/analyse-image";
+const CHECKER_URL = API_BASE + "/";
 
-function drawnPolyLayers(){
-  return new Set(shapes.filter(s=>s.type==='poly').map(s=>s.layer));
+/* ============ ROOM TYPES ============ */
+const TYPES = [
+  {layer:"APT_ROOM_LIVING",      label:"Living",   color:"#2B5FCE"},
+  {layer:"APT_ROOM_MAINBED",     label:"Main Bed", color:"#7A4FD0"},
+  {layer:"APT_ROOM_BED1",        label:"Bed 1",    color:"#9B59B6"},
+  {layer:"APT_ROOM_BED2",        label:"Bed 2",    color:"#B574C9"},
+  {layer:"APT_ROOM_BED3",        label:"Bed 3",    color:"#C98FD6"},
+  {layer:"APT_ROOM_BATHROOM",    label:"Bath",     color:"#1FA38A"},
+  {layer:"APT_ROOM_ENSUITE",     label:"Ensuite",  color:"#23B5A0"},
+  {layer:"APT_ROOM_LAUNDRY",     label:"Laundry",  color:"#3FB0C9"},
+  {layer:"APT_ROOM_ENTRY",       label:"Entry",    color:"#8A929A"},
+  {layer:"APT_STORAGE_DESIGNATED",label:"Storage", color:"#C08A2E"},
+  {layer:"APT_POS",              label:"Balcony",  color:"#5BA85B"},
+  {layer:"APT_UNKNOWN",          label:"?",        color:"#9AA0A6"},
+];
+const typeByLayer = Object.fromEntries(TYPES.map(t=>[t.layer,t]));
+function typeFor(layer){ return typeByLayer[layer] || {layer:layer,label:layer,color:"#E8542B"}; }
+
+/* ============ MODEL (image-fraction coords throughout) ============ */
+const WELD_TOL = 0.018;
+let perimeter = [];      // [[x,y],...] apartment outline
+let rooms = [];          // {id, layer, vertices:[[x,y]...]}
+let openings = [];       // {type, segment:[[x,y],[x,y]]}
+let seeds = [];          // rooms-to-build: [{a:[x,y], b:[x,y]}]  diagonal-box pairs
+let seedDraft = null;    // {a:[x,y]} — first corner placed, awaiting second
+let walls = {h:[], v:[]};         // detected wall positions (image fractions)
+let grid  = {x:[], y:[]};         // adaptive snap grid (image fractions)
+let snapEnabled = true;
+let showWalls = false;
+let meta = {scale:null, north:null};
+let selectedId = null;   // room id | "PERIMETER" | null
+let imgData=null, imgMime="image/jpeg", uid=1;
+
+let step = 'outline';    // 'outline' | 'seeds' | 'review'
+let drawMode=false, drawPts=[];   // tracing perimeter
+let seedMode=false;
+let weldLock=true;       // edits drag shared edges of adjacent rooms too
+let vertexMode='none';   // 'none' | 'add' | 'del' — next tap edits a vertex
+let openingMode='none';  // 'none' | 'door' | 'window'
+let winFirst=null, winEdge=null;   // window: first click + the edge it locked to
+let selOpening=-1, dragOpen=null;  // selected/dragging opening
+let planWidthM=10;       // apartment overall width in metres (set at start)
+let showOpenings=true;
+
+/* ============ ELEMENTS ============ */
+const img=document.getElementById('planImg');
+const canvas=document.getElementById('overlay');
+const ctx=canvas.getContext('2d');
+const imgbox=document.getElementById('imgbox');
+
+/* ============ UPLOAD ============ */
+function pickFile(){ document.getElementById('fileInput').click(); }
+function pickCamera(){ document.getElementById('camInput').click(); }
+['fileInput','camInput'].forEach(id=>document.getElementById(id).addEventListener('change',e=>{const f=e.target.files[0];if(f)loadImage(f);}));
+const drop=document.getElementById('drop');
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)loadImage(f);});
+(function(){ const s=document.getElementById('scaleInput'); if(s){ s.addEventListener('input',()=>{ const v=parseFloat(s.value); if(isFinite(v)&&v>0) planWidthM=v; }); } })();
+
+function loadImage(file){
+  imgMime=file.type||"image/jpeg";
+  const reader=new FileReader();
+  reader.onload=e=>{
+    imgData=e.target.result.split(',')[1];
+    img.src=e.target.result;
+    img.onload=()=>{
+      document.getElementById('upload').style.display='none';
+      document.getElementById('work').style.display='block';
+      document.getElementById('restartBtn').style.display='block';
+      resetView(); resizeCanvas();
+      try{ detectWalls(); }catch(e){ console.warn('wall detect failed',e); }
+      openSheet(); enterOutline();
+    };
+  };
+  reader.readAsDataURL(file);
 }
-function visibleLayers(){
-  const drawn=drawnPolyLayers();
-  const modeType=drawMode==='line'?'line':drawMode==='select'?null:'poly';
-  return LAYERS.filter(l=>{
-    if(modeType&&l.type!==modeType)return false;
-    if(l.type==='line'){
-      if(l.key.startsWith('APT_WINDOW_')){
-        return drawn.has('APT_ROOM_'+l.key.replace('APT_WINDOW_',''));
-      }
-      if(l.key.startsWith('APT_DOOR_')&&l.key!=='APT_DOOR_ENTRY'&&l.key!=='APT_DOOR_POS'){
-        return drawn.has('APT_ROOM_'+l.key.replace('APT_DOOR_',''));
-      }
+
+/* ============ CANVAS / ZOOM / PAN ============ */
+function resizeCanvas(){ canvas.width=img.clientWidth; canvas.height=img.clientHeight; canvas.style.width=img.clientWidth+'px'; canvas.style.height=img.clientHeight+'px'; draw(); }
+window.addEventListener('resize',()=>{ if(img.src) resizeCanvas(); });
+let view={scale:1,tx:0,ty:0};
+function applyView(){ imgbox.style.transform=`translate(${view.tx}px,${view.ty}px) scale(${view.scale})`; }
+function resetView(){ view={scale:1,tx:0,ty:0}; applyView(); }
+function zoomAbout(f,cx,cy){ const r=imgbox.getBoundingClientRect(); const ox=cx-r.left,oy=cy-r.top; const ns=Math.max(0.5,Math.min(6,view.scale*f)); const k=ns/view.scale; view.tx-=ox*(k-1); view.ty-=oy*(k-1); view.scale=ns; applyView(); }
+function zoomBy(f){ const w=document.getElementById('canvasWrap').getBoundingClientRect(); zoomAbout(f,w.left+w.width/2,w.top+w.height/2); }
+document.getElementById('canvasWrap').addEventListener('wheel',e=>{ if(!img.src)return; e.preventDefault(); zoomAbout(e.deltaY<0?1.12:0.89,e.clientX,e.clientY); },{passive:false});
+
+/* right-click / middle-click drag to pan (Rhino-style) */
+(function(){
+  const wrap=document.getElementById('canvasWrap'); let panning=null;
+  wrap.addEventListener('contextmenu',e=>e.preventDefault());
+  wrap.addEventListener('pointerdown',e=>{
+    if(e.button===2 || e.button===1){ panning={x:e.clientX,y:e.clientY}; wrap.setPointerCapture(e.pointerId); e.preventDefault(); }
+  });
+  wrap.addEventListener('pointermove',e=>{
+    if(!panning) return;
+    view.tx+=(e.clientX-panning.x); view.ty+=(e.clientY-panning.y); applyView();
+    panning={x:e.clientX,y:e.clientY};
+  });
+  const stop=()=>{ panning=null; };
+  wrap.addEventListener('pointerup',stop); wrap.addEventListener('pointercancel',stop);
+})();
+
+/* ============ STEP MACHINE ============ */
+function setStepUI(){
+  const order=['outline','seeds','review'];
+  document.querySelectorAll('.step').forEach(el=>{
+    const s=el.dataset.step, si=order.indexOf(s), ci=order.indexOf(step);
+    el.classList.toggle('active', s===step);
+    el.classList.toggle('done', si<ci);
+  });
+  document.getElementById('sheetTitle').textContent =
+    step==='outline'?'Step 1 — Outline' : step==='seeds'?'Step 2 — Mark rooms' : 'Step 3 — Review';
+  const sr=document.getElementById('scaleRow'); if(sr) sr.style.display = step==='outline'?'flex':'none';
+  renderActions();
+}
+function enterOutline(){
+  step='outline'; selectedId=null; seedMode=false;
+  drawMode=true; drawPts=[]; perimeter=[]; rooms=[]; seeds=[];
+  setStepUI(); expandSheet();
+  setBanner('Trace the apartment boundary: tap each corner, then “Finish outline”.');
+  draw();
+}
+function enterSeeds(){
+  step='seeds'; drawMode=false; selectedId=null; seedMode=true; seeds=[]; seedDraft=null;
+  setStepUI();
+  setBanner('Tap two opposite corners of each room — top-left then bottom-right. Tap a finished room to remove it.');
+  draw();
+}
+function enterReview(){
+  step='review'; drawMode=false; seedMode=false;
+  setStepUI(); setBanner(null); draw();
+}
+
+/* dynamic action row per step */
+function renderActions(){
+  const row=document.getElementById('actionRow'); row.innerHTML='';
+  const mk=(cls,label,svg,fn)=>{ const b=document.createElement('button'); b.className='tool'+(cls?(' '+cls):''); b.innerHTML=`<svg viewBox="0 0 24 24">${svg}</svg>${label}`; b.onclick=fn; return b; };
+  if(step==='outline'){
+    row.appendChild(mk('wide','Finish outline','<path d="M5 12l5 5L20 7"/>', finishDraw));
+    row.appendChild(mk('','Fit to walls (AI)','<path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13-6l-2 2M9 14l-2 2m12 0l-2-2M9 10L7 8"/><circle cx="12" cy="12" r="3"/>', fitBoundary));
+    row.appendChild(mk('','Redo','<path d="M4 9h11a5 5 0 010 10H9"/><path d="M4 9l4-4M4 9l4 4"/>', enterOutline));
+    row.appendChild(mk('primary','Next: rooms →','<path d="M5 12h14m-6-6l6 6-6 6"/>', ()=>{ if(perimeter.length<3){toast('Trace the outline first');return;} enterSeeds(); }));
+  } else if(step==='seeds'){
+    row.appendChild(mk('wide primary','Generate rooms (AI labels)','<path d="M12 3v3m0 12v3m9-9h-3M6 12H3m13-6l-2 2M9 14l-2 2m12 0l-2-2M9 10L7 8"/><circle cx="12" cy="12" r="3"/>', generateRooms));
+    row.appendChild(mk(snapEnabled?'on':'','Snap','<path d="M4 12h16M12 4v16"/><circle cx="12" cy="12" r="2"/>', ()=>{ snapEnabled=!snapEnabled; renderActions(); toast(snapEnabled?'Snapping on (walls + grid)':'Snapping off'); }));
+    row.appendChild(mk(showWalls?'on':'','Show walls','<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 9h16M4 15h16"/>', ()=>{ showWalls=!showWalls; renderActions(); draw(); }));
+    row.appendChild(mk('','Clear rooms','<path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/>', ()=>{ seeds=[]; seedDraft=null; draw(); updateSeedCount(); }));
+    row.appendChild(mk('','← Outline','<path d="M19 12H5m6-6l-6 6 6 6"/>', enterOutline));
+  } else {
+    row.appendChild(mk('wide','Merge & align same spaces (AI)','<path d="M8 7h8M8 12h8M8 17h8"/><path d="M4 7l1 1 1-1M4 17l1-1 1 1"/>', mergeSpaces));
+    row.appendChild(mk('wide','Square up & align edges','<path d="M4 4h16v16H4z"/><path d="M9 4v16M15 4v16M4 9h16M4 15h16"/>', ()=>squareUp(true)));
+    const lockBtn=mk(weldLock?'on':'', weldLock?'Linked':'Unlinked',
+      weldLock?'<path d="M7 11V8a5 5 0 0110 0v3"/><rect x="5" y="11" width="14" height="9" rx="2"/>'
+              :'<path d="M7 11V8a5 5 0 019-2"/><rect x="5" y="11" width="14" height="9" rx="2"/>',
+      toggleWeldLock);
+    row.appendChild(lockBtn);
+    row.appendChild(mk(vertexMode==='add'?'on':'','Add pt','<path d="M12 5v14M5 12h14"/>', ()=>setVertexMode('add')));
+    row.appendChild(mk(vertexMode==='del'?'on':'','Del pt','<path d="M5 12h14"/>', ()=>setVertexMode('del')));
+    row.appendChild(mk('','Add room','<path d="M4 4h16v16H4z"/><path d="M9 12h6"/>', ()=>{commit();addRoom();}));
+    row.appendChild(mk('','Edit outline','<path d="M3 7l4-4 5 3 4-2 5 4v9l-4 4-5-3-4 2-5-4z"/>', ()=>{ selectPerimeter(); }));
+    row.appendChild(mk('','Doors/Win','<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12h16M12 4v16"/>', toggleOpenings));
+    row.appendChild(mk(openingMode==='door'?'on':'','Add door','<path d="M5 20V5a1 1 0 011-1h9v16"/><path d="M3 20h18"/><circle cx="12" cy="12" r="1"/>', ()=>setOpeningMode('door')));
+    row.appendChild(mk(openingMode==='window'?'on':'','Add window','<rect x="4" y="6" width="16" height="12"/><path d="M4 12h16M12 6v12"/>', ()=>setOpeningMode('window')));
+    row.appendChild(mk('','Undo','<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-1"/>', undo));
+    row.appendChild(mk('','Fix with AI','<circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3m9-9h-3M6 12H3"/>', toggleRefine));
+    row.appendChild(mk('','Export DXF','<path d="M4 4h11l5 5v11H4z"/><path d="M8 13h8M8 17h5"/>', exportDXF));
+    row.appendChild(mk('primary','Use plan','<path d="M5 12l5 5L20 7"/>', openExport));
+  }
+}
+function toggleWeldLock(){
+  weldLock=!weldLock;
+  renderActions();
+  toast(weldLock?'Shared edges move neighbours too':'Edits affect only the selected room');
+}
+function setVertexMode(m){
+  vertexMode = (vertexMode===m)?'none':m;
+  renderActions();
+  if(vertexMode==='add') setBanner('Tap an edge of the selected room/outline to add a corner');
+  else if(vertexMode==='del') setBanner('Tap a corner of the selected room/outline to remove it');
+  else setBanner(null);
+}
+
+/* ============ AI CALLS ============ */
+function showLoading(t){ document.getElementById('loadtext').textContent=t||'Working…'; document.getElementById('loading').style.display='flex'; }
+function hideLoading(){ document.getElementById('loading').style.display='none'; }
+
+async function callAI(payload, loadingMsg){
+  showLoading(loadingMsg); hideErr();
+  try{
+    const res=await fetch(ANALYSE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    hideLoading();
+    if(data.error) throw new Error(data.error);
+    return data;
+  }catch(err){ hideLoading(); showErr('AI step failed: '+err.message); return null; }
+}
+
+async function fitBoundary(){
+  if(perimeter.length<3){ toast('Trace the outline first'); return; }
+  const data=await callAI({task:'fit_boundary', image:imgData, media_type:imgMime, boundary:perimeter.map(rnd2)}, 'Snapping outline to walls…');
+  if(data && Array.isArray(data.perimeter) && data.perimeter.length>=3){
+    perimeter=data.perimeter.filter(p=>Array.isArray(p)&&p.length===2);
+    draw(); toast('Outline snapped — nudge corners if needed');
+  } else if(data){ toast('AI returned no outline; keep your traced one'); }
+}
+
+async function generateRooms(){
+  if(seeds.length<1){ toast('Place at least one room (two taps)'); return; }
+  if(seedDraft){ toast('Finish the current room first (tap its opposite corner)'); return; }
+  showLoading('Labelling rooms · finding doors · finding windows…'); hideErr();
+  const base={ image:imgData, media_type:imgMime, boundary:perimeter.map(rnd2) };
+
+  // build geometry deterministically from the user's diagonal boxes,
+  // already snapped to walls/grid at place-time. AI only labels them.
+  const draftRooms = seeds.map((s,i)=>({
+    idx:i,
+    bbox:[rnd(s.a[0]),rnd(s.a[1]),rnd(s.b[0]),rnd(s.b[1])],
+    vertices:[[s.a[0],s.a[1]],[s.b[0],s.a[1]],[s.b[0],s.b[1]],[s.a[0],s.b[1]]]
+  }));
+
+  try{
+    const [labelData, doorsData, winData] = await Promise.all([
+      postAI({ ...base, task:'label_rooms', rooms:draftRooms.map(r=>({idx:r.idx,bbox:r.bbox})) }),
+      postAI({ ...base, task:'doors' }),
+      postAI({ ...base, task:'windows' }),
+    ]);
+    hideLoading();
+    if(labelData && labelData.error) throw new Error(labelData.error);
+
+    commit();
+    const labelByIdx = {};
+    (labelData && labelData.rooms || []).forEach(r=>{ if(typeof r.idx==='number') labelByIdx[r.idx]=r; });
+    rooms = draftRooms.map(d=>{
+      const lbl = labelByIdx[d.idx] || {};
+      return { id:uid++, layer: lbl.layer || "APT_UNKNOWN", vertices: d.vertices.map(v=>[v[0],v[1]]) };
+    });
+    if(labelData && labelData.scale) meta.scale=labelData.scale;
+    if(labelData && labelData.north) meta.north=labelData.north;
+
+    squareUp(false);   // align edges and weld
+    rebuildGrid();     // update grid from accepted rooms
+
+    const dOpen=(doorsData&&doorsData.openings)||[];
+    const wOpen=(winData&&winData.openings)||[];
+    openings=[...dOpen.map(o=>({type:'door',segment:o.segment})),
+              ...wOpen.map(o=>({type:'window',segment:o.segment}))]
+             .filter(o=>o.segment&&o.segment.length===2&&o.segment.every(p=>Array.isArray(p)&&p.length===2));
+    snapOpenings();
+
+    selectedId=null; weldAll(); renderChips(); renderEditor(); draw();
+    enterReview();
+  }catch(err){ hideLoading(); showErr('Generation failed: '+err.message); }
+}
+// fire a request and return parsed data (or {error}); no own loading UI
+async function postAI(payload){
+  try{ const res=await fetch(ANALYSE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); return await res.json(); }
+  catch(err){ return {error:String(err)}; }
+}
+
+async function mergeSpaces(){
+  if(rooms.length<2){ toast('Need at least two rooms'); return; }
+  const data=await callAI({task:'merge', image:imgData, media_type:imgMime,
+                            boundary:perimeter.map(rnd2), rooms:exportRoomsForAI()},
+                           'Merging open-plan spaces…');
+  if(!data) return;
+  ingestRooms(data);
+  toast('Open spaces merged');
+}
+
+async function refineWithAI(){
+  const v=document.getElementById('refineInput').value.trim();
+  if(!v){ toast('Type what to fix first'); return; }
+  document.getElementById('refineBar').style.display='none';
+  document.getElementById('refineInput').value='';
+  const data=await callAI({task:'rooms_from_seeds', image:imgData, media_type:imgMime,
+                            boundary:perimeter.map(rnd2), seeds:seeds.map(s=>[rnd(s.x),rnd(s.y)]),
+                            hint:v, previous:exportRoomsForAI()}, 'Refining…');
+  if(data) ingestRooms(data);
+}
+
+function ingestRooms(data){
+  rooms=(data.rooms||[]).map(r=>({id:uid++, layer:r.layer||"APT_ROOM_LIVING",
+        vertices:(r.vertices||[]).filter(v=>Array.isArray(v)&&v.length===2)})).filter(r=>r.vertices.length>=3);
+  if(Array.isArray(data.openings)) openings=data.openings.filter(o=>o&&o.segment&&o.segment.length===2&&o.segment.every(p=>Array.isArray(p)&&p.length===2)).map(o=>({type:o.type,segment:o.segment}));
+  if(data.scale) meta.scale=data.scale;
+  if(data.north) meta.north=data.north;
+  selectedId=null; weldAll(); renderChips(); renderEditor(); draw();
+}
+function exportRoomsForAI(){ return rooms.map(r=>({layer:r.layer,label:typeFor(r.layer).label,vertices:r.vertices.map(v=>[rnd(v[0]),rnd(v[1])])})); }
+function rnd(n){return Math.round(n*1000)/1000;}
+function rnd2(p){return [rnd(p[0]),rnd(p[1])];}
+
+/* ============ WELDING ============ */
+function allRings(){ return [perimeter, ...rooms.map(r=>r.vertices)]; }
+function weldAll(){
+  const all=allRings();
+  for(let a=0;a<all.length;a++) for(let i=0;i<all[a].length;i++){
+    const A=all[a][i];
+    for(let b=0;b<all.length;b++) for(let j=0;j<all[b].length;j++){
+      if(a===b&&i===j) continue;
+      const B=all[b][j];
+      if(Math.hypot(A[0]-B[0],A[1]-B[1])<WELD_TOL){ B[0]=A[0]; B[1]=A[1]; }
     }
-    return true;
+  }
+}
+function coincident(x,y){ const refs=[]; allRings().forEach(ring=>ring.forEach((p,i)=>{ if(Math.hypot(p[0]-x,p[1]-y)<WELD_TOL) refs.push([ring,i]); })); return refs; }
+// group of point-refs to move when dragging: all coincident if locked, else only the active ring's own point
+function dragGroup(ring, idx){
+  if(weldLock) return coincident(ring[idx][0], ring[idx][1]);
+  return [[ring, idx]];
+}
+
+/* ============ WALL DETECTION ============
+   Project the image to a grayscale buffer, then sum dark pixels along each
+   row and each column. Peaks = horizontal/vertical wall lines. Cheap and
+   surprisingly robust on clean plan drawings.                             */
+function detectWalls(){
+  if(!img.naturalWidth){ return; }
+  const T=600;                                           // working resolution
+  const sx=img.naturalWidth, sy=img.naturalHeight;
+  const sc=Math.min(T/sx, T/sy, 1);
+  const w=Math.max(64,Math.round(sx*sc)), h=Math.max(64,Math.round(sy*sc));
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const cx=c.getContext('2d'); cx.drawImage(img,0,0,w,h);
+  const id=cx.getImageData(0,0,w,h).data;
+  // 1=dark/ink, 0=light
+  const dark=new Uint8Array(w*h);
+  for(let i=0,p=0;i<id.length;i+=4,p++){
+    const v=(id[i]+id[i+1]+id[i+2])/3;
+    dark[p]=v<170?1:0;
+  }
+  // row & column sums
+  const rowS=new Float32Array(h), colS=new Float32Array(w);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) if(dark[y*w+x]){ rowS[y]++; colS[x]++; }
+  // a row is a horizontal wall if many of its pixels are dark
+  const rowT=w*0.20, colT=h*0.20;
+  walls.h = peakPositions(rowS, rowT, h);     // image fractions in y
+  walls.v = peakPositions(colS, colT, w);     // image fractions in x
+}
+function peakPositions(arr, thresh, dim){
+  const peaks=[], MIN_GAP=Math.max(3, Math.round(dim*0.012));
+  let i=0;
+  while(i<arr.length){
+    if(arr[i]>=thresh){
+      let j=i, best=i;
+      while(j<arr.length && arr[j]>=thresh){ if(arr[j]>arr[best]) best=j; j++; }
+      if(!peaks.length || best-peaks[peaks.length-1]>=MIN_GAP) peaks.push(best);
+      i=j;
+    } else i++;
+  }
+  return peaks.map(p=>p/dim);
+}
+
+/* adaptive grid: start with boundary, grow with every accepted room edge */
+function rebuildGrid(){
+  const xs=new Set(), ys=new Set();
+  const push=(ring)=>{ ring.forEach(([x,y])=>{ xs.add(round3(x)); ys.add(round3(y)); }); };
+  if(perimeter.length) push(perimeter);
+  rooms.forEach(r=>push(r.vertices));
+  grid.x=[...xs].sort((a,b)=>a-b);
+  grid.y=[...ys].sort((a,b)=>a-b);
+}
+function round3(n){return Math.round(n*1000)/1000;}
+
+/* snap a fraction to the closest line: grid first (anchored by user accepts),
+   walls second (image evidence), boundary corners always.                  */
+function snapCoord(v, axis, tolGrid=0.012, tolWall=0.014){
+  // grid (highest priority — same surface as boundary corners)
+  const g = axis==='x' ? grid.x : grid.y;
+  let best=null, bd=tolGrid;
+  for(const c of g){ const d=Math.abs(v-c); if(d<bd){bd=d; best=c;} }
+  if(best!=null) return best;
+  // wall lines
+  const wl = axis==='x' ? walls.v : walls.h;
+  let bestW=null, bw=tolWall;
+  for(const c of wl){ const d=Math.abs(v-c); if(d<bw){bw=d; bestW=c;} }
+  return bestW!=null ? bestW : v;
+}
+function snapPoint(p){ if(!snapEnabled) return p.slice(); return [snapCoord(p[0],'x'), snapCoord(p[1],'y')]; }
+
+/* ============ SQUARE-UP / ALIGN ============
+   Resolve a rough layout into a clean rectilinear drawing:
+   1) rectilinearise — snap near-horizontal/vertical edges to exactly H/V
+   2) cluster vertex X's and Y's and snap each cluster to a shared value,
+      so adjacent rooms end up sharing exact wall coordinates
+   3) weld coincident corners.                                         */
+function squareUp(announce){
+  if(announce!==false) commit();
+  const rings=allRings();
+  rings.forEach(rectilinearize);          // every edge -> strict H or V
+  snapAxis(rings, 0, 0.022);              // align shared walls across rooms (X)
+  snapAxis(rings, 1, 0.022);              // and Y
+  weldAll();
+  snapOpenings();
+  if(announce!==false){ draw(); toast('Squared up & aligned'); }
+}
+// snap every edge of a ring to a true horizontal or vertical line.
+// each vertex takes its X from its vertical edge and its Y from its horizontal edge,
+// so 4-pt rooms become rectangles and 6/8-pt rooms become clean right-angled polygons.
+function rectilinearize(ring){
+  const W=canvas.width||1, H=canvas.height||1, n=ring.length;
+  if(n<4) return;
+  const orient=[];
+  for(let i=0;i<n;i++){ const a=ring[i], b=ring[(i+1)%n];
+    orient[i] = Math.abs((b[0]-a[0])*W) >= Math.abs((b[1]-a[1])*H) ? 'H' : 'V'; }
+  const nx=ring.map(p=>p[0]), ny=ring.map(p=>p[1]);
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    if(orient[i]==='H'){ const my=(ring[i][1]+ring[j][1])/2; ny[i]=my; ny[j]=my; }
+    else { const mx=(ring[i][0]+ring[j][0])/2; nx[i]=mx; nx[j]=mx; }
+  }
+  for(let i=0;i<n;i++){ ring[i][0]=nx[i]; ring[i][1]=ny[i]; }
+}
+function snapAxis(rings, axis, tol){
+  const all=[]; rings.forEach(r=>r.forEach(p=>all.push(p)));
+  const vals=all.map(p=>p[axis]).sort((a,b)=>a-b);
+  // build clusters of values within tol, snap to cluster mean
+  const clusters=[]; let cur=[vals[0]];
+  for(let i=1;i<vals.length;i++){
+    if(vals[i]-cur[cur.length-1]<tol) cur.push(vals[i]);
+    else { clusters.push(cur); cur=[vals[i]]; }
+  }
+  clusters.push(cur);
+  const means=clusters.map(c=>c.reduce((s,v)=>s+v,0)/c.length);
+  all.forEach(p=>{
+    // find nearest cluster mean
+    let best=means[0],bd=Math.abs(p[axis]-means[0]);
+    for(const m of means){ const d=Math.abs(p[axis]-m); if(d<bd){bd=d;best=m;} }
+    if(bd<tol) p[axis]=best;
   });
 }
-function buildLayerList(){
-  const el=document.getElementById('layerList');
-  const vis=visibleLayers();
-  if(!vis.length){el.innerHTML='<div style="font-size:10px;color:var(--mut)">Switch to Polygon or Line mode</div>';return;}
-  let h='',lastGrp='';
-  for(const l of vis){
-    if(l.group!==lastGrp){h+=`<div class="lgrp">${l.group}</div>`;lastGrp=l.group;}
-    h+=`<div class="lbtn ${l===activeLayer?'active':''}" onclick="selectLayer('${l.key}')" style="color:${l.color}">
-      <div class="lswatch" style="background:${l.color}22;border:1.5px solid ${l.color}"></div>${l.label}
-    </div>`;
-  }
-  el.innerHTML=h;
-}
-function selectLayer(key){
-  const l=LMAP[key];if(!l)return;
-  activeLayer=l;
-  if(l.type==='line'&&drawMode!=='line')setMode('line');
-  if(l.type==='poly'&&drawMode==='line')setMode('poly');
-  buildLayerList();
-}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// State
-// ═══════════════════════════════════════════════════════════════════════════════
-let shapes=[],selIds=new Set(),drawMode='poly',curPts=[],hoverPt=null;
-let bgImage=null,bgOpacity=0.35;
-let scale=null,scaleP1=null,scaleP2=null,scalePending=false,_scaleClick=null;
-let history=[],nextId=1;
-let vx=0,vy=0,vz=1;
-let panActive=false,panStart=null,panOrigin=null;
-let rectStart=null;
-let dragActive=false,dragBase=null,dragSnaps={};
-let shiftDown=false;
-// Touch
-let touches={};let lastPinchDist=null;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Canvas
-// ═══════════════════════════════════════════════════════════════════════════════
-const cv=document.getElementById('mc'),ctx=cv.getContext('2d');
-const area=document.getElementById('canvasArea');
-function resize(){cv.width=area.clientWidth;cv.height=area.clientHeight;render();}
-window.addEventListener('resize',resize);resize();
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Mode
-// ═══════════════════════════════════════════════════════════════════════════════
-const HINTS={
-  poly:'Click to add vertices · Shift=90° lock · Double-click or snap to start to close · Esc=cancel',
-  rect:'Click-drag to draw rectangle · Shift=square · Select two overlapping shapes for Union/Subtract',
-  line:'Click start point · Click end point · Shift=90° lock · Esc=cancel',
-  select:'Click to select · Shift-click to add to selection · Drag to move · Select 2 polygons for boolean ops',
-};
-function setMode(m){
-  drawMode=m;curPts=[];rectStart=null;
-  if(m!=='select')selIds.clear();
-  hideBoolBar();
-  document.querySelectorAll('.mbtn[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
-  cv.className=m==='select'?'sel':m==='pan'?'pan':m==='rect'?'rect':'';
-  buildLayerList();
-  document.getElementById('hint').textContent=HINTS[m]||'';
-  render();updatePropPanel();
-}
-
-document.addEventListener('keydown',e=>{
-  shiftDown=e.shiftKey;
-  const t=document.activeElement.tagName;
-  if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
-  const k=e.key.toLowerCase();
-  if(k==='p')setMode('poly');
-  if(k==='r')setMode('rect');
-  if(k==='l')setMode('line');
-  if(k==='s'||k==='v')setMode('select');
-  if(k==='escape'){curPts=[];rectStart=null;selIds.clear();hideBoolBar();render();updatePropPanel();}
-  if((k==='delete'||k==='backspace')&&selIds.size>0)deleteSelected();
-  if(k==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undo();}
-  if(k==='a'&&(e.ctrlKey||e.metaKey)){e.preventDefault();selIds=new Set(shapes.map(s=>s.id));render();updatePropPanel();}
-});
-document.addEventListener('keyup',e=>{shiftDown=e.shiftKey;});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// View
-// ═══════════════════════════════════════════════════════════════════════════════
-function w2c(wx,wy){return[wx*vz+vx,wy*vz+vy];}
-function c2w(cx,cy){return[(cx-vx)/vz,(cy-vy)/vz];}
-function zoom(f,cx,cy){
-  cx=cx??cv.width/2;cy=cy??cv.height/2;
-  const[wx,wy]=c2w(cx,cy);
-  vz=Math.max(0.03,Math.min(40,vz*f));
-  vx=cx-wx*vz;vy=cy-wy*vz;render();
-}
-function resetView(){vx=0;vy=0;vz=1;if(bgImage)fitBg();render();}
-function fitBg(){
-  const W=cv.width,H=cv.height;
-  const s=Math.min((W-40)/bgImage.width,(H-40)/bgImage.height)*0.92;
-  vz=s;vx=(W-bgImage.width*s)/2;vy=(H-bgImage.height*s)/2;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Image import
-// ═══════════════════════════════════════════════════════════════════════════════
-document.getElementById('imgFile').addEventListener('change',e=>{if(e.target.files[0])loadFile(e.target.files[0]);});
-const fd2=document.getElementById('fdrop');
-fd2.addEventListener('dragover',e=>{e.preventDefault();fd2.classList.add('over');});
-fd2.addEventListener('dragleave',()=>fd2.classList.remove('over'));
-fd2.addEventListener('drop',e=>{e.preventDefault();fd2.classList.remove('over');const f=e.dataTransfer.files[0];if(f)loadFile(f);});
-function loadFile(f){
-  const r=new FileReader();
-  r.onload=e=>{const img=new Image();img.onload=()=>{bgImage=img;fitBg();render();enableRun();};img.src=e.target.result;};
-  r.readAsDataURL(f);
-}
-function loadFromUrl(){
-  const raw=document.getElementById('urlInput').value.trim();if(!raw)return;
-  const status=document.getElementById('urlStatus');
-  status.innerHTML='<span style="font-size:9px;color:var(--dim)">Loading…</span>';
-  // Strip webp conversion filters from Domain/realestate CDN URLs so canvas can read them
-  const url=raw.replace(/filters:format\(webp\)[^/]*\//g,'');
-  const src=url.startsWith('http')?`/api/proxy-image?url=${encodeURIComponent(url)}`:url;
-  const img=new Image();img.crossOrigin='anonymous';
-  img.onload=()=>{bgImage=img;fitBg();render();enableRun();status.innerHTML='<span class="imp-ok">✓ Loaded</span>';};
-  img.onerror=()=>{
-    const img2=new Image();img2.crossOrigin='anonymous';
-    img2.onload=()=>{bgImage=img2;fitBg();render();enableRun();status.innerHTML='<span class="imp-ok">✓ Loaded</span>';};
-    img2.onerror=()=>{
-      const isDomain=raw.includes('domain');
-      status.innerHTML=`<span class="imp-err">
-        Could not load image.
-        ${isDomain
-          ? 'Domain.com.au blocks direct image loading. Save the floor plan image to your device first (right-click → Save image as), then use the upload button below.'
-          : 'Make sure you right-clicked the floor plan image itself and chose <em>Copy image address</em> — not the page URL.'}
-      </span>`;
-    };
-    img2.src=url;
-  };
-  img.src=src;
-}
-document.getElementById('urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')loadFromUrl();});
-function enableRun(){
-  document.getElementById('runBtn').disabled=false;
-  document.getElementById('aiBtn').disabled=false;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// AI image analysis
-// ═══════════════════════════════════════════════════════════════════════════════
-async function analyseWithAI(){
-  if(!bgImage){alert('Load a floor plan image first.');return;}
-  const btn=document.getElementById('aiBtn');
-  const status=document.getElementById('aiStatus');
-  btn.disabled=true;
-  btn.textContent='✦ Analysing...';
-  status.style.display='block';
-  status.textContent='Sending image to Claude — this takes about 15 seconds...';
-  status.style.color='var(--dim)';
-
-  try{
-    // Draw image to offscreen canvas and get base64
-    const offscreen=document.createElement('canvas');
-    // Cap at 1500px on longest side to keep token cost reasonable
-    const maxDim=1500;
-    const scale=Math.min(1,maxDim/Math.max(bgImage.width,bgImage.height));
-    offscreen.width=Math.round(bgImage.width*scale);
-    offscreen.height=Math.round(bgImage.height*scale);
-    const octx=offscreen.getContext('2d');
-    octx.drawImage(bgImage,0,0,offscreen.width,offscreen.height);
-    const dataUrl=offscreen.toDataURL('image/jpeg',0.85);
-    const base64=dataUrl.split(',')[1];
-    const W=offscreen.width, H=offscreen.height;
-
-    const resp=await fetch('/api/analyse-image',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image:base64,media_type:'image/jpeg'})
-    });
-    const data=await resp.json();
-
-    if(data.error){
-      status.textContent='Error: '+data.error;
-      status.style.color='var(--fail)';
-      return;
-    }
-
-    // Set scale if found
-    if(data.scale&&data.scale.found&&data.scale.dimension_metres&&data.scale.pixels_per_metre){
-      scale={ppm:data.scale.pixels_per_metre};
-      document.getElementById('scaleStatus').textContent='Scale set by AI';
-      document.getElementById('scaleStatus').className='scale-ok';
-    }
-
-    // Draw rooms
-    const rooms=data.rooms||[];
-    if(!rooms.length){
-      status.textContent='No rooms detected. Try a clearer image or trace manually.';
-      status.style.color='var(--warn)';
-      return;
-    }
-
-    saveHistory();
-    let added=0;
-    for(const room of rooms){
-      const lkey=room.layer||'APT_ROOM_LIVING';
-      const verts=room.vertices||[];
-      if(verts.length<3)continue;
-      // Convert proportional coords to world coords
-      // Image is drawn at vx,vy with scale vz on the canvas
-      // World coords: x = (px - vx)/vz, y = (py - vy)/vz
-      // px = propX * bgImage.width * vz + vx (in canvas pixels)
-      // So world x = propX * bgImage.width, world y = propY * bgImage.height
-      const pts=verts.map(([px,py])=>[px*bgImage.width, py*bgImage.height]);
-      shapes.push({
-        id:nextId++,
-        type:'poly',
-        layer:lkey,
-        pts,
-        closed:true,
-        aiGenerated:true, // flag for review highlighting
-      });
-      added++;
-    }
-
-    buildLayerList();
-    enableRun();
-    render();
-
-    // Show AI shapes in a distinct review state
-    _aiReviewMode=true;
-    status.textContent=added+' rooms detected — shown with dashed outlines. Review, adjust, then run check.';
-    status.style.color='var(--pass)';
-
-    // Highlight AI shapes briefly
-    setTimeout(()=>{_aiReviewMode=false;render();},8000);
-
-  }catch(e){
-    status.textContent='Failed: '+e.message;
-    status.style.color='var(--fail)';
-  }finally{
-    btn.disabled=false;
-    btn.textContent='✦ Analyse with AI';
-  }
-}
-
-let _aiReviewMode=false;
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Scale
-// ═══════════════════════════════════════════════════════════════════════════════
-function startScale(){
-  if(_scaleClick)cv.removeEventListener('click',_scaleClick);
-  scalePending=true;scaleP1=scaleP2=null;
-  document.getElementById('scaleStatus').textContent='Click first point on plan…';
-  document.getElementById('scaleStatus').className='scale-pending';
-  _scaleClick=function(e){
-    if(!scalePending)return;
-    const pt=c2w(e.offsetX,e.offsetY);
-    if(!scaleP1){scaleP1=pt;document.getElementById('scaleStatus').textContent='Click second point…';}
-    else{scaleP2=pt;scalePending=false;cv.removeEventListener('click',_scaleClick);
-      document.getElementById('scaleModal').classList.add('open');
-      document.getElementById('scaleDist').focus();render();}
-    render();
-  };
-  cv.addEventListener('click',_scaleClick);
-}
-function confirmScale(){
-  const d=parseFloat(document.getElementById('scaleDist').value);
-  if(!d||d<=0||!scaleP1||!scaleP2){cancelScale();return;}
-  scale={ppm:Math.hypot(scaleP2[0]-scaleP1[0],scaleP2[1]-scaleP1[1])/d};
-  scaleP1=scaleP2=null;
-  document.getElementById('scaleModal').classList.remove('open');
-  document.getElementById('scaleStatus').textContent=`1m = ${Math.round(scale.ppm)}px · Scale set`;
-  document.getElementById('scaleStatus').className='scale-ok';
-  render();
-}
-function cancelScale(){
-  scalePending=false;scaleP1=scaleP2=null;
-  if(_scaleClick)cv.removeEventListener('click',_scaleClick);
-  document.getElementById('scaleModal').classList.remove('open');
-  document.getElementById('scaleStatus').textContent='No scale set — dimensions approximate';
-  document.getElementById('scaleStatus').className='scale-none';
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Geometry helpers
-// ═══════════════════════════════════════════════════════════════════════════════
-function polyArea(pts){
-  let a=0;for(let i=0;i<pts.length;i++){const j=(i+1)%pts.length;a+=pts[i][0]*pts[j][1]-pts[j][0]*pts[i][1];}return Math.abs(a)/2;
-}
-function polyCentroid(pts){
-  let cx=0,cy=0;for(const p of pts){cx+=p[0];cy+=p[1];}return[cx/pts.length,cy/pts.length];
-}
-function r2(n){return Math.round(n*100)/100;}
-function ptInPoly(pt,pts){
-  let inside=false,j=pts.length-1;
-  for(let i=0;i<pts.length;i++){
-    if(((pts[i][1]>pt[1])!=(pts[j][1]>pt[1]))&&pt[0]<(pts[j][0]-pts[i][0])*(pt[1]-pts[i][1])/(pts[j][1]-pts[i][1])+pts[i][0])inside=!inside;
-    j=i;
-  }
-  return inside;
-}
-function ptToSeg(p,a,b){
-  const dx=b[0]-a[0],dy=b[1]-a[1];
-  if(!dx&&!dy)return Math.hypot(p[0]-a[0],p[1]-a[1]);
-  const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)));
-  return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);
-}
-function polysOverlap(A,B){
-  // Quick AABB check first
-  const axs=A.map(p=>p[0]),ays=A.map(p=>p[1]);
-  const bxs=B.map(p=>p[0]),bys=B.map(p=>p[1]);
-  if(Math.max(...axs)<Math.min(...bxs)||Math.min(...axs)>Math.max(...bxs))return false;
-  if(Math.max(...ays)<Math.min(...bys)||Math.min(...ays)>Math.max(...bys))return false;
-  // Check if any vertex of A is in B or vice versa
-  for(const p of A)if(ptInPoly(p,B))return true;
-  for(const p of B)if(ptInPoly(p,A))return true;
-  return false;
-}
-function snapToAngle(base,pt){
-  if(!shiftDown)return pt;
-  const dx=pt[0]-base[0],dy=pt[1]-base[1];
-  const ang=Math.atan2(dy,dx);
-  const snap=Math.round(ang/(Math.PI/2))*(Math.PI/2);
-  const len=Math.hypot(dx,dy);
-  return[base[0]+Math.cos(snap)*len,base[1]+Math.sin(snap)*len];
-}
-function snapToVertex(pt){
-  const thresh=14/vz;
-  for(const s of shapes){
-    for(const v of s.pts){
-      if(Math.hypot(v[0]-pt[0],v[1]-pt[1])<thresh)return[...v];
-    }
-  }
-  return pt;
-}
-function squarify([x1,y1],[x2,y2]){
-  const s=Math.max(Math.abs(x2-x1),Math.abs(y2-y1));
-  return[x1+(x2>x1?s:-s),y1+(y2>y1?s:-s)];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Polygon boolean operations — edge-walk algorithm
-// Handles non-convex polygons and shared collinear edges correctly
-// ═══════════════════════════════════════════════════════════════════════════════
-const BEPS=1e-7;
-function bNear(a,b){return Math.abs(a[0]-b[0])<BEPS&&Math.abs(a[1]-b[1])<BEPS;}
-function bOnSeg(p,a,b){
-  const dx=b[0]-a[0],dy=b[1]-a[1];
-  if(Math.abs(dx)<BEPS&&Math.abs(dy)<BEPS)return bNear(p,a);
-  if(Math.abs(dx)>Math.abs(dy)){const t=(p[0]-a[0])/dx;return t>=-BEPS&&t<=1+BEPS&&Math.abs(p[1]-a[1]-t*dy)<BEPS*10;}
-  else{const t=(p[1]-a[1])/dy;return t>=-BEPS&&t<=1+BEPS&&Math.abs(p[0]-a[0]-t*dx)<BEPS*10;}
-}
-function bStrictlyIn(pt,poly){
-  const n=poly.length;
-  for(let i=0;i<n;i++)if(bOnSeg(pt,poly[i],poly[(i+1)%n]))return false;
-  let inside=false,j=n-1;const x=pt[0],y=pt[1];
-  for(let i=0;i<n;i++){
-    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
-    if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi+1e-12)+xi)inside=!inside;j=i;
-  }
-  return inside;
-}
-function bOnBoundary(pt,poly){
-  const n=poly.length;
-  for(let i=0;i<n;i++)if(bOnSeg(pt,poly[i],poly[(i+1)%n]))return true;
-  return false;
-}
-function bSegX(p1,p2,p3,p4){
-  const d1=[p2[0]-p1[0],p2[1]-p1[1]],d2=[p4[0]-p3[0],p4[1]-p3[1]];
-  const denom=d1[0]*d2[1]-d1[1]*d2[0];
-  if(Math.abs(denom)<1e-9)return null;
-  const dx=p3[0]-p1[0],dy=p3[1]-p1[1];
-  let t=(dx*d2[1]-dy*d2[0])/denom,s=(dx*d1[1]-dy*d1[0])/denom;
-  t=Math.max(0,Math.min(1,t));s=Math.max(0,Math.min(1,s));
-  if(t>=-BEPS&&t<=1+BEPS&&s>=-BEPS&&s<=1+BEPS)return[p1[0]+t*d1[0],p1[1]+t*d1[1]];
-  return null;
-}
-function bAugment(poly,other){
-  const result=[],n=poly.length,m=other.length;
-  for(let i=0;i<n;i++){
-    const p=poly[i],q=poly[(i+1)%n];result.push([...p]);
-    const newPts=[];
-    for(const ov of other){
-      if(bNear(ov,p)||bNear(ov,q))continue;
-      if(bOnSeg(ov,p,q)){
-        const dx=q[0]-p[0],dy=q[1]-p[1];
-        const t=Math.abs(dx)>Math.abs(dy)?(ov[0]-p[0])/dx:(ov[1]-p[1])/dy;
-        if(t>BEPS&&t<1-BEPS)newPts.push([t,[...ov]]);
-      }
-    }
-    for(let j=0;j<m;j++){
-      const ix=bSegX(p,q,other[j],other[(j+1)%m]);
-      if(ix){
-        const dx=q[0]-p[0],dy=q[1]-p[1];
-        const t=Math.abs(dx)>Math.abs(dy)?(ix[0]-p[0])/dx:(ix[1]-p[1])/dy;
-        if(t>BEPS&&t<1-BEPS&&!newPts.some(e=>bNear(ix,e[1])))newPts.push([t,ix]);
-      }
-    }
-    newPts.sort((a,b)=>a[0]-b[0]);result.push(...newPts.map(e=>e[1]));
-  }
-  return result;
-}
-function bClean(pts){
-  if(!pts.length)return pts;
-  const r=[pts[0]];
-  for(let i=1;i<pts.length;i++)if(!bNear(pts[i],r[r.length-1]))r.push(pts[i]);
-  while(r.length>1&&bNear(r[0],r[r.length-1]))r.pop();
-  return r;
-}
-function shClip(subject,clip){
-  const inside=(p,a,b)=>(b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])>=-1e-10;
-  const inter=(p1,p2,p3,p4)=>{
-    const x1=p1[0],y1=p1[1],x2=p2[0],y2=p2[1],x3=p3[0],y3=p3[1],x4=p4[0],y4=p4[1];
-    const d=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
-    if(Math.abs(d)<1e-10)return p1;
-    const t=((x1-x3)*(y3-y4)-(y1-y3)*(x3-x4))/d;return[x1+t*(x2-x1),y1+t*(y2-y1)];
-  };
-  let out=[...subject];const n=clip.length;
-  for(let i=0;i<n;i++){
-    if(!out.length)return[];
-    const inp=[...out];out=[];const es=clip[i],ee=clip[(i+1)%n];
-    for(let j=0;j<inp.length;j++){
-      const c=inp[j],pv=inp[(j+inp.length-1)%inp.length];
-      const ci=inside(c,es,ee),pi=inside(pv,es,ee);
-      if(ci){if(!pi)out.push(inter(pv,c,es,ee));out.push(c);}
-      else if(pi)out.push(inter(pv,c,es,ee));
-    }
-  }
-  return bClean(out);
-}
-function bBuildPolygons(rawEdges){
-  // Step 1: deduplicate same-direction edges
+/* snap each opening to the nearest room/perimeter edge and lay it along that wall */
+function snapOpenings(){
+  const W=canvas.width||1, H=canvas.height||1;
   const edges=[];
-  for(const[p,q]of rawEdges)
-    if(!edges.some(([r,s])=>bNear(p,r)&&bNear(q,s)))edges.push([[...p],[...q]]);
-  // Step 2: remove bidirectional pairs (interior shared edges)
-  const remove=new Set();
-  for(let i=0;i<edges.length;i++){
-    if(remove.has(i))continue;
-    const[p,q]=edges[i];
-    for(let j=i+1;j<edges.length;j++){
-      const[r,s]=edges[j];
-      if(bNear(p,s)&&bNear(q,r)){remove.add(i);remove.add(j);break;}
+  allRings().forEach(ring=>{ for(let i=0;i<ring.length;i++){ edges.push([ring[i],ring[(i+1)%ring.length]]); } });
+  if(!edges.length) return;
+  openings.forEach(o=>{
+    const mid=[(o.segment[0][0]+o.segment[1][0])/2,(o.segment[0][1]+o.segment[1][1])/2];
+    let best=null,bd=1e9;
+    edges.forEach(([a,b])=>{ const d=distToSeg(mid[0],mid[1],a[0],a[1],b[0],b[1]); if(d<bd){bd=d;best=[a,b];} });
+    if(best && bd<0.06){
+      // project both endpoints onto the chosen edge line
+      o.segment=o.segment.map(pt=>projectOnSeg(pt,best[0],best[1]));
     }
-  }
-  const active=edges.filter((_,i)=>!remove.has(i));
-  if(!active.length)return[];
-  // Step 3: extract all closed loops
-  const used=new Array(active.length).fill(false);const polys=[];
-  for(let si=0;si<active.length;si++){
-    if(used[si])continue;
-    const result=[[...active[si][0]],[...active[si][1]]];
-    const usedThis=new Array(active.length).fill(false);usedThis[si]=true;
-    for(let iter=0;iter<active.length*4;iter++){
-      const last=result[result.length-1];let found=false;
-      for(let i=0;i<active.length;i++){
-        if(!used[i]&&!usedThis[i]&&bNear(active[i][0],last)){
-          result.push([...active[i][1]]);usedThis[i]=true;found=true;break;
-        }
-      }
-      if(!found)break;
-      if(result.length>2&&bNear(result[result.length-1],result[0])){
-        result.pop();const r=bClean(result);
-        if(r.length>=3){polys.push(r);for(let i=0;i<active.length;i++)if(usedThis[i])used[i]=true;}
-        break;
-      }
-    }
-  }
-  return polys;
+  });
 }
-
-function boolIntersect(A,B){const r=shClip(A,B);return r.length>=3?r:null;}
-
-function boolUnion(A,B){
-  const augA=bAugment(A,B),augB=bAugment(B,A);
-  const edges=[];const nA=augA.length,nB=augB.length;
-  for(let i=0;i<nA;i++){
-    const p=augA[i],q=augA[(i+1)%nA],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-    if(!bStrictlyIn(mp,B))edges.push([p,q]);
-  }
-  for(let i=0;i<nB;i++){
-    const p=augB[i],q=augB[(i+1)%nB],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-    if(!bStrictlyIn(mp,A))edges.push([p,q]);
-  }
-  const r=bBuildPolygons(edges);
-  if(r.length)return r[0];  // return first (largest) polygon for single-result ops
-  if(bStrictlyIn(A[0],B))return B;
-  if(bStrictlyIn(B[0],A))return A;
-  return A;  // fallback: can't merge (caller handles multi-poly)
+function projectOnSeg(p,a,b){
+  const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;
+  let t=l2?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/l2:0; t=Math.max(0,Math.min(1,t));
+  return [a[0]+t*dx, a[1]+t*dy];
 }
-
-function boolDiff(A,B){
-  const augA=bAugment(A,B),augB=bAugment(B,A);
-  const edges=[];const nA=augA.length,nB=augB.length;
-  for(let i=0;i<nA;i++){
-    const p=augA[i],q=augA[(i+1)%nA],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-    const excl=bStrictlyIn(mp,B)||(bOnBoundary(mp,A)&&bOnBoundary(mp,B));
-    if(!excl)edges.push([p,q]);
-  }
-  for(let i=0;i<nB;i++){
-    const p=augB[i],q=augB[(i+1)%nB],mp=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-    if(bStrictlyIn(mp,A))edges.push([q,p]);  // reversed
-  }
-  const r=bBuildPolygons(edges);
-  if(r.length)return r[0];
-  if(bStrictlyIn(A[0],B))return null;
-  if(bStrictlyIn(B[0],A))return A;
-  return A;
+function nearestEdge(px,py){
+  let best=null,bd=1e9;
+  allRings().forEach(ring=>{ for(let i=0;i<ring.length;i++){ const a=ring[i],b=ring[(i+1)%ring.length]; const d=distToSeg(px,py,a[0],a[1],b[0],b[1]); if(d<bd){bd=d;best={a,b};} } });
+  return best;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Boolean operation toolbar
-// ═══════════════════════════════════════════════════════════════════════════════
-function checkBoolBar(){
-  const bar=document.getElementById('boolBar');
-  const selPolys=shapes.filter(s=>selIds.has(s.id)&&s.type==='poly'&&s.closed);
-  if(selPolys.length===2&&polysOverlap(selPolys[0].pts,selPolys[1].pts)){
-    // Position bar at midpoint between centroids
-    const c0=polyCentroid(selPolys[0].pts),c1=polyCentroid(selPolys[1].pts);
-    const[mx,my]=w2c((c0[0]+c1[0])/2,(c0[1]+c1[1])/2);
-    const W=cv.width;
-    bar.style.left=Math.min(mx-100,W-240)+'px';
-    bar.style.top=(my-55)+'px';
-    bar.style.display='flex';
-  }else hideBoolBar();
+function setOpeningMode(m){
+  openingMode=(openingMode===m)?'none':m; vertexMode='none'; winFirst=null; winEdge=null;
+  selectedId=null; selOpening=-1; renderActions();
+  if(openingMode==='door') setBanner('Tap a wall to drop a door. Pick the tool again to stop.');
+  else if(openingMode==='window') setBanner('Tap the two ends of a window (snaps to the wall).');
+  else setBanner(null);
+  draw();
 }
-function hideBoolBar(){document.getElementById('boolBar').style.display='none';}
-
-function boolOp(op){
-  const selPolys=shapes.filter(s=>selIds.has(s.id)&&s.type==='poly'&&s.closed);
-  if(selPolys.length!==2)return;
-  const[A,B]=selPolys;
-  saveHistory();
-  let result;
-  if(op==='union')result=boolUnion(A.pts,B.pts);
-  else if(op==='intersect')result=boolIntersect(A.pts,B.pts);
-  else result=boolDiff(A.pts,B.pts);
-  if(!result||result.length<3){alert('Boolean operation produced no valid shape. Try with more clearly overlapping rectangles.');return;}
-  shapes=shapes.filter(s=>!selIds.has(s.id));
-  shapes.push({id:nextId++,type:'poly',layer:A.layer,pts:result,closed:true,label:A.label});
-  // For union, also remove B (already in result). For diff, keep B untouched if needed:
-  // B was already removed above since it's in selPolys.
-  selIds.clear();hideBoolBar();render();buildLayerList();updatePropPanel();
+function placeDoor(px,py){
+  const e=nearestEdge(px,py); if(!e) return;
+  const c=projectOnSeg([px,py],e.a,e.b);
+  const W=canvas.width||1,H=canvas.height||1;
+  let dx=(e.b[0]-e.a[0])*W, dy=(e.b[1]-e.a[1])*H; const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+  const half=16; // px ~ a doorway
+  commit();
+  openings.push({type:'door',segment:[[c[0]-dx*half/W,c[1]-dy*half/H],[c[0]+dx*half/W,c[1]+dy*half/H]]});
+  draw();
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Mouse & touch events
-// ═══════════════════════════════════════════════════════════════════════════════
-cv.addEventListener('mousemove',onMouseMove);
-cv.addEventListener('mousedown',onMouseDown);
-cv.addEventListener('mouseup',onMouseUp);
-cv.addEventListener('click',onClick);
-cv.addEventListener('dblclick',onDblClick);
-cv.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:0.89,e.offsetX,e.offsetY);},{passive:false});
-cv.addEventListener('contextmenu',e=>e.preventDefault());
-
-function getEvtPos(e){return{x:e.offsetX,y:e.offsetY};}
-
-function onMouseMove(e){
-  shiftDown=e.shiftKey;
-  let pt=c2w(e.offsetX,e.offsetY);
-
-  // Right-drag pan
-  if(panActive&&panStart){
-    vx=panOrigin[0]+(e.clientX-panStart[0]);
-    vy=panOrigin[1]+(e.clientY-panStart[1]);
-  }
-
-  // Shape drag
-  if(dragActive&&dragBase){
-    const[wx,wy]=c2w(e.offsetX,e.offsetY);
-    const dx=wx-dragBase[0],dy=wy-dragBase[1];
-    for(const id of selIds){
-      const s=shapes.find(x=>x.id===id);
-      if(s&&dragSnaps[id])s.pts=dragSnaps[id].map(([x,y])=>[x+dx,y+dy]);
-    }
-  }
-
-  // Snap
-  if(drawMode==='poly'||drawMode==='line')pt=snapToVertex(pt);
-  if(shiftDown&&curPts.length>0)pt=snapToAngle(curPts[curPts.length-1],pt);
-  hoverPt=pt;
-
-  // Coords
-  if(scale)document.getElementById('coordsDisplay').textContent=`${r2(pt[0]/scale.ppm)}m, ${r2(pt[1]/scale.ppm)}m`;
-  else document.getElementById('coordsDisplay').textContent=`${Math.round(pt[0])}, ${Math.round(pt[1])}`;
-
-  render();
-}
-
-function onMouseDown(e){
-  shiftDown=e.shiftKey;
-  // Right-click pan
-  if(e.button===2){panStart=[e.clientX,e.clientY];panOrigin=[vx,vy];panActive=true;cv.classList.add('panning');return;}
-  if(panActive||scalePending)return;
-  if(drawMode==='select'){
-    const pt=c2w(e.offsetX,e.offsetY);
-    const hit=hitTest(pt);
-    if(hit){
-      if(!shiftDown&&!selIds.has(hit.id)){selIds.clear();}
-      selIds.add(hit.id);
-      dragBase=[...pt];
-      dragSnaps={};
-      for(const id of selIds){const s=shapes.find(x=>x.id===id);if(s)dragSnaps[id]=s.pts.map(p=>[...p]);}
-      dragActive=true;
-    }else{if(!shiftDown)selIds.clear();}
-    render();updatePropPanel();return;
-  }
-  if(drawMode==='rect'){rectStart=c2w(e.offsetX,e.offsetY);}
-}
-
-function onMouseUp(e){
-  if(e.button===2){panActive=false;panStart=null;cv.classList.remove('panning');return;}
-  if(dragActive){dragActive=false;dragBase=null;dragSnaps={};saveHistory();}
-  if(drawMode==='rect'&&rectStart){
-    let pt=c2w(e.offsetX,e.offsetY);
-    if(shiftDown)pt=squarify(rectStart,pt);
-    const[x1,y1]=rectStart,[x2,y2]=pt;
-    if(Math.hypot(x2-x1,y2-y1)>5/vz){
-      saveHistory();
-      shapes.push({id:nextId++,type:'poly',layer:activeLayer.key,
-        pts:[[x1,y1],[x2,y1],[x2,y2],[x1,y2]],closed:true,label:activeLayer.label});
-      enableRun();buildLayerList();
-    }
-    rectStart=null;render();return;
-  }
-  // Select mode: check if 2 overlapping polys selected
-  if(drawMode==='select')checkBoolBar();
-}
-
-function onClick(e){
-  if(e.button!==0||panActive||scalePending||drawMode==='select'||drawMode==='rect')return;
-  let pt=c2w(e.offsetX,e.offsetY);
-  pt=snapToVertex(pt);
-  if(shiftDown&&curPts.length>0)pt=snapToAngle(curPts[curPts.length-1],pt);
-
-  if(drawMode==='line'){
-    if(!curPts.length){curPts=[pt];}
-    else{
-      saveHistory();
-      shapes.push({id:nextId++,type:'line',layer:activeLayer.key,pts:[curPts[0],pt],closed:false});
-      curPts=[];enableRun();buildLayerList();
-    }
-    render();return;
-  }
-  if(drawMode==='poly'){
-    if(curPts.length>=3){
-      const d=Math.hypot(pt[0]-curPts[0][0],pt[1]-curPts[0][1]);
-      if(d<14/vz){closePolygon();return;}
-    }
-    curPts.push(pt);render();
+function windowClick(px,py){
+  if(!winFirst){
+    winEdge=nearestEdge(px,py);
+    winFirst = winEdge ? projectOnSeg([px,py],winEdge.a,winEdge.b) : [px,py];
+    setBanner('Window: tap the other end'); draw();
+  } else {
+    const end = winEdge ? projectOnSeg([px,py],winEdge.a,winEdge.b) : [px,py];
+    commit(); openings.push({type:'window',segment:[winFirst,end]});
+    winFirst=null; winEdge=null; setBanner('Window added — tap two points for another, or pick another tool'); draw();
   }
 }
 
-function onDblClick(e){if(drawMode==='poly'&&curPts.length>=3)closePolygon();}
-
-function closePolygon(){
-  if(curPts.length<3)return;
-  saveHistory();
-  shapes.push({id:nextId++,type:'poly',layer:activeLayer.key,pts:[...curPts],closed:true});
-  curPts=[];enableRun();buildLayerList();render();
+/* ============ UNDO / HISTORY ============ */
+let history=[];
+function snapshot(){ return JSON.stringify({perimeter,rooms,openings,seeds}); }
+function commit(){ history.push(snapshot()); if(history.length>40) history.shift(); }
+function undo(){
+  if(!history.length){ toast('Nothing to undo'); return; }
+  const s=JSON.parse(history.pop());
+  perimeter=s.perimeter; rooms=s.rooms; openings=s.openings; seeds=s.seeds;
+  selectedId=null; renderChips(); renderEditor(); draw(); toast('Undo');
 }
-
-function hitTest(pt){
-  for(let i=shapes.length-1;i>=0;i--){
-    const s=shapes[i];
-    if(s.type==='poly'&&s.closed&&ptInPoly(pt,s.pts))return s;
-    if(s.type==='line'&&s.pts.length>=2&&ptToSeg(pt,s.pts[0],s.pts[1])<12/vz)return s;
+document.addEventListener('keydown',e=>{
+  if(document.activeElement && document.activeElement.tagName==='INPUT') return;
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  else if((e.key==='Delete'||e.key==='Backspace')){
+    if(selOpening>=0 && openings[selOpening]){ e.preventDefault(); commit(); openings.splice(selOpening,1); selOpening=-1; draw(); toast('Opening deleted'); }
+    else if(selectedId && selectedId!=="PERIMETER"){ e.preventDefault(); commit(); deleteRoom(); }
   }
-  return null;
-}
+});
 
-// ── Touch events ──────────────────────────────────────────────────────────────
-cv.addEventListener('touchstart',e=>{
-  e.preventDefault();
-  if(e.touches.length===2){
-    lastPinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    return;
-  }
-  const t=e.touches[0];
-  const rect=cv.getBoundingClientRect();
-  const fake={offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,button:0,clientX:t.clientX,clientY:t.clientY,shiftKey:false};
-  onMouseDown(fake);
-},{passive:false});
-
-cv.addEventListener('touchmove',e=>{
-  e.preventDefault();
-  if(e.touches.length===2){
-    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    if(lastPinchDist){
-      const mx=(e.touches[0].clientX+e.touches[1].clientX)/2;
-      const my=(e.touches[0].clientY+e.touches[1].clientY)/2;
-      const rect=cv.getBoundingClientRect();
-      zoom(d/lastPinchDist,mx-rect.left,my-rect.top);
-    }
-    lastPinchDist=d;return;
-  }
-  lastPinchDist=null;
-  const t=e.touches[0];
-  const rect=cv.getBoundingClientRect();
-  onMouseMove({offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,clientX:t.clientX,clientY:t.clientY,shiftKey:false,button:0});
-},{passive:false});
-
-cv.addEventListener('touchend',e=>{
-  e.preventDefault();lastPinchDist=null;
-  const rect=cv.getBoundingClientRect();
-  const t=e.changedTouches[0];
-  const fake={offsetX:t.clientX-rect.left,offsetY:t.clientY-rect.top,button:0,clientX:t.clientX,clientY:t.clientY};
-  onMouseUp(fake);
-  // Simulate click for drawing modes
-  if(drawMode!=='select'&&drawMode!=='rect')
-    onClick({...fake,button:0});
-},{passive:false});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Render
-// ═══════════════════════════════════════════════════════════════════════════════
-function render(){
-  const W=cv.width,H=cv.height;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#d4d0ca';ctx.fillRect(0,0,W,H);
-
-  // Grid
-  const gs=100*vz,ox=((vx%gs)+gs)%gs,oy=((vy%gs)+gs)%gs;
-  ctx.strokeStyle='rgba(0,0,0,.05)';ctx.lineWidth=1;
-  for(let x=ox;x<W;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=oy;y<H;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-
-  // Background
-  if(bgImage){ctx.save();ctx.globalAlpha=bgOpacity;ctx.drawImage(bgImage,vx,vy,bgImage.width*vz,bgImage.height*vz);ctx.restore();}
-
-  // Scale points
-  for(const p of[scaleP1,scaleP2].filter(Boolean)){
-    const[cx,cy]=w2c(p[0],p[1]);ctx.fillStyle='#e85d25';ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();
-  }
-
-  // Shapes
-  for(const s of shapes)drawShape(s);
-
-  // Rect preview
-  if(drawMode==='rect'&&rectStart&&hoverPt){
-    let[x2,y2]=shiftDown?squarify(rectStart,hoverPt):hoverPt;
-    const[cx1,cy1]=w2c(rectStart[0],rectStart[1]),[cx2,cy2]=w2c(x2,y2);
-    ctx.strokeStyle=activeLayer.color+'99';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
-    ctx.strokeRect(Math.min(cx1,cx2),Math.min(cy1,cy2),Math.abs(cx2-cx1),Math.abs(cy2-cy1));
-    ctx.setLineDash([]);
-    // Show area if scale set
-    if(scale){
-      const w=Math.abs(x2-rectStart[0])/scale.ppm,h=Math.abs(y2-rectStart[1])/scale.ppm;
-      ctx.fillStyle='rgba(26,25,22,.7)';ctx.font='10px JetBrains Mono,monospace';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(`${r2(w)}×${r2(h)}m`,(cx1+cx2)/2,(cy1+cy2)/2);
-    }
-  }
-
-  // In-progress drawing
-  if(curPts.length>0){
-    const l=activeLayer;
-    ctx.strokeStyle=l.color+'99';ctx.lineWidth=1.8;ctx.setLineDash([5,3]);
-    ctx.beginPath();
-    const[sx,sy]=w2c(curPts[0][0],curPts[0][1]);ctx.moveTo(sx,sy);
-    for(let i=1;i<curPts.length;i++){const[px,py]=w2c(curPts[i][0],curPts[i][1]);ctx.lineTo(px,py);}
-    if(hoverPt){const[hx,hy]=w2c(hoverPt[0],hoverPt[1]);ctx.lineTo(hx,hy);}
-    ctx.stroke();ctx.setLineDash([]);
-    // Close snap indicator
-    if(drawMode==='poly'&&curPts.length>=3&&hoverPt){
-      const d=Math.hypot(hoverPt[0]-curPts[0][0],hoverPt[1]-curPts[0][1]);
-      if(d<14/vz){const[cx,cy]=w2c(curPts[0][0],curPts[0][1]);ctx.strokeStyle=l.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,9,0,Math.PI*2);ctx.stroke();}
-    }
-    ctx.fillStyle=l.color;
-    for(const p of curPts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,3.5,0,Math.PI*2);ctx.fill();}
-  }
-
-  updateShapeList();
-}
-
-function drawShape(s){
-  const l=LMAP[s.layer]||{color:'#666'};
-  const isSel=selIds.has(s.id);
-  const col=l.color;
-
-  if(s.type==='poly'){
-    if(s.pts.length<2)return;
-    ctx.beginPath();
-    const[sx,sy]=w2c(s.pts[0][0],s.pts[0][1]);ctx.moveTo(sx,sy);
-    for(let i=1;i<s.pts.length;i++){const[px,py]=w2c(s.pts[i][0],s.pts[i][1]);ctx.lineTo(px,py);}
-    if(s.closed)ctx.closePath();
-    ctx.fillStyle=isSel?col+'35':col+'1a';ctx.fill();
-    // AI review mode: dashed outline
-    if(s.aiGenerated&&_aiReviewMode){
-      ctx.strokeStyle=col;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
-      // Review label
-      const[cx,cy]=w2c(s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length,s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length);
-      ctx.fillStyle='rgba(232,93,37,.85)';ctx.font='bold 9px Inter,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText('AI',cx,cy);
-    } else {
-      ctx.strokeStyle=col+(isSel?'':'aa');ctx.lineWidth=isSel?2.5:1.8;ctx.stroke();
-    }
-    // Second-selected highlight
-    if(selIds.size===2&&isSel){
-      ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.setLineDash([6,3]);ctx.stroke();ctx.setLineDash([]);
-    }
-    // Label & area
-    if(s.closed&&s.pts.length>=3){
-      const[cx,cy]=w2c(s.pts.reduce((a,p)=>a+p[0],0)/s.pts.length,s.pts.reduce((a,p)=>a+p[1],0)/s.pts.length);
-      const a=polyArea(s.pts),aM=scale?r2(a/scale.ppm**2):null;
-      const fs=Math.max(8,Math.min(11,vz*10));
-      ctx.fillStyle='rgba(26,25,22,.75)';ctx.font=`600 ${fs}px Inter,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(l.label,cx,cy-(aM?6:0));
-      if(aM){ctx.font=`400 ${Math.max(7,fs-1)}px JetBrains Mono,monospace`;ctx.fillStyle='rgba(107,104,96,.65)';ctx.fillText(`${aM}m²`,cx,cy+6);}
-    }
-    if(isSel){ctx.fillStyle=col;for(const p of s.pts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();}}
-  }
-
-  if(s.type==='line'&&s.pts.length>=2){
-    const[x1,y1]=w2c(s.pts[0][0],s.pts[0][1]),[x2,y2]=w2c(s.pts[1][0],s.pts[1][1]);
-    const isWin=s.layer.startsWith('APT_WINDOW'),isDoor=s.layer.startsWith('APT_DOOR'),isNorth=s.layer==='APT_NORTH';
-    ctx.strokeStyle=isSel?col:col+'cc';ctx.lineWidth=isWin?4:isDoor?3:2;
-    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
-    if(isWin){
-      const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len,steps=Math.max(2,Math.floor(len/7));
-      ctx.strokeStyle=col+'55';ctx.lineWidth=1.2;
-      for(let k=1;k<steps;k++){const t=k/steps;ctx.beginPath();ctx.moveTo(x1+t*dx+nx*3.5,y1+t*dy+ny*3.5);ctx.lineTo(x1+t*dx-nx*3.5,y1+t*dy-ny*3.5);ctx.stroke();}
-    }
-    if(isDoor){
-      const ang=Math.atan2(y2-y1,x2-x1),w=Math.hypot(x2-x1,y2-y1);
-      ctx.strokeStyle=col+'44';ctx.lineWidth=1;ctx.setLineDash([3,3]);
-      ctx.beginPath();ctx.arc(x1,y1,w,ang,ang-Math.PI/2,true);ctx.stroke();ctx.setLineDash([]);
-      if(scale){const dm=Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1])/scale.ppm;ctx.fillStyle=col;ctx.font='8px JetBrains Mono,monospace';ctx.textAlign='center';ctx.fillText(`${Math.round(dm*1000)}mm`,(x1+x2)/2,(y1+y2)/2-10);}
-    }
-    if(isNorth){
-      const ang=Math.atan2(y1-y2,x1-x2);
-      ctx.fillStyle=col;ctx.save();ctx.translate(x1,y1);ctx.rotate(ang);
-      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-8,-13);ctx.lineTo(0,-7);ctx.lineTo(8,-13);ctx.closePath();ctx.fill();
-      ctx.restore();ctx.font='bold 10px Inter,sans-serif';ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText('N',(x1+x2)/2,(y1+y2)/2);
-    }
-    if(isSel){ctx.fillStyle=col;for(const p of s.pts){const[px,py]=w2c(p[0],p[1]);ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();}}
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Shape list & properties
-// ═══════════════════════════════════════════════════════════════════════════════
-function updateShapeList(){
-  document.getElementById('shapeCount').textContent=shapes.length;
-  const el=document.getElementById('shapeList');
-  if(!shapes.length){el.innerHTML='<div style="font-size:10px;color:var(--mut);padding:.2rem">No elements yet</div>';return;}
-  el.innerHTML=shapes.map(s=>{
-    const l=LMAP[s.layer]||{color:'#666',label:s.layer};
-    const isSel=selIds.has(s.id);
-    return `<div class="si ${isSel?'sel':''} ${selIds.size===2&&isSel?'si2':''}" onclick="clickShapeItem(${s.id},event)">
-      <div class="si-sw" style="background:${l.color}22;border:1.5px solid ${l.color}"></div>
-      <div class="si-lbl">${l.label}</div>
-      <div class="si-del" onclick="event.stopPropagation();deleteShape(${s.id})">✕</div>
-    </div>`;
-  }).join('');
-}
-function clickShapeItem(id,e){
-  if(e.shiftKey||e.ctrlKey){selIds.has(id)?selIds.delete(id):selIds.add(id);}
-  else{selIds.clear();selIds.add(id);}
-  render();updatePropPanel();checkBoolBar();
-}
-function updatePropPanel(){
-  const el=document.getElementById('propPanel');
-  const sel=shapes.filter(s=>selIds.has(s.id));
-  if(!sel.length){el.innerHTML='<div class="tlabel">Properties</div><div class="no-sel">Select an element</div>';return;}
-  if(sel.length===2){
-    const both=sel.filter(s=>s.type==='poly'&&s.closed);
-    el.innerHTML=`<div class="tlabel">2 Elements Selected</div>
-      ${both.length===2?`<div class="bool-hint">Two polygons selected.<br>Use <strong>Union ⊕</strong>, <strong>Subtract ⊖</strong>, or <strong>Intersect ⊗</strong> from the toolbar on the canvas, or scroll up in the list to see the operations appear above the shapes.</div>`
-      :'<div style="font-size:10px;color:var(--mut)">Select two polygon rooms for boolean operations.</div>'}
-      <button class="tbtn danger" onclick="deleteSelected()" style="width:100%;margin-top:.4rem">Delete both</button>`;
-    return;
-  }
-  const s=sel[0];
-  const l=LMAP[s.layer]||{color:'#666',label:s.layer};
-  const avail=visibleLayers().filter(x=>x.type===s.type);
-  let h=`<div class="tlabel">Properties</div>
-  <div class="pf"><label>Type</label>
-    <select onchange="changeLayer(${s.id},this.value)">
-      ${avail.map(x=>`<option value="${x.key}" ${x.key===s.layer?'selected':''}>${x.label}</option>`).join('')}
-    </select></div>`;
-  if(s.type==='poly'&&s.closed){
-    const a=polyArea(s.pts),aM=scale?r2(a/scale.ppm**2):null;
-    h+=`<div class="stat-row"><span>Area</span><span class="stat-val">${aM!=null?aM+'m²':Math.round(a)+'px²'}</span></div>`;
-    h+=`<div class="stat-row"><span>Vertices</span><span class="stat-val">${s.pts.length}</span></div>`;
-  }
-  if(s.type==='line'&&s.pts.length>=2){
-    const d=Math.hypot(s.pts[1][0]-s.pts[0][0],s.pts[1][1]-s.pts[0][1]);
-    h+=`<div class="stat-row"><span>Length</span><span class="stat-val">${scale?r2(d/scale.ppm)+'m ('+Math.round(d/scale.ppm*1000)+'mm)':Math.round(d)+'px'}</span></div>`;
-    if(!scale)h+=`<div style="font-size:9px;color:var(--warn);margin-top:.25rem">Set scale for real dimensions</div>`;
-  }
-  h+=`<button class="tbtn danger" onclick="deleteSelected()" style="width:100%;margin-top:.4rem">Delete</button>`;
-  el.innerHTML=h;
-}
-function changeLayer(id,key){
-  const s=shapes.find(x=>x.id===id);if(s){saveHistory();s.layer=key;}render();updatePropPanel();buildLayerList();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Regularise — snap polygon vertices to 90° bounding grid
-// ═══════════════════════════════════════════════════════════════════════════════
-function regularise(){
-  const polys=shapes.filter(s=>s.type==='poly'&&s.closed);
-  if(!polys.length){return;}
-  saveHistory();
-  for(const s of polys){
-    const xs=s.pts.map(p=>p[0]),ys=s.pts.map(p=>p[1]);
-    const mnx=Math.min(...xs),mny=Math.min(...ys),mxx=Math.max(...xs),mxy=Math.max(...ys);
-    const gx=(mxx-mnx)||100,gy=(mxy-mny)||100;
-    // Snap to grid cells proportional to shape size
-    const divX=Math.max(1,Math.round(gx/(scale?scale.ppm*0.5:gx/2)));
-    const divY=Math.max(1,Math.round(gy/(scale?scale.ppm*0.5:gy/2)));
-    const cx=gx/divX,cy=gy/divY;
-    s.pts=s.pts.map(([x,y])=>[
-      Math.round((x-mnx)/cx)*cx+mnx,
-      Math.round((y-mny)/cy)*cy+mny,
-    ]);
-    // Deduplicate
-    s.pts=s.pts.filter((p,i,a)=>i===0||Math.hypot(p[0]-a[i-1][0],p[1]-a[i-1][1])>0.5);
-    if(s.pts.length<3)s.pts=[...s.pts,...s.pts]; // safety
-  }
-  render();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Edit helpers
-// ═══════════════════════════════════════════════════════════════════════════════
-function saveHistory(){history.push(JSON.parse(JSON.stringify(shapes)));if(history.length>100)history.shift();}
-function undo(){if(history.length){shapes=history.pop();selIds.clear();hideBoolBar();render();updatePropPanel();buildLayerList();}}
-function deleteSelected(){
-  if(!selIds.size)return;saveHistory();
-  shapes=shapes.filter(s=>!selIds.has(s.id));selIds.clear();hideBoolBar();render();updatePropPanel();buildLayerList();
-}
-function deleteShape(id){saveHistory();shapes=shapes.filter(s=>s.id!==id);selIds.delete(id);hideBoolBar();render();updatePropPanel();buildLayerList();}
-function confirmClear(){document.getElementById('clearModal').classList.add('open');}
-function doClear(){
-  shapes=[];curPts=[];selIds.clear();bgImage=null;scale=null;scaleP1=scaleP2=null;history=[];
-  rectStart=null;hideBoolBar();
-  document.getElementById('clearModal').classList.remove('open');
-  document.getElementById('runBtn').disabled=true;
-  document.getElementById('checkResult').style.display='none';
-  document.getElementById('urlStatus').innerHTML='';
-  document.getElementById('scaleStatus').textContent='No scale set — dimensions approximate';
-  document.getElementById('scaleStatus').className='scale-none';
-  vx=0;vy=0;vz=1;render();updatePropPanel();buildLayerList();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Export DXF
-// ═══════════════════════════════════════════════════════════════════════════════
-function toDXF(){
-  const ppm=scale?scale.ppm:1,toM=v=>r2(v/ppm);
-  let d='  0\nSECTION\n  2\nENTITIES\n';
-  for(const s of shapes){
-    if(s.type==='poly'&&s.pts.length>=3){
-      d+=`  0\nLWPOLYLINE\n  8\n${s.layer}\n 90\n${s.pts.length}\n 70\n1\n`;
-      for(const[x,y]of s.pts)d+=` 10\n${toM(x)}\n 20\n${toM(-y)}\n`;
-    }
-    if(s.type==='line'&&s.pts.length>=2){
-      const[[x1,y1],[x2,y2]]=s.pts;
-      d+=`  0\nLINE\n  8\n${s.layer}\n 10\n${toM(x1)}\n 20\n${toM(-y1)}\n 11\n${toM(x2)}\n 21\n${toM(-y2)}\n`;
-    }
-  }
-  return d+'  0\nENDSEC\n  0\nEOF\n';
+/* ============ DXF EXPORT ============ */
+function buildDXF(){
+  const iw=img.naturalWidth||1000, ih=img.naturalHeight||1000;
+  const widthM=(isFinite(planWidthM)&&planWidthM>0)?planWidthM:10;
+  let minx=1,maxx=0; (perimeter.length?perimeter:(rooms[0]?rooms[0].vertices:[[0,0],[1,1]])).forEach(p=>{ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); });
+  const pxWidth=Math.max(1,(maxx-minx)*iw);
+  const mpp=widthM/pxWidth;
+  const X=fx=> (fx*iw)*mpp;
+  const Y=fy=> ((ih-fy*ih))*mpp;     // flip Y for CAD
+  const out=[]; const H=(c,v)=>{ out.push(c); out.push(v); };
+  H(0,'SECTION'); H(2,'ENTITIES');
+  const poly=(ring,layer,closed)=>{ H(0,'LWPOLYLINE'); H(8,layer); H(90,String(ring.length)); H(70, closed?'1':'0'); ring.forEach(([fx,fy])=>{ H(10,X(fx).toFixed(3)); H(20,Y(fy).toFixed(3)); }); };
+  if(perimeter.length>=3) poly(perimeter,'APT_BOUNDARY',true);
+  rooms.forEach(r=> poly(r.vertices, r.layer, true));
+  openings.forEach(o=>{ H(0,'LINE'); H(8, o.type==='door'?'APT_DOOR':'APT_WINDOW'); H(10,X(o.segment[0][0]).toFixed(3)); H(20,Y(o.segment[0][1]).toFixed(3)); H(11,X(o.segment[1][0]).toFixed(3)); H(21,Y(o.segment[1][1]).toFixed(3)); });
+  H(0,'ENDSEC'); H(0,'EOF');
+  return out.join('\n');
 }
 function exportDXF(){
-  if(!shapes.length){alert('Nothing to export.');return;}
-  if(!scale&&!confirm('No scale set. Exporting in pixel coordinates. Continue?'))return;
-  const b=new Blob([toDXF()],{type:'application/octet-stream'});
-  Object.assign(document.createElement('a'),{href:URL.createObjectURL(b),download:'traced_apartment.dxf'}).click();
-}
-function exportPNG(){
-  if(!shapes.length&&!bgImage){alert('Nothing to export.');return;}
-  Object.assign(document.createElement('a'),{href:cv.toDataURL('image/png'),download:'traced_apartment.png'}).click();
+  if(!rooms.length && perimeter.length<3){ toast('Nothing to export yet'); return; }
+  const blob=new Blob([buildDXF()],{type:'application/dxf'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='floorplan.dxf'; a.click();
+  toast('DXF exported');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Run compliance check
-// ═══════════════════════════════════════════════════════════════════════════════
-async function runCheck(){
-  if(!shapes.length)return;
-  if(!scale&&!confirm('No scale set — results will be inaccurate. Continue?'))return;
-  const resultEl=document.getElementById('checkResult');
-  resultEl.style.display='block';resultEl.innerHTML='<div style="font-size:11px;color:var(--dim);padding:.4rem 0">Running…</div>';
-  const dxf=toDXF();
-  const fd=new FormData();
-  fd.append('dxf_file',new Blob([dxf],{type:'application/octet-stream'}),'traced.dxf');
-  fd.append('ceiling_height','2.7');
+
+/* ============ DRAW ============ */
+function ringPx(ring){ const W=canvas.width,H=canvas.height; return ring.map(([x,y])=>[x*W,y*H]); }
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height); const W=canvas.width,H=canvas.height;
+
+  // optional wall / grid debug overlay
+  if(showWalls){
+    ctx.strokeStyle="rgba(46,155,214,.35)"; ctx.lineWidth=1; ctx.setLineDash([2,4]);
+    walls.h.forEach(fy=>{ const y=fy*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); });
+    walls.v.forEach(fx=>{ const x=fx*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); });
+    ctx.strokeStyle="rgba(232,84,43,.45)"; ctx.setLineDash([6,4]);
+    grid.x.forEach(fx=>{ const x=fx*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); });
+    grid.y.forEach(fy=>{ const y=fy*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); });
+    ctx.setLineDash([]);
+  }
+
+  if(perimeter.length>=2){
+    const pp=ringPx(perimeter);
+    ctx.beginPath(); pp.forEach(([x,y],i)=> i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)); ctx.closePath();
+    ctx.fillStyle="rgba(255,255,255,.04)"; ctx.fill();
+    ctx.setLineDash(selectedId==="PERIMETER"?[]:[7,5]);
+    ctx.strokeStyle=selectedId==="PERIMETER"?"#15191C":"rgba(21,25,28,.6)";
+    ctx.lineWidth=selectedId==="PERIMETER"?3:2; ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  rooms.forEach(room=>{
+    const t=typeFor(room.layer), sel=room.id===selectedId; const pts=ringPx(room.vertices);
+    ctx.beginPath(); pts.forEach(([x,y],i)=> i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)); ctx.closePath();
+    if(room.layer==="APT_UNKNOWN"){ ctx.fillStyle="rgba(154,160,166,.16)"; ctx.fill(); ctx.setLineDash([5,4]); }
+    else { ctx.fillStyle=hexA(t.color,sel?0.34:0.20); ctx.fill(); ctx.setLineDash([]); }
+    ctx.strokeStyle=t.color; ctx.lineWidth=sel?3:1.8; ctx.stroke(); ctx.setLineDash([]);
+    const c=centroidPx(pts);
+    ctx.font="600 12px 'IBM Plex Mono', monospace"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    const lbl=t.label.toUpperCase(), tw=ctx.measureText(lbl).width;
+    ctx.fillStyle="rgba(242,238,229,.9)"; ctx.fillRect(c.x-tw/2-5,c.y-9,tw+10,18);
+    ctx.fillStyle=t.color; ctx.fillText(lbl,c.x,c.y);
+  });
+
+  if(showOpenings) openings.forEach((o,oi)=>{
+    const [a,b]=o.segment.map(([x,y])=>[x*W,y*H]); const [x1,y1]=a,[x2,y2]=b;
+    if(o.type==='window'){ ctx.strokeStyle="#2E9BD6"; ctx.lineWidth=4; ctx.lineCap="butt"; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.strokeStyle="#fff"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); }
+    else { const len=Math.hypot(x2-x1,y2-y1); ctx.strokeStyle="#E8542B"; ctx.lineWidth=3; ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); const ang=Math.atan2(y2-y1,x2-x1); ctx.strokeStyle="rgba(232,84,43,.5)"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(x1,y1,len,ang,ang+Math.PI/2); ctx.stroke(); }
+    if(oi===selOpening && step==='review'){
+      [[x1,y1],[x2,y2]].forEach(([hx,hy])=>{ ctx.beginPath(); ctx.arc(hx,hy,7,0,Math.PI*2); ctx.fillStyle="#fff"; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle=o.type==='window'?"#2E9BD6":"#E8542B"; ctx.stroke(); });
+    }
+  });
+  // window in-progress: show the first point
+  if(winFirst){ const fx=winFirst[0]*W, fy=winFirst[1]*H; ctx.beginPath(); ctx.arc(fx,fy,6,0,Math.PI*2); ctx.fillStyle="#2E9BD6"; ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke(); }
+
+  // seeds (rooms-to-build as boxes) + the in-progress first corner
+  seeds.forEach((s,i)=>{
+    const x1=s.a[0]*W, y1=s.a[1]*H, x2=s.b[0]*W, y2=s.b[1]*H;
+    ctx.fillStyle="rgba(232,84,43,.14)"; ctx.fillRect(x1,y1,x2-x1,y2-y1);
+    ctx.strokeStyle="#E8542B"; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.strokeRect(x1,y1,x2-x1,y2-y1); ctx.setLineDash([]);
+    const cx=(x1+x2)/2, cy=(y1+y2)/2;
+    ctx.beginPath(); ctx.arc(cx,cy,11,0,Math.PI*2); ctx.fillStyle="#E8542B"; ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="700 11px 'IBM Plex Mono'"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(i+1, cx, cy);
+  });
+  if(seedDraft){
+    const x=seedDraft.a[0]*W, y=seedDraft.a[1]*H;
+    ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle="#E8542B"; ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+  }
+
+  // active ring handles (corners + edge midpoints)
+  const active=activeRing();
+  if(active && step==='review'){
+    const pts=ringPx(active);
+    for(let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2; ctx.fillStyle="rgba(232,84,43,.9)"; ctx.fillRect(mx-5,my-5,10,10); }
+    pts.forEach(([x,y])=>{ ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fillStyle="#fff"; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle=selectedId==="PERIMETER"?"#15191C":typeFor(roomById(selectedId)?.layer).color; ctx.stroke(); });
+  }
+
+  // draw-perimeter preview
+  if(drawMode && drawPts.length){
+    const pp=drawPts.map(([x,y])=>[x*W,y*H]);
+    ctx.setLineDash([4,4]); ctx.strokeStyle="#E8542B"; ctx.lineWidth=2;
+    ctx.beginPath(); pp.forEach(([x,y],i)=> i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)); ctx.stroke(); ctx.setLineDash([]);
+    pp.forEach(([x,y])=>{ ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fillStyle="#E8542B"; ctx.fill(); });
+  }
+}
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return`rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+function centroidPx(pts){let x=0,y=0;pts.forEach(p=>{x+=p[0];y+=p[1];});return{x:x/pts.length,y:y/pts.length};}
+function roomById(id){ return rooms.find(r=>r.id===id); }
+function activeRing(){ if(selectedId==="PERIMETER") return perimeter; const r=roomById(selectedId); return r?r.vertices:null; }
+
+/* ============ INTERACTION ============ */
+let drag=null;
+function evtPos(e){ const r=canvas.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}; }
+function nearPx(ax,ay,bx,by,px){ return Math.hypot((ax-bx)*canvas.width,(ay-by)*canvas.height)<px; }
+const activePointers=new Map(); let gesture=null;
+function gestureFrom(){ const p=[...activePointers.values()]; const dx=p[0].x-p[1].x,dy=p[0].y-p[1].y; return {dist:Math.hypot(dx,dy),cx:(p[0].x+p[1].x)/2,cy:(p[0].y+p[1].y)/2}; }
+
+canvas.addEventListener('pointerdown',e=>{
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activePointers.size===2){ drag=null; gesture=gestureFrom(); return; }
+  if(activePointers.size>2) return;
+  const p=evtPos(e);
+
+  if(drawMode){ drawPts.push([p.x,p.y]); draw(); return; }
+
+  if(seedMode){
+    // tap inside a finished box to remove it
+    const hit = seeds.findIndex(s=> p.x>=Math.min(s.a[0],s.b[0]) && p.x<=Math.max(s.a[0],s.b[0]) && p.y>=Math.min(s.a[1],s.b[1]) && p.y<=Math.max(s.a[1],s.b[1]));
+    if(hit>=0 && !seedDraft){ seeds.splice(hit,1); draw(); updateSeedCount(); return; }
+
+    const snapped = snapPoint([p.x,p.y]);
+
+    if(!seedDraft){
+      seedDraft = {a:snapped};
+      setBanner('Now tap the OPPOSITE corner of that room');
+    } else {
+      const a = seedDraft.a, b = snapped;
+      // normalise to TL/BR
+      const tl=[Math.min(a[0],b[0]), Math.min(a[1],b[1])];
+      const br=[Math.max(a[0],b[0]), Math.max(a[1],b[1])];
+      if(Math.abs(br[0]-tl[0])<0.01 || Math.abs(br[1]-tl[1])<0.01){ toast('Box too small'); seedDraft=null; draw(); return; }
+      seeds.push({a:tl, b:br});
+      seedDraft=null;
+      // grow the snap grid from this room's accepted edges
+      grid.x.push(round3(tl[0]), round3(br[0])); grid.x.sort((u,v)=>u-v);
+      grid.y.push(round3(tl[1]), round3(br[1])); grid.y.sort((u,v)=>u-v);
+      setBanner(seeds.length===1
+        ? 'One room placed. Subsequent rooms will snap to its walls — keep going.'
+        : `Tap top-left of the next room (${seeds.length} placed).`);
+    }
+    draw(); updateSeedCount(); return;
+  }
+
+  const active=activeRing();
+
+  // opening placement tools
+  if(step==='review' && openingMode==='door'){ placeDoor(p.x,p.y); return; }
+  if(step==='review' && openingMode==='window'){ windowClick(p.x,p.y); return; }
+
+  // edit an existing opening: endpoint handle of selected one, or pick one up
+  if(step==='review'){
+    if(selOpening>=0 && openings[selOpening]){
+      const o=openings[selOpening];
+      for(let k=0;k<2;k++){ if(nearPx(o.segment[k][0],o.segment[k][1],p.x,p.y,16)){ commit(); dragOpen={idx:selOpening,end:k}; canvas.setPointerCapture(e.pointerId); return; } }
+    }
+    let oi=-1,od=1e9;
+    openings.forEach((o,i)=>{ const d=distToSeg(p.x,p.y,o.segment[0][0],o.segment[0][1],o.segment[1][0],o.segment[1][1]); if(d<od){od=d;oi=i;} });
+    if(oi>=0 && od<0.02){
+      selOpening=oi; selectedId=null; document.getElementById('editor').style.display='none';
+      commit(); dragOpen={idx:oi,end:'whole',start:{x:p.x,y:p.y},seg0:openings[oi].segment.map(q=>[q[0],q[1]])};
+      canvas.setPointerCapture(e.pointerId); renderChips(); draw(); return;
+    }
+    if(selOpening>=0){ selOpening=-1; }
+  }
+
+  // vertex add/remove modes (one tap, then back to normal)
+  if(active && step==='review' && vertexMode!=='none'){
+    commit();
+    if(vertexMode==='add'){
+      let best=-1,bestD=1e9;
+      for(let i=0;i<active.length;i++){ const a=active[i],b=active[(i+1)%active.length]; const d=distToSeg(p.x,p.y,a[0],a[1],b[0],b[1]); if(d<bestD){bestD=d;best=i;} }
+      if(best>=0){ active.splice(best+1,0,[p.x,p.y]); toast('Corner added'); }
+    } else if(vertexMode==='del'){
+      let best=-1,bestD=1e9;
+      for(let i=0;i<active.length;i++){ const d=Math.hypot(active[i][0]-p.x,active[i][1]-p.y); if(d<bestD){bestD=d;best=i;} }
+      if(best>=0){
+        if(active.length<=3){ toast('A room needs at least 3 corners'); }
+        else { active.splice(best,1); if(weldLock) weldAll(); toast('Corner removed'); }
+      }
+    }
+    setVertexMode('none'); draw(); return;
+  }
+
+  if(active && step==='review'){
+    for(let i=0;i<active.length;i++){ if(nearPx(active[i][0],active[i][1],p.x,p.y,16)){ commit(); drag={kind:'vertex',groups:dragGroup(active,i)}; canvas.setPointerCapture(e.pointerId); return; } }
+    for(let i=0;i<active.length;i++){ const a=active[i],b=active[(i+1)%active.length]; const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2; if(nearPx(mx,my,p.x,p.y,16)){ commit(); drag={kind:'edge',ia:i,ib:(i+1)%active.length,ga:dragGroup(active,i),gb:dragGroup(active,(i+1)%active.length),start:{x:p.x,y:p.y},a0:[a[0],a[1]],b0:[b[0],b[1]]}; canvas.setPointerCapture(e.pointerId); return; } }
+  }
+
+  if(step==='review'){
+    const hit=[...rooms].reverse().find(r=>pointInPoly({x:p.x,y:p.y},r.vertices));
+    if(hit) selectRoom(hit.id);
+    else if(perimeter.length>=3 && pointInPoly({x:p.x,y:p.y},perimeter)) selectPerimeter();
+    else deselect();
+  }
+});
+
+canvas.addEventListener('pointermove',e=>{
+  if(activePointers.has(e.pointerId)) activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activePointers.size>=2 && gesture){ const g=gestureFrom(); if(g.dist>0&&gesture.dist>0) zoomAbout(g.dist/gesture.dist,g.cx,g.cy); view.tx+=(g.cx-gesture.cx); view.ty+=(g.cy-gesture.cy); applyView(); gesture=g; return; }
+  if(!drag && !dragOpen) return;
+  const p=evtPos(e);
+  if(dragOpen){
+    const o=openings[dragOpen.idx]; if(!o){ return; }
+    if(dragOpen.end==='whole'){ const dx=p.x-dragOpen.start.x,dy=p.y-dragOpen.start.y; o.segment=[[dragOpen.seg0[0][0]+dx,dragOpen.seg0[0][1]+dy],[dragOpen.seg0[1][0]+dx,dragOpen.seg0[1][1]+dy]]; }
+    else { o.segment[dragOpen.end]=[p.x,p.y]; }
+    draw(); return;
+  }
+  if(drag.kind==='vertex'){ drag.groups.forEach(([ring,idx])=>{ ring[idx][0]=p.x; ring[idx][1]=p.y; }); draw(); }
+  else if(drag.kind==='edge'){
+    const W=canvas.width,H=canvas.height;
+    // edge direction in pixel space, then its normal — move only along the normal
+    let dirx=(drag.b0[0]-drag.a0[0])*W, diry=(drag.b0[1]-drag.a0[1])*H;
+    const len=Math.hypot(dirx,diry)||1; dirx/=len; diry/=len;
+    const nx=-diry, ny=dirx;                       // unit normal (px)
+    const dpx=(p.x-drag.start.x)*W, dpy=(p.y-drag.start.y)*H;
+    const perp=dpx*nx+dpy*ny;                       // signed perpendicular distance
+    const mx=(nx*perp)/W, my=(ny*perp)/H;           // back to image fractions
+    drag.ga.forEach(([ring,idx])=>{ ring[idx][0]=drag.a0[0]+mx; ring[idx][1]=drag.a0[1]+my; });
+    drag.gb.forEach(([ring,idx])=>{ ring[idx][0]=drag.b0[0]+mx; ring[idx][1]=drag.b0[1]+my; });
+    draw();
+  }
+});
+function endDrag(e){ if(e&&e.pointerId!=null) activePointers.delete(e.pointerId); if(activePointers.size<2) gesture=null; if(dragOpen){ dragOpen=null; snapOpenings(); draw(); } if(drag){ drag=null; if(weldLock) weldAll(); draw(); } }
+canvas.addEventListener('pointerup',endDrag);
+canvas.addEventListener('pointercancel',endDrag);
+
+canvas.addEventListener('dblclick',e=>{
+  const active=activeRing(); if(!active||step!=='review') return;
+  const p=evtPos(e); const W=canvas.width,H=canvas.height; let best=-1,bestD=1e9;
+  for(let i=0;i<active.length;i++){ const a=active[i],b=active[(i+1)%active.length]; const d=distToSeg(p.x,p.y,a[0],a[1],b[0],b[1]); if(d<bestD){bestD=d;best=i;} }
+  if(best>=0 && bestD*Math.max(W,H)<14){ active.splice(best+1,0,[p.x,p.y]); draw(); toast('Corner added'); }
+});
+function distToSeg(px,py,ax,ay,bx,by){ const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy; let t=l2?((px-ax)*dx+(py-ay)*dy)/l2:0; t=Math.max(0,Math.min(1,t)); return Math.hypot(px-(ax+t*dx),py-(ay+t*dy)); }
+function pointInPoly(p,v){ let inside=false; for(let i=0,j=v.length-1;i<v.length;j=i++){ const xi=v[i][0],yi=v[i][1],xj=v[j][0],yj=v[j][1]; if(((yi>p.y)!==(yj>p.y))&&(p.x<(xj-xi)*(p.y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
+
+/* perimeter draw finish */
+function finishDraw(){
+  if(drawPts.length<3){ toast('Tap at least 3 corners'); return; }
+  // snap the user's traced corners to detected walls so the boundary is straight
+  perimeter = drawPts.map(snapPoint);
+  rectilinearize(perimeter);          // force right angles
+  weldAll();
+  rebuildGrid();                      // seed the snap grid from the boundary
+  drawMode=false; drawPts=[];
+  setBanner('Outline set. Drag corners or "Fit to walls" if needed, then Next: rooms.');
+  toast('Outline traced & snapped');
+  draw();
+}
+
+/* ============ SHEET ============ */
+function openSheet(){ document.getElementById('sheet').style.display='block'; expandSheet(); }
+let sheetCollapsed=false;
+function toggleSheet(){ sheetCollapsed=!sheetCollapsed; document.getElementById('sheet').classList.toggle('collapsed',sheetCollapsed); document.getElementById('peekLabel').textContent=sheetCollapsed?'tap to expand':'tap to expand · drag to move'; }
+function expandSheet(){ sheetCollapsed=false; document.getElementById('sheet').classList.remove('collapsed'); }
+(function(){ const sheet=document.getElementById('sheet'),zone=document.getElementById('grabZone'); let sd=null;
+  zone.addEventListener('pointerdown',e=>{ sd={sx:e.clientX,sy:e.clientY,moved:false}; const r=sheet.getBoundingClientRect(); sd.ox=e.clientX-r.left; sd.oy=e.clientY-r.top; zone.setPointerCapture(e.pointerId); });
+  zone.addEventListener('pointermove',e=>{ if(!sd)return; if(Math.hypot(e.clientX-sd.sx,e.clientY-sd.sy)>6){ sd.moved=true; sheet.classList.add('floating'); sheet.classList.remove('collapsed'); sheetCollapsed=false; sheet.style.left=Math.max(6,Math.min(innerWidth-60,e.clientX-sd.ox))+'px'; sheet.style.top=Math.max(6,Math.min(innerHeight-60,e.clientY-sd.oy))+'px'; sheet.style.right='auto'; sheet.style.bottom='auto'; } });
+  zone.addEventListener('pointerup',()=>{ if(sd&&!sd.moved) toggleSheet(); sd=null; });
+  zone.addEventListener('pointercancel',()=>{ sd=null; });
+})();
+
+function updateSeedCount(){ document.getElementById('roomCount').textContent = seeds.length+' room'+(seeds.length!==1?'s':'')+(seedDraft?' · placing…':''); }
+function renderChips(){
+  if(step!=='review'){ if(step==='seeds') updateSeedCount(); else document.getElementById('roomCount').textContent=''; document.getElementById('roomChips').innerHTML=''; return; }
+  const oc=openings.length?' · '+openings.length+' opening'+(openings.length!==1?'s':''):'';
+  document.getElementById('roomCount').textContent=rooms.length+' room'+(rooms.length!==1?'s':'')+oc;
+  const wrap=document.getElementById('roomChips'); wrap.innerHTML='';
+  const pc=document.createElement('div'); pc.className='chip'+(selectedId==="PERIMETER"?' sel':''); pc.innerHTML=`<span class="sw" style="background:#15191C"></span>Outline`; pc.onclick=()=> selectedId==="PERIMETER"?deselect():selectPerimeter(); wrap.appendChild(pc);
+  rooms.forEach(room=>{ const t=typeFor(room.layer); const c=document.createElement('div'); c.className='chip'+(room.id===selectedId?' sel':''); c.innerHTML=`<span class="sw" style="background:${t.color}"></span>${t.label}`; c.onclick=()=> room.id===selectedId?deselect():selectRoom(room.id); wrap.appendChild(c); });
+}
+function selectRoom(id){ selectedId=id; document.getElementById('editor').style.display='block'; renderChips(); renderEditor(); draw(); }
+function selectPerimeter(){ selectedId="PERIMETER"; document.getElementById('editor').style.display='none'; setBanner('Outline selected — drag corners/edges; double-tap an edge to add a corner'); setTimeout(()=>setBanner(null),2400); renderChips(); draw(); }
+function deselect(){ selectedId=null; vertexMode='none'; openingMode='none'; selOpening=-1; winFirst=null; document.getElementById('editor').style.display='none'; renderChips(); draw(); }
+function renderEditor(){ const room=roomById(selectedId); if(!room){document.getElementById('editor').style.display='none';return;} const wrap=document.getElementById('relabel'); wrap.innerHTML=''; TYPES.forEach(t=>{ const b=document.createElement('div'); b.className='rl'+(t.layer===room.layer?' on':''); b.innerHTML=`<span class="sw" style="background:${t.color}"></span>${t.label}`; b.onclick=()=>{ commit(); room.layer=t.layer; renderChips(); renderEditor(); draw(); }; wrap.appendChild(b); }); }
+function deleteRoom(){ rooms=rooms.filter(r=>r.id!==selectedId); deselect(); renderChips(); toast('Room deleted'); }
+function duplicateRoom(){ const room=roomById(selectedId); if(!room)return; const copy={id:uid++,layer:room.layer,vertices:room.vertices.map(([x,y])=>[x+0.04,y+0.04])}; rooms.push(copy); selectRoom(copy.id); renderChips(); }
+function addRoom(){ const c=perimeter.length?centroidFrac(perimeter):{x:0.5,y:0.5}; const s=0.12; const v=[[c.x-s,c.y-s],[c.x+s,c.y-s],[c.x+s,c.y+s],[c.x-s,c.y+s]]; const r={id:uid++,layer:"APT_ROOM_BED1",vertices:v}; rooms.push(r); selectRoom(r.id); renderChips(); toast('Drag edges/corners to fit'); }
+function centroidFrac(ring){let x=0,y=0;ring.forEach(p=>{x+=p[0];y+=p[1];});return{x:x/ring.length,y:y/ring.length};}
+
+function toggleOpenings(){ showOpenings=!showOpenings; draw(); toast(showOpenings?'Doors/windows on':'Doors/windows hidden'); }
+function toggleRefine(){ const b=document.getElementById('refineBar'); const open=b.style.display==='flex'; b.style.display=open?'none':'flex'; if(!open) document.getElementById('refineInput').focus(); }
+
+/* ============ EXPORT ============ */
+function round(n){return Math.round(n*1000)/1000;}
+function exportObject(){
+  return {
+    perimeter: perimeter.map(([x,y])=>[round(x),round(y)]),
+    rooms: rooms.map(r=>({layer:r.layer,label:typeFor(r.layer).label,vertices:r.vertices.map(([x,y])=>[round(x),round(y)])})),
+    openings: openings.map(o=>({type:o.type,segment:o.segment.map(([x,y])=>[round(x),round(y)])})),
+    scale: meta.scale||{found:false}, north: meta.north||{found:false,direction_degrees:0}
+  };
+}
+function openExport(){ expandSheet(); document.getElementById('mainView').style.display='none'; document.getElementById('exportPanel').style.display='block'; document.getElementById('jsonOut').textContent=JSON.stringify(exportObject(),null,2); }
+function closeExport(){ document.getElementById('exportPanel').style.display='none'; document.getElementById('mainView').style.display='block'; }
+function copyJSON(){ navigator.clipboard.writeText(JSON.stringify(exportObject(),null,2)); toast('JSON copied'); }
+function downloadJSON(){ const blob=new Blob([JSON.stringify(exportObject(),null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='floorplan-rooms.json'; a.click(); toast('Downloaded'); }
+function sendToChecker(){
+  if(!rooms.length){ toast('Generate rooms first'); return; }
   try{
-    const res=await fetch('/api/check',{method:'POST',body:fd});
-    const data=await res.json();
-    if(data.error){resultEl.innerHTML=`<div class="cr-fail">${esc(data.error)}</div>`;return;}
-    const s=data.summary;
-    const fails=Object.entries(s).filter(([k,v])=>k.endsWith('_pass')&&!v&&k!=='all_pass').map(([k])=>k.replace('_pass',''));
-    window._lastDXF=dxf;
-    const fullReportBtn=`<button onclick="openReport()" style="width:100%;padding:.38rem;margin-top:.3rem;background:var(--acc);border:none;border-radius:4px;color:#fff;font-size:11px;font-weight:600;cursor:pointer">View Full Report →</button>`;
-    const backBtn=`<button onclick="window.location.reload()" style="width:100%;padding:.35rem;margin-top:.25rem;background:var(--surf2);border:1px solid var(--bd);border-radius:4px;color:var(--dim);font-size:11px;cursor:pointer">← Edit Plan</button>`;
-    resultEl.innerHTML=(s.all_pass
-      ?`<div class="cr-pass">✓ All checks passed</div>`
-      :`<div class="cr-fail">✗ ${fails.length} failed: ${fails.join(', ')}</div>`
-    )+fullReportBtn+backBtn;
-  }catch(e){resultEl.innerHTML=`<div class="cr-fail">${esc(e.message)}</div>`;}
+    sessionStorage.setItem('apt_rooms', JSON.stringify(exportObject()));
+    sessionStorage.setItem('apt_dxf', buildDXF());
+    sessionStorage.setItem('apt_scale_m', String(planWidthM));
+  }catch(e){}
+  toast('Opening checker…');
+  setTimeout(()=>{ window.location.href = CHECKER_URL; }, 350);
 }
-function openReport(){
-  if(!window._lastDXF)return;
-  sessionStorage.setItem('tracerDXF',window._lastDXF);
-  sessionStorage.setItem('tracerDXFName','traced_apartment.dxf');
-  window.open('/?from_tracer=1','_blank');
-}
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-// Init
-buildLayerList();render();
+/* ============ MISC ============ */
+function showErr(m){const e=document.getElementById('errBox');e.style.display='block';e.textContent=m;}
+function hideErr(){document.getElementById('errBox').style.display='none';}
+function setBanner(msg){const el=document.getElementById('banner'); if(!msg){el.style.display='none';return;} el.style.display='block'; el.textContent=msg;}
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800);}
+function restart(){
+  rooms=[];openings=[];perimeter=[];seeds=[];seedDraft=null;walls={h:[],v:[]};grid={x:[],y:[]};selectedId=null;imgData=null;drawMode=false;drawPts=[];seedMode=false;history=[];vertexMode='none';openingMode='none';selOpening=-1;winFirst=null;setBanner(null);resetView();
+  document.getElementById('work').style.display='none';
+  document.getElementById('sheet').style.display='none';
+  document.getElementById('restartBtn').style.display='none';
+  document.getElementById('upload').style.display='flex';
+  document.getElementById('mainView').style.display='block';
+  document.getElementById('exportPanel').style.display='none';
+  img.src='';
+}
 </script>
 </body>
 </html>
