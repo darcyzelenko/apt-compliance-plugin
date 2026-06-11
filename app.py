@@ -23,7 +23,7 @@ def tracer():
 
 
 # ----------------------------------------------------------------------------
-# AI floor-plan tracer
+# AI floor-pla n tracer 
 # ----------------------------------------------------------------------------
 
 # Shared room-type vocabulary used across the seed/merge prompts
