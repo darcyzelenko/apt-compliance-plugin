@@ -16,6 +16,10 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 def index():
     return render_template('index.html')
 
+@app.route('/massing-simulator')
+def massing_simulator():
+    return send_file('templates/massing-simulator.html')
+
 
 @app.route('/tracer')
 def tracer():
