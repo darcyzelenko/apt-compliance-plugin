@@ -4,12 +4,25 @@ Flask web application
 """
 from flask import Flask, request, jsonify, render_template, send_file
 import os, sys, json, urllib.request, urllib.parse, urllib.error
-
 sys.path.insert(0, os.path.dirname(__file__))
+
 from compliance_engine import run_compliance
+from buildability_engine import run_buildability, parse_dxf_for_buildability
+from app_building_routes import register_building_routes
+from app_report_routes import register_report_routes
+from app_site_routes import site_bp
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
+
+# Register feature modules (site intelligence, building compliance, report gen).
+# These three lines wire up every backend beyond the bare index:
+#   register_report_routes    -> docx design-compliance report generator
+#   register_building_routes  -> /api/check-building, /build, /building/<token>
+#   site_bp blueprint         -> /api/site/resolve  (FORMWORK "Locate real site")
+register_report_routes(app)
+register_building_routes(app)
+app.register_blueprint(site_bp)
 
 
 @app.route('/')
@@ -20,16 +33,13 @@ def index():
 def massing_simulator():
     return send_file('templates/massing-simulator.html')
 
-
 @app.route('/tracer')
 def tracer():
     return send_file(os.path.join(os.path.dirname(__file__), 'tracer.html'))
 
-
 # ----------------------------------------------------------------------------
 # AI floor-pla n tracer 
 # ----------------------------------------------------------------------------
-
 # Shared room-type vocabulary used across the seed/merge prompts
 LAYER_VOCAB = (
     "layer is one of: APT_ROOM_MAINBED, APT_ROOM_BED1, APT_ROOM_BED2, "
@@ -38,27 +48,22 @@ LAYER_VOCAB = (
     "APT_UNKNOWN. Balcony/outdoor/POS = APT_POS; bath/toilet/combined = "
     "APT_ROOM_BATHROOM; WIR/robe/BIR = APT_STORAGE_DESIGNATED."
 )
-
 COMMON = (
     "Coordinates are [x,y] as fractions of the FULL image (0..1), origin "
     "top-left. Use clean rectilinear polygons with right angles. "
     "Output ONLY a JSON object inside a ```json code block, nothing else."
 )
-
-
 def _build_prompt(task, body, hint):
     """Return the text prompt for the requested tracer task."""
     if task == 'label_rooms':
         rooms_in = body.get('rooms', [])   # [{idx, bbox:[x1,y1,x2,y2]}]
         return f"""You are classifying rooms a user has already boxed on a floor plan.
 The user drew these room rectangles (image fractions, [x1,y1,x2,y2]): {rooms_in}
-
 For EACH rectangle, return its layer based on the room label visible inside or beside the box, or the fixtures shown if no label. Geometry is fixed by the user - do NOT return any coordinates, just the type.
 {COMMON}
 {{"rooms":[{{"idx":0,"layer":"APT_ROOM_BED1","label":"Bed 1"}}],
   "scale":{{"found":false}}, "north":{{"found":false,"direction_degrees":0}}}}
 {LAYER_VOCAB}"""
-
     if task == 'fit_boundary':
         user_poly = body.get('boundary', [])
         return f"""You are refining an apartment's outer boundary on a floor plan.
@@ -66,7 +71,6 @@ The user roughly traced this boundary polygon (image fractions): {user_poly}
 Snap it to the ACTUAL outer wall line in the image: correct mis-angled segments to true horizontals/verticals, fix corner positions, and add corners for any notch or wing the user missed. Keep it a single closed rectilinear polygon close to what the user drew - do not invent a totally different shape, and do not extend beyond the building's outer walls.
 {COMMON}
 {{"perimeter": [[x,y],[x,y], ...]}}"""
-
     if task == 'rooms_from_seeds':
         boundary = body.get('boundary', [])
         seeds = body.get('seeds', [])
@@ -75,7 +79,6 @@ Snap it to the ACTUAL outer wall line in the image: correct mis-angled segments 
         return f"""You are an experienced residential architect tracing rooms on a floor plan.
 The apartment boundary polygon (image fractions). Do NOT place anything outside it: {boundary}
 The user dropped one point inside each room they want captured (image fractions), numbered in order: {seeds}
-
 For EACH point, return exactly one room polygon:
 - read the printed room label nearest that point to classify it; if there is no label, infer the type from the fixtures shown.
 - trace the room's actual walls as a clean rectilinear polygon (rectangle = 4 points; L / "snorkel" shape = 6).
@@ -84,7 +87,6 @@ Return ONLY rooms (doors and windows are detected separately - do not include th
 {COMMON}
 {{"rooms":[{{"layer":"APT_ROOM_BED1","label":"Bed 1","vertices":[[x,y],[x,y],[x,y],[x,y]]}}]}}
 {LAYER_VOCAB}"""
-
     if task in ('doors', 'windows'):
         boundary = body.get('boundary', [])
         kind = task[:-1]  # 'door' or 'window'
@@ -102,12 +104,10 @@ The apartment boundary (image fractions), stay within it: {boundary}
 Return each opening as a short [start,end] segment lying along the wall line it sits in.
 {COMMON}
 {{"openings":[{{"type":"{kind}","segment":[[x,y],[x,y]]}}]}}"""
-
     if task == 'merge':
         rooms_in = body.get('rooms', [])
         return f"""You are an architect cleaning up a traced room layout.
 Here are the traced rooms (image fractions): {rooms_in}
-
 Look at the image and MERGE rooms that are connected with NO door or threshold between them, by unioning their polygons into a single rectilinear polygon:
 - living + kitchen + dining + entry that flow together with no dividing walls -> one APT_ROOM_LIVING.
 - a bedroom and its adjoining WIR / BIR / robe -> one bedroom polygon.
@@ -116,23 +116,17 @@ Leave genuinely separate rooms (anything with a door or full wall between them) 
 {COMMON}
 {{"rooms":[{{"layer":"APT_ROOM_LIVING","label":"Living","vertices":[[x,y], ...]}}]}}
 {LAYER_VOCAB}"""
-
     # ---- 'full' fallback: one-shot perimeter + rooms (no user input) ----
     prompt = """You are an experienced residential architect extracting clean geometry from an apartment floor plan.
-
 Work in three steps.
-
 STEP 1 - PLACE & TRACE THE PERIMETER.
 Find the apartment's outer wall outline (thick perimeter). It is usually a RECTILINEAR polygon - a rectangle with bits added or notched out, all right angles. Ignore margins, title block, area schedule, legend, north symbol, dimension strings, and any car space marked "Not To Scale"/"Not In Position".
 - "apartment_bounds": tight bounding box of that outline, as fractions of the FULL image {"x":left,"y":top,"w":width,"h":height}.
 - "perimeter": the outline as a polygon of [x,y] points in APARTMENT-RELATIVE coords (0..1 within apartment_bounds). Use only right angles; add points for every notch/wing.
-
 STEP 2 - PLACE THE RECTANGULAR ROOMS FIRST (subtractive method).
 In this order, place the rooms that are almost always simple rectangles (occasionally an L / "snorkel" shape): (1) bedrooms, (2) bathrooms/ensuites, (3) balconies, (4) laundry/storage/kitchen if walled off. Trace each tightly to its walls.
-
 STEP 3 - REMAINDER IS LIVING.
 Whatever interior area is left after subtracting those rooms is the living space (living/dining/meals/entry/circulation) - return it as ONE APT_ROOM_LIVING polygon (it may be an L or U shape; use as many right-angle vertices as needed). If any leftover area is genuinely unclear, return it as APT_UNKNOWN rather than leaving a gap.
-
 Output a single JSON object inside a ```json code block:
 {
   "apartment_bounds": {"x":0.22,"y":0.15,"w":0.30,"h":0.55},
@@ -147,7 +141,6 @@ Output a single JSON object inside a ```json code block:
   "scale": {"found": false, "dimension_text": null, "dimension_metres": null, "note": ""},
   "north": {"found": false, "direction_degrees": 0}
 }
-
 RULES:
 - ALL room/opening/perimeter coords are APARTMENT-RELATIVE (0..1 within apartment_bounds), origin top-left.
 - clean rectilinear polygons, right angles only. Rectangles = 4 points; L/snorkel = 6.
@@ -156,14 +149,11 @@ RULES:
 - """ + LAYER_VOCAB + """
 - "adjacent_to": ids of rooms sharing a wall. "dimensions": printed size label if visible, else null.
 - door = wall gap with swing arc; window = gap in external wall. Each as a short [start,end] segment. Empty list if unsure.
-
 COVERAGE (for long/narrow plans):
 - If the plan is tall and narrow, scan top to bottom and capture EVERY labelled room, including ones at the very top and very bottom. Do not cluster rooms in the centre and skip the ends."""
     if hint:
         prompt += "\n\nUSER CORRECTION (apply this exactly): " + hint
     return prompt
-
-
 @app.route('/api/analyse-image', methods=['POST'])
 def analyse_image():
     """
@@ -175,18 +165,14 @@ def analyse_image():
     api_key = os.environ.get('ANTHROPIC_API_KEY', '')
     if not api_key:
         return jsonify({'error': 'ANTHROPIC_API_KEY not configured on server'}), 500
-
     body = request.get_json(silent=True) or {}
     if 'image' not in body:
         return jsonify({'error': 'No image provided'}), 400
-
     image_data = body['image']
     media_type = body.get('media_type', 'image/jpeg')
     task = body.get('task', 'full')
     hint = (body.get('hint') or '').strip()
-
     prompt = _build_prompt(task, body, hint)
-
     payload = json.dumps({
         'model': 'claude-sonnet-4-5',
         'max_tokens': 3000,
@@ -198,14 +184,12 @@ def analyse_image():
             ]
         }]
     }).encode('utf-8')
-
     req = urllib.request.Request(
         'https://api.anthropic.com/v1/messages',
         data=payload,
         headers={'x-api-key': api_key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
         method='POST'
     )
-
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read())
@@ -213,7 +197,6 @@ def analyse_image():
         return jsonify({'error': f'Claude API {e.code}: {e.read().decode("utf-8", "replace")[:300]}'}), 502
     except Exception as e:
         return jsonify({'error': 'Request failed: ' + str(e)}), 502
-
     try:
         text = data['content'][0]['text']
         m = re.search(r'```(?:json)?\s*(\{.*\})\s*```', text, re.DOTALL)
@@ -225,8 +208,6 @@ def analyse_image():
         return jsonify(json.loads(text))
     except Exception as e:
         return jsonify({'error': 'Could not parse Claude response: ' + str(e)}), 500
-
-
 @app.route('/whoami')
 def whoami():
     root = os.path.dirname(__file__)
@@ -235,12 +216,9 @@ def whoami():
         'tracer_exists': os.path.exists(os.path.join(root, 'tracer.html')),
         'routes': [str(r) for r in app.url_map.iter_rules()],
     })
-
-
 # ----------------------------------------------------------------------------
 # Compliance checking
 # ----------------------------------------------------------------------------
-
 @app.route('/api/check', methods=['POST'])
 def check_compliance():
     if 'dxf_file' not in request.files:
@@ -266,12 +244,9 @@ def check_compliance():
         import traceback
         return jsonify({'error': f'Compliance check failed: {e}', 'trace': traceback.format_exc()}), 500
     return jsonify(results)
-
-
 # ----------------------------------------------------------------------------
 # Site / acoustic context lookup
 # ----------------------------------------------------------------------------
-
 @app.route('/api/geocode', methods=['GET'])
 def geocode():
     """
@@ -281,7 +256,6 @@ def geocode():
     address = request.args.get('address', '').strip()
     if not address:
         return jsonify({'error': 'No address provided'}), 400
-
     encoded = urllib.parse.quote(address + ', Victoria, Australia')
     url = f'https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=1&countrycodes=au'
     req = urllib.request.Request(url, headers={
@@ -292,18 +266,13 @@ def geocode():
             data = json.loads(resp.read())
     except Exception as e:
         return jsonify({'error': f'Geocoding failed: {e}'}), 502
-
     if not data:
         return jsonify({'error': 'Address not found. Try adding suburb and state (e.g. Collingwood VIC)'}), 404
-
     lat = float(data[0]['lat'])
     lon = float(data[0]['lon'])
     display = data[0].get('display_name', address)
     noise_sources = query_noise_sources(lat, lon)
-
     return jsonify({'address': display, 'lat': lat, 'lon': lon, 'noise_sources': noise_sources})
-
-
 def query_noise_sources(lat, lon):
     """
     Use Overpass API to find railways and major roads within noise influence distances.
@@ -326,12 +295,10 @@ out center tags;
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'VIC-Apartment-Compliance-Checker/0.5'
     })
-
     sources = []
     try:
         with urllib.request.urlopen(req, timeout=12) as resp:
             result = json.loads(resp.read())
-
         import math
         def haversine(lat1, lon1, lat2, lon2):
             R = 6371000
@@ -340,19 +307,16 @@ out center tags;
             Δλ = math.radians(lon2 - lon1)
             a = math.sin(Δφ / 2) ** 2 + math.cos(φ1) * math.cos(φ2) * math.sin(Δλ / 2) ** 2
             return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
         for el in result.get('elements', []):
             tags = el.get('tags', {})
             center = el.get('center') or {}
             elat = center.get('lat') or el.get('lat') or lat
             elon = center.get('lon') or el.get('lon') or lon
             dist = round(haversine(lat, lon, elat, elon))
-
             railway = tags.get('railway', '')
             highway = tags.get('highway', '')
             landuse = tags.get('landuse', '')
             name = tags.get('name', '')
-
             if railway in ('rail', 'subway'):
                 service = tags.get('service', '')
                 freight = 'freight' in name.lower() or service == 'freight'
@@ -388,24 +352,18 @@ out center tags;
                     'in_range': dist <= 300,
                     'layer_suggestion': 'APT_NOISE_INDUSTRY',
                 })
-
         # Deduplicate by type — keep closest
         seen = {}
         for s in sorted(sources, key=lambda x: x['distance_m']):
             if s['type'] not in seen:
                 seen[s['type']] = s
         sources = list(seen.values())
-
     except Exception as e:
         sources = [{'error': str(e), 'type': 'LOOKUP_FAILED'}]
-
     return sources
-
-
 # ----------------------------------------------------------------------------
 # Sample files
 # ----------------------------------------------------------------------------
-
 def _send_dxf(filename, download_name):
     path = os.path.join(os.path.dirname(__file__), filename)
     if not os.path.exists(path):
@@ -416,18 +374,12 @@ def _send_dxf(filename, download_name):
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': f'attachment; filename="{download_name}"'
     }
-
-
 @app.route('/api/sample')
 def sample():
     return _send_dxf('test_apartment.dxf', 'sample_2bed_passing.dxf')
-
-
 @app.route('/api/sample_fail')
 def sample_fail():
     return _send_dxf('test_apartment_failing.dxf', 'sample_3bed_failing.dxf')
-
-
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
