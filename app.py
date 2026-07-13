@@ -61,7 +61,22 @@ def massing_simulator():
 
 @app.route('/build')
 def build():
-    return send_file(os.path.join(os.path.dirname(__file__), 'build.html'))
+    # build.html may live at repo root or in templates/ — try both.
+    here = os.path.dirname(__file__)
+    candidates = [
+        os.path.join(here, 'build.html'),
+        os.path.join(here, 'templates', 'build.html'),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return send_file(path)
+    return jsonify({
+        'error': 'build.html not found',
+        'looked_in': candidates,
+        'files_at_root': sorted(os.listdir(here)),
+        'files_in_templates': sorted(os.listdir(os.path.join(here, 'templates')))
+                              if os.path.isdir(os.path.join(here, 'templates')) else 'no templates dir',
+    }), 404
 
 @app.route('/tracer')
 def tracer():
