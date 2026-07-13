@@ -72,6 +72,32 @@ def ping():
         'routes': sorted(str(r.rule) for r in app.url_map.iter_rules()),
     })
 
+@app.route('/diag-building2')
+def diag_building2():
+    import traceback, importlib
+    out = {}
+    try:
+        import app_building_routes as abr
+        out['module_imported'] = True
+        out['names'] = [n for n in dir(abr) if not n.startswith('__')]
+        out['has_register_building_routes'] = hasattr(abr, 'register_building_routes')
+    except Exception:
+        out['module_imported'] = False
+        out['module_error'] = traceback.format_exc()
+        return jsonify(out), 500
+    try:
+        from app_building_routes import register_building_routes  # noqa
+        out['direct_import'] = 'ok'
+    except Exception:
+        out['direct_import_error'] = traceback.format_exc()
+    for mod in ('compliance_engine', 'building_compliance', 'session_store'):
+        try:
+            m = importlib.import_module(mod)
+            out[mod] = 'ok: ' + ', '.join(n for n in dir(m) if not n.startswith('_'))[:200]
+        except Exception:
+            out[mod] = 'FAIL: ' + traceback.format_exc().splitlines()[-1]
+    return jsonify(out)
+
 # ----------------------------------------------------------------------------
 # AI floor-pla n tracer 
 # ----------------------------------------------------------------------------

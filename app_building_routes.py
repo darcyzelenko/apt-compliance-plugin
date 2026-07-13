@@ -1,174 +1,239 @@
 """
-Report generation routes -- produces a Design Compliance Report .docx
-that can be handed to a building certifier / RBS.
+app_building_routes.py
+======================
+Building-level compliance routes for Apt. v0.4
 
-Register in app.py:
-    from app_report_routes import register_report_routes
-    register_report_routes(app)
+Add to app.py with two lines:
 
-Requires:
-    - node / npm with the 'docx' package installed on the server
-      (nixpacks build step: `npm install --prefix /app docx`)
-    - generate_report.js in the same directory as app.py
+    from app_building_routes import register_building_routes
+    register_building_routes(app)
+
+That's it — the function imports run_compliance and the session helpers
+from the modules already present in the project.
+
+New endpoints
+─────────────
+POST  /api/check-building          Run full building compliance check
+GET   /api/results-building/<token>  Retrieve a stored building result
+POST  /api/validate-building-dxf   Detect unit IDs without running checks
+GET   /api/sample-building         Download a sample multi-apartment DXF
+
+Form / query parameters
+───────────────────────
+  dxf_file    (file)    DXF with unit-prefixed layers  e.g. APT_01_ROOM_MAINBED
+  jurisdiction (str)    'VIC' | 'NSW' | 'BEST_PRACTICE'  (default: 'VIC')
+  ceiling_height (float) metres, default 2.7  (same as /api/check)
 """
 
-import json
+import uuid
+import time
+import traceback
 import logging
-import os
-import shutil
-import subprocess
-import tempfile
-from flask import jsonify, request, send_file
 
-log = logging.getLogger(__name__)
+from flask import request, jsonify
 
-# Path to the node script -- sits alongside app.py
-_SCRIPT = os.path.join(os.path.dirname(__file__), 'generate_report.js')
+from compliance_engine import run_compliance
+from building_compliance import (
+    check_building,
+    building_result_to_dict,
+    is_multi_apartment,
+    detect_unit_ids,
+)
 
-
-def _resolve_session(token):
-    """
-    Retrieve stored session data for a token.
-
-    Session storage was extracted into session_store.py to break a circular
-    import between app.py and the building routes. Try that first, then fall
-    back to any legacy helper on the app module, then an in-memory store.
-    """
-    if not token:
-        return None
-    # 1. Canonical: session_store.py
-    try:
-        import session_store
-        getter = getattr(session_store, 'get_session', None) or getattr(session_store, 'load', None)
-        if getter:
-            data = getter(token)
-            if data:
-                return data
-    except Exception as e:
-        log.debug("session_store lookup failed: %s", e)
-    # 2. Legacy: a _get_session helper on the app module
-    try:
-        from app import _get_session as _gs  # type: ignore
-        data = _gs(token)
-        if data:
-            return data
-    except Exception as e:
-        log.debug("app._get_session lookup failed: %s", e)
-    return None
+VALID_JURISDICTIONS = {'VIC', 'NSW', 'BEST_PRACTICE'}
 
 
-def register_report_routes(app):
+def register_building_routes(app):
+    """Register all building-level routes on the Flask app instance."""
 
-    def _get_session(token):
-        # keep the old name available; also check an app-attached store
-        data = _resolve_session(token)
-        if data is not None:
-            return data
-        store = getattr(app, '_session_store', {})
-        return store.get(token)
+    # Re-use the session helpers already defined in app.py
+    # (imported at call time to avoid circular imports at module level)
+    from session_store import _get_session, _set_session
 
-    def _run_node(payload: dict) -> bytes:
-        """Run generate_report.js with payload as stdin, return docx bytes."""
-        if not os.path.exists(_SCRIPT):
-            raise FileNotFoundError(
-                'generate_report.js not found at %s -- deploy it alongside app.py' % _SCRIPT
-            )
-        node_bin = shutil.which('node')
-        if not node_bin:
-            raise RuntimeError(
-                'node executable not found on PATH -- the report generator needs Node.js '
-                '(nixpacks should provide nodejs_20).'
-            )
-        proc = subprocess.run(
-            [node_bin, _SCRIPT],
-            input=json.dumps(payload).encode(),
-            capture_output=True,
-            timeout=60,
-        )
-        if proc.returncode != 0:
-            err = (proc.stderr or b'').decode('utf-8', 'replace')
-            raise RuntimeError('Report generator failed: ' + err[:400])
-        if len(proc.stdout) < 1000:
-            raise RuntimeError(
-                'Report generator returned too little data -- '
-                + (proc.stderr or b'').decode('utf-8', 'replace')[:200]
-            )
-        return proc.stdout
+    # ── POST /api/check-building ───────────────────────────────────────────────
 
-    @app.route('/api/generate-report', methods=['POST'])
-    def api_generate_report():
+    @app.route('/api/check-building', methods=['POST'])
+    def api_check_building():
         """
-        Generate a Design Compliance Report .docx.
+        Run compliance on a multi-apartment DXF.
 
-        JSON body accepts either inline compliance data or a stored session token:
-        {
-            "token": "...",            "building_token": "...",
-            "results": {...},          "building_results": {...},
-            "jurisdiction": "VIC" | "NSW" | "BEST_PRACTICE",
-            "project": { "name": "...", "address": "...", ... }
-        }
+        Returns the same token/URL pattern as /api/store so existing
+        frontend session-retrieval code works unchanged:
+          { token, url, apartments: [...], summary: {...} }
         """
-        body = request.get_json(force=True, silent=True) or {}
-        jurisdiction = body.get('jurisdiction', 'VIC').upper()
-        project      = body.get('project', {})
+        if 'dxf_file' not in request.files:
+            return jsonify({'error': 'No DXF file uploaded'}), 400
 
-        token        = body.get('token', '')
-        apt_results  = body.get('results', {})
-        bld_results  = body.get('building_results', None)
+        f = request.files['dxf_file']
+        if not f.filename:
+            return jsonify({'error': 'No file selected'}), 400
 
-        if token and not apt_results:
-            session_data = _get_session(token)
-            if session_data:
-                apt_results = session_data.get('results', session_data)
-
-        bld_token = body.get('building_token', '')
-        if bld_token and not bld_results:
-            bld_session = _get_session(bld_token)
-            if bld_session:
-                bld_results = bld_session.get('results', bld_session)
-
-        if not apt_results and not bld_results:
-            return jsonify({'error': 'No compliance data provided. Pass token or results directly.'}), 400
-
-        import datetime
-        payload = {
-            'jurisdiction':     jurisdiction,
-            'project':          project,
-            'results':          apt_results,
-            'building_results': bld_results,
-            'generated_at':     datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        }
+        jurisdiction = request.form.get('jurisdiction', 'VIC').strip().upper()
+        if jurisdiction not in VALID_JURISDICTIONS:
+            jurisdiction = 'VIC'
 
         try:
-            docx_bytes = _run_node(payload)
-        except FileNotFoundError as e:
-            log.error('generate_report.js missing: %s', e)
-            return jsonify({'error': str(e)}), 500
-        except subprocess.TimeoutExpired:
-            return jsonify({'error': 'Report generation timed out -- try again'}), 500
-        except RuntimeError as e:
-            log.error('Report generation error: %s', e)
-            return jsonify({'error': str(e)}), 500
+            ceiling_h = float(request.form.get('ceiling_height', 2.7))
+            ceiling_h = max(2.1, min(5.0, ceiling_h))
+        except (ValueError, TypeError):
+            ceiling_h = 2.7
 
-        proj_name = (project.get('name', 'Project') or 'Project').replace(' ', '_')[:40]
-        filename  = 'Design_Compliance_Report_%s.docx' % proj_name
-
-        tmp_path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tf:
-                tf.write(docx_bytes)
-                tmp_path = tf.name
-            return send_file(
-                tmp_path,
-                as_attachment=True,
-                download_name=filename,
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            dxf_text = f.read().decode('utf-8', errors='replace')
+        except Exception as e:
+            return jsonify({'error': f'Could not read file: {e}'}), 400
+
+        # Pre-flight: confirm this is actually a multi-apartment file
+        if not is_multi_apartment(dxf_text):
+            return jsonify({
+                'error': (
+                    "This DXF doesn't contain multi-apartment unit prefixes. "
+                    "Layers must be named like APT_01_ROOM_MAINBED, "
+                    "APT_02_ROOM_LIVING, etc. "
+                    "Use /api/check for single-apartment files."
+                ),
+                'is_multi_apartment': False,
+                'unit_ids': [],
+            }), 422
+
+        try:
+            result = check_building(
+                dxf_text=dxf_text,
+                jurisdiction=jurisdiction,
+                ceiling_h=ceiling_h,
+                compliance_engine_fn=run_compliance,
+            )
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 422
+        except Exception as e:
+            logging.error('check_building error: ' + traceback.format_exc())
+            return jsonify({
+                'error': f'Building compliance check failed: {e}',
+                'traceback': traceback.format_exc(),
+            }), 500
+
+        result_dict = building_result_to_dict(result)
+
+        # Store using the same session mechanism as /api/store
+        token = uuid.uuid4().hex[:12]
+        _set_session(token, result_dict)   # stored under results key, with ts
+
+        base_url = request.host_url.rstrip('/')
+        return jsonify({
+            'token': token,
+            'url': f'{base_url}/building/{token}',
+            **result_dict,
+        })
+
+    # ── GET /api/results-building/<token> ─────────────────────────────────────
+
+    @app.route('/api/update-building/<token>', methods=['POST'])
+    def api_update_building(token):
+        """
+        POST /api/update-building/<token>
+        Re-run the building check and update the stored session.
+        Same parameters as /api/check-building.
+        """
+        if 'dxf_file' not in request.files:
+            return jsonify({'error': 'No DXF file uploaded'}), 400
+        f = request.files['dxf_file']
+        jurisdiction = request.form.get('jurisdiction', 'VIC').strip().upper()
+        if jurisdiction not in VALID_JURISDICTIONS:
+            jurisdiction = 'VIC'
+        try:
+            ceiling_h = float(request.form.get('ceiling_height', 2.7))
+            ceiling_h = max(2.1, min(5.0, ceiling_h))
+        except (ValueError, TypeError):
+            ceiling_h = 2.7
+        try:
+            storey_count = int(request.form.get('storey_count', 0))
+            storey_count = max(0, min(100, storey_count))
+        except (ValueError, TypeError):
+            storey_count = 0
+        try:
+            dxf_text = f.read().decode('utf-8', errors='replace')
+        except Exception as e:
+            return jsonify({'error': 'Could not read file: %s' % e}), 400
+        try:
+            result = check_building(
+                dxf_text=dxf_text,
+                jurisdiction=jurisdiction,
+                ceiling_h=ceiling_h,
+                storey_count=storey_count,
+                compliance_engine_fn=run_compliance,
             )
         except Exception as e:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-            log.error('Failed to send report: %s', e)
-            return jsonify({'error': 'Failed to send report: ' + str(e)}), 500
+            return jsonify({'error': str(e)}), 500
+        result_dict = building_result_to_dict(result)
+        # Update existing session if token is valid, otherwise create new
+        existing = _get_session(token)
+        use_token = token if existing else str(uuid.uuid4()).hex[:12]
+        _set_session(use_token, result_dict)
+        base_url = request.host_url.rstrip('/')
+        return jsonify({
+            'token': use_token,
+            'url': '%s/building/%s' % (base_url, use_token),
+            **result_dict,
+        })
+
+    @app.route('/api/results-building/<token>')
+    def api_building_results(token):
+        """
+        Retrieve a previously computed building result by session token.
+        Same TTL as single-apartment sessions (2 hours).
+        """
+        session = _get_session(token)
+        if not session:
+            return jsonify({'error': 'Session not found or expired'}), 404
+        return jsonify({'results': session['results'], 'ts': session['ts']})
+
+    # ── POST /api/validate-building-dxf ───────────────────────────────────────
+
+    @app.route('/api/validate-building-dxf', methods=['POST'])
+    def api_validate_building_dxf():
+        """
+        Fast pre-flight check: detect unit IDs without running compliance.
+        Used by the frontend file picker and the Rhino plugin to confirm
+        a file is correctly tagged before starting a full check.
+
+        Returns:
+          { is_multi_apartment, unit_count, unit_ids, message }
+        """
+        if 'dxf_file' not in request.files:
+            return jsonify({'error': 'No DXF file uploaded'}), 400
+
+        f = request.files['dxf_file']
+        try:
+            dxf_text = f.read().decode('utf-8', errors='replace')
+        except Exception as e:
+            return jsonify({'error': f'Could not read file: {e}'}), 400
+
+        multi  = is_multi_apartment(dxf_text)
+        units  = detect_unit_ids(dxf_text)
+
+        return jsonify({
+            'is_multi_apartment': multi,
+            'unit_count': len(units),
+            'unit_ids': units,
+            'message': (
+                f'Detected {len(units)} apartment{"s" if len(units) != 1 else ""}: '
+                f'{", ".join(units)}'
+                if units else
+                'No unit prefixes detected — this appears to be a single-apartment file.'
+            ),
+        })
+
+    # ── GET /building/<token> (page route) ────────────────────────────────────
+
+    @app.route('/building/<token>')
+    def building_report(token):
+        """
+        Serve the main page for a building report.
+        JS fetches the results via /api/results-building/<token>.
+        """
+        # Re-use the existing index template for now; swap for building.html
+        # once that template is in place.
+        from flask import render_template
+        return render_template('building_overview.html')
+
+    return app
