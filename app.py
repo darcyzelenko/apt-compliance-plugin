@@ -59,6 +59,10 @@ def index():
 def massing_simulator():
     return send_file('templates/massing-simulator.html')
 
+@app.route('/build')
+def build():
+    return send_file(os.path.join(os.path.dirname(__file__), 'build.html'))
+
 @app.route('/tracer')
 def tracer():
     return send_file(os.path.join(os.path.dirname(__file__), 'tracer.html'))
