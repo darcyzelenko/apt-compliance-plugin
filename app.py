@@ -3,26 +3,52 @@ Victorian Apartment Compliance Checker  v0.5
 Flask web application
 """
 from flask import Flask, request, jsonify, render_template, send_file
-import os, sys, json, urllib.request, urllib.parse, urllib.error
+import os, sys, json, logging, urllib.request, urllib.parse, urllib.error
 sys.path.insert(0, os.path.dirname(__file__))
 
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("app")
+
 from compliance_engine import run_compliance
-from buildability_engine import run_buildability, parse_dxf_for_buildability
-from app_building_routes import register_building_routes
-from app_report_routes import register_report_routes
-from app_site_routes import site_bp
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB
 
-# Register feature modules (site intelligence, building compliance, report gen).
-# These three lines wire up every backend beyond the bare index:
-#   register_report_routes    -> docx design-compliance report generator
-#   register_building_routes  -> /api/check-building, /build, /building/<token>
-#   site_bp blueprint         -> /api/site/resolve  (FORMWORK "Locate real site")
-register_report_routes(app)
-register_building_routes(app)
-app.register_blueprint(site_bp)
+# ----------------------------------------------------------------------------
+# Feature-module registration (defensive).
+#
+# Each block imports + registers ONE feature. If a module has a bad import or
+# raises during registration, ONLY that feature is disabled -- the rest of the
+# app (and critically the site blueprint that powers FORMWORK "Locate") still
+# boots. The failure is logged so it shows up in the Railway deploy logs, e.g.
+#   [warn] site_blueprint disabled: No module named 'shapely'
+# ----------------------------------------------------------------------------
+FEATURE_STATUS = {}
+
+def _try_register(name, fn):
+    try:
+        fn()
+        FEATURE_STATUS[name] = 'ok'
+        log.info("[ok] %s registered", name)
+    except Exception as e:
+        FEATURE_STATUS[name] = 'DISABLED: %s: %s' % (type(e).__name__, e)
+        log.warning("[warn] %s disabled: %s", name, e)
+
+def _reg_report():
+    from app_report_routes import register_report_routes
+    register_report_routes(app)
+
+def _reg_building():
+    from app_building_routes import register_building_routes
+    register_building_routes(app)
+
+def _reg_site():
+    from app_site_routes import site_bp
+    app.register_blueprint(site_bp)
+
+_try_register('report_routes',   _reg_report)
+_try_register('building_routes', _reg_building)
+_try_register('site_blueprint',  _reg_site)
 
 
 @app.route('/')
@@ -37,10 +63,18 @@ def massing_simulator():
 def tracer():
     return send_file(os.path.join(os.path.dirname(__file__), 'tracer.html'))
 
+# Deployment / health probe -- confirms which build is live and which features loaded.
+@app.route('/ping')
+def ping():
+    return jsonify({
+        'version': 'v0.5-restored',
+        'features': FEATURE_STATUS,
+        'routes': sorted(str(r.rule) for r in app.url_map.iter_rules()),
+    })
+
 # ----------------------------------------------------------------------------
 # AI floor-pla n tracer 
 # ----------------------------------------------------------------------------
-# Shared room-type vocabulary used across the seed/merge prompts
 LAYER_VOCAB = (
     "layer is one of: APT_ROOM_MAINBED, APT_ROOM_BED1, APT_ROOM_BED2, "
     "APT_ROOM_BED3, APT_ROOM_LIVING, APT_ROOM_BATHROOM, APT_ROOM_ENSUITE, "
@@ -56,7 +90,7 @@ COMMON = (
 def _build_prompt(task, body, hint):
     """Return the text prompt for the requested tracer task."""
     if task == 'label_rooms':
-        rooms_in = body.get('rooms', [])   # [{idx, bbox:[x1,y1,x2,y2]}]
+        rooms_in = body.get('rooms', [])
         return f"""You are classifying rooms a user has already boxed on a floor plan.
 The user drew these room rectangles (image fractions, [x1,y1,x2,y2]): {rooms_in}
 For EACH rectangle, return its layer based on the room label visible inside or beside the box, or the fixtures shown if no label. Geometry is fixed by the user - do NOT return any coordinates, just the type.
@@ -89,7 +123,7 @@ Return ONLY rooms (doors and windows are detected separately - do not include th
 {LAYER_VOCAB}"""
     if task in ('doors', 'windows'):
         boundary = body.get('boundary', [])
-        kind = task[:-1]  # 'door' or 'window'
+        kind = task[:-1]
         if kind == 'door':
             what = ("Find every DOORWAY: a gap in a wall, usually drawn with a quarter-circle "
                     "swing arc. Include entry doors, internal doors and sliding doors. Do NOT "
@@ -116,7 +150,6 @@ Leave genuinely separate rooms (anything with a door or full wall between them) 
 {COMMON}
 {{"rooms":[{{"layer":"APT_ROOM_LIVING","label":"Living","vertices":[[x,y], ...]}}]}}
 {LAYER_VOCAB}"""
-    # ---- 'full' fallback: one-shot perimeter + rooms (no user input) ----
     prompt = """You are an experienced residential architect extracting clean geometry from an apartment floor plan.
 Work in three steps.
 STEP 1 - PLACE & TRACE THE PERIMETER.
@@ -156,11 +189,7 @@ COVERAGE (for long/narrow plans):
     return prompt
 @app.route('/api/analyse-image', methods=['POST'])
 def analyse_image():
-    """
-    Floor plan -> structured geometry via Claude vision (urllib, no requests dep).
-    POST JSON: { image, media_type, task?, boundary?, seeds?, rooms?, hint? }
-      task = 'fit_boundary' | 'rooms_from_seeds' | 'merge' | 'full' (default)
-    """
+    """Floor plan -> structured geometry via Claude vision (urllib, no requests dep)."""
     import re
     api_key = os.environ.get('ANTHROPIC_API_KEY', '')
     if not api_key:
@@ -214,6 +243,7 @@ def whoami():
     return jsonify({
         'files_at_root': os.listdir(root),
         'tracer_exists': os.path.exists(os.path.join(root, 'tracer.html')),
+        'features': FEATURE_STATUS,
         'routes': [str(r) for r in app.url_map.iter_rules()],
     })
 # ----------------------------------------------------------------------------
@@ -249,10 +279,7 @@ def check_compliance():
 # ----------------------------------------------------------------------------
 @app.route('/api/geocode', methods=['GET'])
 def geocode():
-    """
-    Geocode an address using Nominatim (OSM) and return nearby noise sources.
-    GET /api/geocode?address=123+Smith+St+Collingwood+VIC
-    """
+    """Geocode an address using Nominatim (OSM) and return nearby noise sources."""
     address = request.args.get('address', '').strip()
     if not address:
         return jsonify({'error': 'No address provided'}), 400
@@ -274,11 +301,8 @@ def geocode():
     noise_sources = query_noise_sources(lat, lon)
     return jsonify({'address': display, 'lat': lat, 'lon': lon, 'noise_sources': noise_sources})
 def query_noise_sources(lat, lon):
-    """
-    Use Overpass API to find railways and major roads within noise influence distances.
-    Table D3: industry 300m, roads 300m, rail 80-135m.
-    """
-    radius = 400  # catch anything near the influence boundaries
+    """Use Overpass API to find railways and major roads within noise influence distances."""
+    radius = 400
     overpass_query = f"""
 [out:json][timeout:10];
 (
@@ -302,10 +326,10 @@ out center tags;
         import math
         def haversine(lat1, lon1, lat2, lon2):
             R = 6371000
-            φ1, φ2 = math.radians(lat1), math.radians(lat2)
-            Δφ = math.radians(lat2 - lat1)
-            Δλ = math.radians(lon2 - lon1)
-            a = math.sin(Δφ / 2) ** 2 + math.cos(φ1) * math.cos(φ2) * math.sin(Δλ / 2) ** 2
+            phi1, phi2 = math.radians(lat1), math.radians(lat2)
+            dphi = math.radians(lat2 - lat1)
+            dlam = math.radians(lon2 - lon1)
+            a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
             return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         for el in result.get('elements', []):
             tags = el.get('tags', {})
@@ -331,7 +355,7 @@ out center tags;
                     'layer_suggestion': f'APT_NOISE_{source_type}',
                 })
             elif railway == 'tram':
-                pass  # trams not in Table D3
+                pass
             elif highway in ('motorway', 'trunk', 'primary'):
                 ref = tags.get('ref', '')
                 label = name or ref or highway
@@ -352,7 +376,6 @@ out center tags;
                     'in_range': dist <= 300,
                     'layer_suggestion': 'APT_NOISE_INDUSTRY',
                 })
-        # Deduplicate by type — keep closest
         seen = {}
         for s in sorted(sources, key=lambda x: x['distance_m']):
             if s['type'] not in seen:
@@ -383,5 +406,5 @@ def sample_fail():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
-    print(f'\n  Apt. Compliance Checker — http://localhost:{port}\n')
+    print(f'\n  Apt. Compliance Checker -- http://localhost:{port}\n')
     app.run(debug=debug, host='0.0.0.0', port=port)
